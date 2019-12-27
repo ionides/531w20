@@ -1,0 +1,149 @@
+---
+title: "Stats 531 (Winter 2020) <br>'Analysis of Time Series'"
+author: "Instructor: Edward L. Ionides"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+csl: ecology.csl
+---
+
+------
+
+## Course description
+
+This course gives an introduction to time series analysis using time domain methods and frequency domain methods. 
+The goal is to acquire the theoretical and computational skills required to investigate data collected as a time series. 
+The first half of the course will develop classical time series methodology, including auto-regressive moving average (ARMA) models, regression with ARMA errors, and estimation of the spectral density.
+The second half of the course will focus on state space model techniques for fitting structured dynamic models to time series data. 
+We will progress from fitting linear, Gaussian dynamic models to fitting nonlinear models for which Monte Carlo methods are required.
+Examples will be drawn from ecology, economics, epidemiology, finance and elsewhere.
+
+A course outline, course information and grading policies are described in the [syllabus](syllabus.html).
+
+--------------
+
+## Class notes
+
+
+<!--
+
+1. [Introduction](01/notes01.html). [(R script)](01/notes01.R)
+
+2. [Time series models, trend and autocovariance](02/notes02.html). [(R script)](02/notes02.R)
+
+3. [Stationarity, white noise, and some basic time series models](03/notes03.html). [(R script)](03/notes03.R)
+
+4. [Linear time series models and the algebra of ARMA models](04/notes04.html). [(R script)](04/notes04.R)
+
+5. [Parameter estimation and model identification for ARMA models](05/notes05.html). [(R script)](05/notes05.R)
+
+6. [Extending the ARMA model: Seasonality and trend](06/notes06.html). [(R script)](06/notes06.R)
+
+7. [Introduction to the frequency domain](07/notes07.html). [(R script)](07/notes07.R)
+
+8. [Smoothing in the time and frequency domains](08/notes08.html). [(R script)](08/notes08.R)
+
+9. [Introduction to partially observed Markov process models](09/notes09.html). [(R script)](09/notes09.R)
+
+10. [Statistical methodology for nonlinear partially observed Markov process models](10/notes10.html). [(R script)](10/notes10.R)
+
+11. [Dynamic models and their simulation by Euler’s method](11/notes11.html). [(R script)](11/notes11.R)
+
+12. [Practical likelihood-based inference for POMP models](12/notes12.html). [(R script)](12/notes12.R)
+
+13. [Time series models with covariates, and a case study of polio](13/notes13.html). [(R script)](13/notes13.R)
+
+14. [Case study: POMP modeling to investigate financial volatility](14/notes14.html). [(R script)](notes15/notes15.R)
+
+There are further POMP case studies, in a similar style, on [Ebola modeling](https://kingaa.github.io/sbied/ebola/ebola.html), [measles transmission](https://kingaa.github.io/sbied/measles/measles.html), and [dynamic variation in the rate of human sexual contacts](https://kingaa.github.io/sbied/contacts/contacts.html).
+
+-->
+
+--------
+
+## Homework assignments
+
+Please read the [grading policy](syllabus.html) before turning in homework.
+
+<!--
+
+* [Homework 0](hw00/hw00.html), due in class on 1/10. Setting up your computational environment.
+
+* [Homework 1](hw01/hw01.html), due in class on Wednesday 1/17.  [Solution](hw01/sol01.html).
+
+* [Homework 2](hw02/hw02.html), due in class on Monday 1/29. [Solution](hw02/sol02.html).
+
+* [Homework 3](hw03/hw03.html), due 11:59pm on Monday 2/5. [Solution](hw03/sol03.html).
+
+* [Homework 4](hw04/hw04.html), to be carried out by Monday 2/12.
+
+* [Homework 5](hw05/hw05.html), due 11:59pm on Monday 2/19. [Solution](hw05/sol05.html).
+
+* [Homework 6](hw06/hw06.html), due in class on Wednesday 3/14. [Solution](hw06/sol06.html).
+
+* [Homework 7](hw07/hw07.html), due 11:59pm on Monday 3/26. [Solution](hw07/sol07.html).
+
+* [Homework 8](hw08/hw08.html), to be carried out by Monday 4/2.
+
+* [Homework 9](hw09/hw09.html), due on Monday 4/16. [Solution](hw09/sol09.html).
+
+-->
+
+------------
+
+## Midterm exam information
+
+<!--
+
+* The midterm exam will involve reasoning about a data analysis using the theoretical and computational techniques we have studied in class. 
+
+* The exam may include techniques covered in homeworks and will assume familiarity with the notes.
+Reading the textbook is not mandatory for the exam, but may be useful to get a broader perspective.
+
+<!-- You do not need to review algebraic manipulation of state space models beyond what was in homework. -->
+
+* You should bring to the exam just pens and/or pencils. The exam will be taken without any electronic devices, books or notes.
+
+* The best predictor of the style of the exam is the past papers from the Winter 2016 version of this course:
+
+    +  [Midterm exam for STATS 531 Winter 2016](exam/w16/mt531w16.pdf). [Solutions](exam/w16/mt531w16sol.pdf).
+
+    +  [Midterm exam for STATS 531 Winter 2018](exam/w18/mt531w18.pdf). [Solutions](exam/w18/mt531w18sol.pdf).
+    
+-->
+
+
+<!--
+
+-------------------
+
+
+## Midterm project
+
+* [Information](midterm_project/midterm_project_info.html)
+
+* [Grading scheme](midterm_project/grade_scheme_midterm_project.html)
+
+* [Projects](midterm_project/index.html)
+
+* You're also welcome to browse previous midterm projects [available online](http://ionides.github.io/531w16/midterm_project/)
+
+-->
+
+<!--
+
+-------------
+
+## Final project
+
+* [Information](final_project/final_project_info.html)
+
+* You're welcome to browse previous final projects [available online](http://ionides.github.io/531w16/final_project/)
+
+* [Projects](final_project/index.html)
+
+
+-->
+
+---------

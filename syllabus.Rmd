@@ -1,0 +1,105 @@
+---
+title: "Syllabus for STATS 531 (Winter 2020) <br>'Analysis of Time Series'"
+author: "Instructor: Edward L. Ionides"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+csl: ecology.csl
+---
+
+
+STILL UNDER CONSTRUCTION
+
+------
+
+## Course information
+
+* Class meets Tue/Thu 10:00-11:30 in 1202 School of Education Building
+
+* Contact information:
+    + Office: 453 West Hall 
+    + Phone: 615 3332 
+    + E-mail: ionides@umich.edu 
+    + Web: dept.stat.lsa.umich.edu/~ionides
+    + Office hours: TBD
+
+<!--
+Monday 4-5pm, Wednesday 3-4pm
+* GSI: Joonha Park
+    + Office hours: Friday 9:30-11am in 2165 USB.
+    + Computing support: inquire by email, with a detailed description of the problem, what you did, and what error message you obtained.
+    + E-mail: joonhap@umich.edu
+-->
+
+* Textbook: R. Shumway and D. Stoffer "Time Series Analysis and its Applications" 4th edition. 
+A pdf is available using the UM Library's Springer subscription.
+An updated pdf is available free from [David Stoffer's website](http://www.stat.pitt.edu/stoffer/tsa4/tsa4.pdf)
+* Pre-requisites:
+    + Theoretical statistics. STATS 510 or STATS 426 or equivalent. For review, see "Mathematical Statistics and Data Analysis" by J. A. Rice. 
+    + Linear algebra. A certain amount of basic linear algebra will be required. For review, see 
+[www.sosmath.com/matrix/matrix.html](http://www.sosmath.com/matrix/matrix.html).
+    + R programming. There is no formal R prerequisite, but we will be working with R extensively and so you should allow extra time for this course if you are new to R programming.
+
+-----------
+
+
+
+## Course outline
+
+
+1. Introduction to time series analysis.
+
+2. Time series models, trend and autocovariance.
+
+3. Stationarity, white noise, and some basic time series models.
+
+4. Linear time series models and the algebra of ARMA models.
+
+5. Parameter estimation and model identification for ARMA models.
+
+6. Extending the ARMA model: Seasonality and trend.
+
+7. Introduction to the frequency domain.
+
+8. Smoothing in the time and frequency domains.
+
+9. Introduction to partially observed Markov process models.
+
+10. Statistical methodology for nonlinear partially observed Markov process models.
+
+11. Dynamic models and their simulation by Euler’s method.
+
+12. Practical likelihood-based inference for POMP models.
+
+13. POMP models with covariates, and a case study of polio transmission.
+
+14.  A case study using POMP modeling to study financial volatility.
+
+--------------
+
+
+##  Grading
+
+* Weekly homeworks (20\%).
+* A midterm exam (20\%, in class on TBD).
+* A midterm project analyzing a time series of your choice using methods covered in the first half of the course (20\%, due TBD). 
+* A final project analyzing a time series of your choice using methods covered in the entire course (40\%, due TBD). 
+
+Homework will be graded on completeness. 
+To get these points, the homework must include two statements titled "Sources" and "Please explain".
+ 
+* The statement of sources must list all books, internet resources or other people consulted while completing the homework. For example, "Sources: notes only," or, "Sources: collaboration with X and Y; web site Z," or, "Sources: notes and office hours."
+Any material taken from any source, such as the internet, must be properly acknowledged. 
+Directly copied text must be in quotation marks.
+Directly copied equations must be explicitly referenced to the source.
+Unattributed copying from any source is plagiarism, and has potentially [serious consequences](http://www.rackham.umich.edu/current-students/policies/academic-policies/section11).
+
+* The explanation request provides useful feedback for the GSI and instructor. For example, "Please explain: nothing, everything is clear," or, "Please explain: I'm having difficulties manipulating Taylor series." or, "Please explain: I had difficulty constructing the prewhitening filter. What is a good way to do that in R?"
+
+* Homework will not be graded on correctness, to encourage independent work. The GSI may provide some feedback on correctness, but students are responsible for checking their work against posted solutions.
+
+* The midterm and final projects must take care to properly reference all sources. For projects, no specific source and explanation request statements are requested.
+
+----------
+
