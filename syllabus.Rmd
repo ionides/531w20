@@ -3,15 +3,9 @@ title: "Syllabus for STATS 531 (Winter 2020) <br>'Analysis of Time Series'"
 author: "Instructor: Edward L. Ionides"
 output:
   html_document:
-    theme: flatly
-    toc: yes
+    toc: no
 csl: ecology.csl
 ---
-
-
-STILL UNDER CONSTRUCTION
-
-------
 
 ## Course information
 
@@ -22,24 +16,25 @@ STILL UNDER CONSTRUCTION
     + Phone: 615 3332 
     + E-mail: ionides@umich.edu 
     + Web: dept.stat.lsa.umich.edu/~ionides
-    + Office hours: TBD
+    + Office hours: Tue 11:30-12:30, Thu 1-2
 
-<!--
-Monday 4-5pm, Wednesday 3-4pm
-* GSI: Joonha Park
-    + Office hours: Friday 9:30-11am in 2165 USB.
+    
+* GSI team: Sunrit Chakraborty (<sunritc@umich.edu>) and Saptarshi Roy (<roysapta@umich.edu>)
+    + Office hours: to be arranged
     + Computing support: inquire by email, with a detailed description of the problem, what you did, and what error message you obtained.
-    + E-mail: joonhap@umich.edu
--->
 
-* Textbook: R. Shumway and D. Stoffer "Time Series Analysis and its Applications" 4th edition. 
+
+* Course notes are at https://github.com/ionides/531w20
+
+* Supplementary textbook: R. Shumway and D. Stoffer "Time Series Analysis and its Applications" 4th edition. 
 A pdf is available using the UM Library's Springer subscription.
 An updated pdf is available free from [David Stoffer's website](http://www.stat.pitt.edu/stoffer/tsa4/tsa4.pdf)
+
 * Pre-requisites:
     + Theoretical statistics. STATS 510 or STATS 426 or equivalent. For review, see "Mathematical Statistics and Data Analysis" by J. A. Rice. 
     + Linear algebra. A certain amount of basic linear algebra will be required. For review, see 
 [www.sosmath.com/matrix/matrix.html](http://www.sosmath.com/matrix/matrix.html).
-    + R programming. There is no formal R prerequisite, but we will be working with R extensively and so you should allow extra time for this course if you are new to R programming.
+    + R programming. There is no formal R prerequisite, but we will be working with R extensively and so you should allow extra time for this course if you are new to R programming. Come to chat and we can make a plan for learning R in the context of your computational background.
 
 -----------
 
@@ -54,7 +49,7 @@ An updated pdf is available free from [David Stoffer's website](http://www.stat.
 
 3. Stationarity, white noise, and some basic time series models.
 
-4. Linear time series models and the algebra of ARMA models.
+4. Linear time series models and the algebra of autoregressive moving average (ARMA) models.
 
 5. Parameter estimation and model identification for ARMA models.
 
@@ -66,7 +61,7 @@ An updated pdf is available free from [David Stoffer's website](http://www.stat.
 
 9. Introduction to partially observed Markov process models.
 
-10. Statistical methodology for nonlinear partially observed Markov process models.
+10. Statistical methodology for nonlinear partially observed Markov process (POMP) models.
 
 11. Dynamic models and their simulation by Euler’s method.
 
@@ -82,24 +77,22 @@ An updated pdf is available free from [David Stoffer's website](http://www.stat.
 ##  Grading
 
 * Weekly homeworks (20\%).
-* A midterm exam (20\%, in class on TBD).
-* A midterm project analyzing a time series of your choice using methods covered in the first half of the course (20\%, due TBD). 
-* A final project analyzing a time series of your choice using methods covered in the entire course (40\%, due TBD). 
+* A midterm exam (20\%, in class on Thu Feb 20).
+* A midterm project analyzing a time series of your choice using methods covered in the first half of the course (20\%, due 5pm on Mon Mar 9). 
+* A final project analyzing a time series of your choice using methods covered in the entire course (35\%, due 5pm on Wed Apr 29). 
+* Participation (5\%). This will be based on contributions in class and on piazza, or other positive contributions to the class community.
 
-Homework will be graded on completeness. 
-To get these points, the homework must include two statements titled "Sources" and "Please explain".
- 
-* The statement of sources must list all books, internet resources or other people consulted while completing the homework. For example, "Sources: notes only," or, "Sources: collaboration with X and Y; web site Z," or, "Sources: notes and office hours."
-Any material taken from any source, such as the internet, must be properly acknowledged. 
-Directly copied text must be in quotation marks.
-Directly copied equations must be explicitly referenced to the source.
-Unattributed copying from any source is plagiarism, and has potentially [serious consequences](http://www.rackham.umich.edu/current-students/policies/academic-policies/section11).
+Each homework will have a question asking about sources. You will be asked to explain which parts of your responses above made use of a source, meaning anything or anyone you consulted (including classmates or office hours) to help you write or check your answers. All sources are permitted, but failure to attribute material from a source is plagiarism, which is unethical and may have serious consequences. Directly copied text must be in quotation marks. Directly copied equations must be explicitly referenced to the source. The reader should not have to carry out detective work to figure out correctly which parts of the homework are attributable to a source. Careful attribution of sources is fundamental to good scholarship, and it also facilitates meaningful grading given the reality of abundant sources.
 
-* The explanation request provides useful feedback for the GSI and instructor. For example, "Please explain: nothing, everything is clear," or, "Please explain: I'm having difficulties manipulating Taylor series." or, "Please explain: I had difficulty constructing the prewhitening filter. What is a good way to do that in R?"
+The graders will look for an honest effort applied to the homework, with contributions that go beyond the sources. It is your responsibility to demonstrate to the reader that you have engaged in careful thought related to the questions. If you use sources, you are welcome to comment on what you learned from the sources as a way to show engagement with the questions.
 
-* Homework will not be graded on correctness, to encourage independent work. The GSI may provide some feedback on correctness, but students are responsible for checking their work against posted solutions.
+The midterm and final project will also have a substantial grading component allocated to clear and scholarly assignment of credit to sources.
 
-* The midterm and final projects must take care to properly reference all sources. For projects, no specific source and explanation request statements are requested.
+----
+
+## Student Mental Health and Wellbeing
+
+University of Michigan is committed to advancing the mental health and wellbeing of its students. If you or someone you know is feeling overwhelmed, depressed, and/or in need of support, services are available. For help, contact Counseling and Psychological Services (CAPS) at 734.764.8312 and  https://caps.umich.edu during and after hours, on weekends and holidays. You may also consult University Health Service (UHS) at 734.764.8320 and https://www.uhs.umich.edu/mentalhealthsvcs. For a listing of other mental health resources available on and off campus, visit http://umich.edu/~mhealth/
 
 ----------
 

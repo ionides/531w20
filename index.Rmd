@@ -3,7 +3,6 @@ title: "Stats 531 (Winter 2020) <br>'Analysis of Time Series'"
 author: "Instructor: Edward L. Ionides"
 output:
   html_document:
-    theme: flatly
     toc: yes
 csl: ecology.csl
 ---
@@ -25,11 +24,9 @@ A course outline, course information and grading policies are described in the [
 
 ## Class notes
 
-
-<!--
-
 1. [Introduction](01/notes01.html). [(R script)](01/notes01.R)
 
+<!--
 2. [Time series models, trend and autocovariance](02/notes02.html). [(R script)](02/notes02.R)
 
 3. [Stationarity, white noise, and some basic time series models](03/notes03.html). [(R script)](03/notes03.R)
@@ -64,13 +61,15 @@ There are further POMP case studies, in a similar style, on [Ebola modeling](htt
 
 ## Homework assignments
 
-Please read the [grading policy](syllabus.html) before turning in homework.
+Please read the [grading policy in the syllabus](syllabus.html) before turning in homework.
+
+* [Homework 0](hw00/hw00.html). Setting up your computational environment. Nothing to turn in.
+
+* [Homework 1](hw01/hw01.html), due 5pm Mon Jan 20.
 
 <!--
 
-* [Homework 0](hw00/hw00.html), due in class on 1/10. Setting up your computational environment.
-
-* [Homework 1](hw01/hw01.html), due in class on Wednesday 1/17.  [Solution](hw01/sol01.html).
+[Solution](hw01/sol01.html).
 
 * [Homework 2](hw02/hw02.html), due in class on Monday 1/29. [Solution](hw02/sol02.html).
 
@@ -90,18 +89,19 @@ Please read the [grading policy](syllabus.html) before turning in homework.
 
 -->
 
+
+<!--
+
 ------------
 
 ## Midterm exam information
-
-<!--
 
 * The midterm exam will involve reasoning about a data analysis using the theoretical and computational techniques we have studied in class. 
 
 * The exam may include techniques covered in homeworks and will assume familiarity with the notes.
 Reading the textbook is not mandatory for the exam, but may be useful to get a broader perspective.
 
-<!-- You do not need to review algebraic manipulation of state space models beyond what was in homework. -->
+* You do not need to review algebraic manipulation of state space models beyond what was in homework. [IF WE GOT THIS FAR]XS
 
 * You should bring to the exam just pens and/or pencils. The exam will be taken without any electronic devices, books or notes.
 
