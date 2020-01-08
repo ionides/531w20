@@ -24,7 +24,7 @@ A course outline, course information and grading policies are described in the [
 
 ## Class notes
 
-1. [Introduction](01/notes01.html). [(R script)](01/notes01.R)
+1. Introduction. [html](01/notes01.html). [pdf](01/notes01.pdf). [(R script)](01/notes01.R)
 
 <!--
 2. [Time series models, trend and autocovariance](02/notes02.html). [(R script)](02/notes02.R)

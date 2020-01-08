@@ -1,10 +1,17 @@
 
 ---
 title: "Introduction to time series analysis"
-author: "Edward Ionides"
-date: "1/7/2020"
+date: |
+  <br><big><big>Objectives for this chapter</big></big><br><br>
+  <div align="left">
+  <ol>
+  <li>Discuss some basic motivations for the topic of time series analysis.
+  <li>Introduce some fundamental concepts for time series analysis: stationarity, autocorrelation, autoregressive models, moving average models, autoregressive-moving average (ARMA) models, state-space models. These will be covered in more detail later.
+  </ol>
+  </div>
 output:
-  html_document:
+  slidy_presentation:
+    font_adjustment: +0
     toc: yes
     toc_depth: 2
     number_sections: true
@@ -15,6 +22,7 @@ bibliography: notes01.bib
 csl: ecology.csl
 ---
 
+
 \newcommand\prob{\mathbb{P}}
 \newcommand\E{\mathbb{E}}
 \newcommand\SE{\mathrm{SE}}
@@ -23,15 +31,12 @@ csl: ecology.csl
 \newcommand\cov{\mathrm{Cov}}
 \newcommand\loglik{\ell}
 \newcommand\R{\mathbb{R}}
-\newcommand\data[1]{#1^*}
+\newcommand\data[1]{#1}
 \newcommand\estimate[1]{\data{#1}}
-\newcommand\predict[1]{#1^{P*}}
+\newcommand\predict[1]{#1^{P}}
 \newcommand\given{\, ; \,}
 \newcommand\transpose{\scriptsize{T}}
 
-Licensed under the Creative Commons attribution-noncommercial license, http://creativecommons.org/licenses/by-nc/3.0/.
-Please share and remix noncommercially, mentioning its origin.  
-![CC-BY_NC](cc-by-nc.png)
 
 ```{r knitr-opts,include=FALSE,cache=FALSE,purl=FALSE}
 library(pomp)
@@ -49,7 +54,7 @@ opts_chunk$set(
   cache_extra=rand_seed,
   results='markup',
   fig.show='asis',
-  size='small',
+#  size='small',
   fig.lp="fig:",
   fig.path=paste0("figure/",prefix,"-"),
   cache.path=paste0("cache/",prefix,"-"),
@@ -68,27 +73,11 @@ options(
   keep.source=TRUE,
   encoding="UTF-8"
 )
+
+
 ```
 
--------------------
 
-------------------
-
-<big><big><big>Objectives for this chapter</big></big></big>
-
-1. Discuss some basic motivations for the topic of time series analysis.
-
-2. Introduce some fundamental concepts for time series analysis: stationarity, autocorrelation, autoregressive models, moving average models, autoregressive-moving average (ARMA) models, state-space models. These will be covered in more detail later.
-
-3. Develop the computational framework for this course:
-    + R and Rmarkdown for data analysis and reproducible documents
-    + Source code sharing using git.
-
-<br>
-
-----------------------
-
----------------
 
 ## Overview
 
@@ -100,43 +89,28 @@ options(
 
 * Time series dependence is an introduction to more complicated dependence structures: space, space/time, networks (social/economic/communication), ...
 
-<br>
 
-------------------
 
------------------
+## Looking for trends and relationships in dependent data 
 
-### Looking for trends and relationships in dependent data 
+The first half of this course focuses on:
 
-* The first half of this course focuses on:
+1. Quantifying dependence in time series data.
 
-    1. Quantifying dependence in time series data.
+2. Finding statistical arguments for the presence or absence of associations that are valid in situations with dependence.
 
-    2. Finding statistical arguments for the presence or absence of associations that are valid in situations with dependence.
+Example questions: Does Michigan show evidence for global warming? Does Michigan follow global trends, or is there evidence for regional variation? What is a good prediction interval for weather in the next year or two?
 
-* Example questions: Does Michigan show evidence for global warming? Does Michigan follow global trends, or is there evidence for regional variation? What is a good prediction interval for weather in the next year or two?
 
-<br>
+## Modeling and statistical inference for dynamic systems
 
-----------------
+The second half of this course focuses on:
 
-----------------
+1. Building models for dynamic systems, which may or may not be linear and Gaussian.
 
-### Modeling and statistical inference for dynamic systems
+2. Using time series data to carry out statistical inference on these models.
 
-* The second half of this course focuses on:
-
-    1. Building models for dynamic systems, which may or may not be linear and Gaussian.
-
-    2. Using time series data to carry out statistical inference on these models.
-
-* Example questions: Can we develop a better model for understanding variability of financial markets (known in finance as volatility)? How do we assess our model and decide whether it is indeed an improvement?
-
-<br>
-
--------------------------------
-
-----------------------------
+Example questions: Can we develop a better model for understanding variability of financial markets (known in finance as volatility)? How do we assess our model and decide whether it is indeed an improvement?
 
 ## A simple example: Winter in Michigan
 
@@ -144,17 +118,18 @@ The previous winter was mild by Michigan standards. What should we expect this y
 
 I downloaded from [www.usclimatedata.com](https://www.usclimatedata.com/climate/ann-arbor/michigan/united-states/usmi0028) and put in [ann_arbor_weather.csv](ann_arbor_weather.csv). 
 
-* You can get this file from the course website ([http://ionides.github.io/531w18](http://ionides.github.io/531w18)). 
+* You can get this file from the course website ([ionides.github.io/531w20](http://ionides.github.io/531w20)). 
 
-* Better, you can set up a local git repository that will give you an up-to-date copy of all the data, notes, code, homeworks and solutions for this course. More on this later.
-
+* Better, you can set up a local git repository that will give you an up-to-date copy of all the data, notes, code, homeworks and solutions for this course. See Homework 0.
 
 ```{r weather_data}
 y <- read.table(file="ann_arbor_weather.csv",header=1)
 
 ```
 
-Here, I'm using R Markdown to combine source code with text. This gives a nice way to generate statistical analysis that is 
+## Rmarkdown
+
+Here, we use Rmarkdown to combine source code with text. This gives a nice way to generate statistical analysis that is 
 
 1. Reproducible,
 
@@ -162,51 +137,43 @@ Here, I'm using R Markdown to combine source code with text. This gives a nice w
 
 These two properties are useful for developing your own statistical research projects. Also, they are useful for teaching and learning statistical methodology, since they make it easy for you to replicate and adapt analysis presented in class.
 
-<br>
 
------------------------
 
--------------
+### Question: How many of you already know Rmarkdown?
 
-### Question: How many of you already know R Markdown?
+<br><br>
 
-<br>
+---
 
-----------------------
-
--------------
-
-<br>
-
-First, let's get some basic idea what's in our dataset. `str` summarizes the structure of the data:
+To get a first look at our dataset, `str` summarizes its structure:
 
 ```{r str}
 str(y)
 ```
 
-Let's focus on `Low`, which is the lowest temperature, in Fahrenheit, for January of each year.
 
-* There are practical reasons to understand the expected (i.e., mean) low temperature and the annual variation around this. Reasons to do this could be
+We focus on `Low`, which is the lowest temperature, in Fahrenheit, for January.
 
-    * Agriculture: can I grow ginseng in Ann Arbor?
+* Climate change: have polar vortex events recently brought unusually cold weather?
 
-    * Energy: assess the cost-effectiveness of installing extra home insulation.
+* Agriculture: can I grow ginseng in Ann Arbor?
 
-    * Lifestyle: Should I move to Minneapolis, or Berlin, or Beijing?
+* Energy: assess the cost-effectiveness of installing extra home insulation.
 
-* Also, we could develop our analysis to look for evidence of climate change.
+---
 
 * As statisticians, we want an uncertainty estimate. We want to know how reliable our estimate is, since it is based on only a limited amount of data. 
 
-* The data are $y^*_1,\dots,y^*_N$, which we also write as $\data{y_{1:N}}$.
+* The data are $\data{y_1},\dots,\data{y_N}$, which we also write as $\data{y_{1:N}}$.
 
 * Basic estimates of the mean and standard deviation are 
-$$\estimate{\hat\mu_1}= \frac{1}{N}\sum_{n=1}^Ny^*_n, \hspace{2cm}
-\estimate{\hat\sigma_1}= \sqrt{\frac{1}{N-1}\sum_{n=1}^N(y^*_n-\hat{\mu_1})^2}.$$
+$$\estimate{\hat\mu_1}= \frac{1}{N}\sum_{n=1}^N\data{y_n}, \hspace{2cm}
+\estimate{\hat\sigma_1}= \sqrt{\frac{1}{N-1}\sum_{n=1}^N(\data{y_n}-\hat{\mu_1})^2}.$$
 
-* We are being pedantic about adding the asterisks to denote that $\estimate{\hat\mu_1}$ is the **estimate** derived from evaluating the **estimator** $\hat\mu_1$ using the data $\data{y_{1:N}}$.
 
-* This suggests an approximate confidence interval for $\mu$ of $\estimate{\hat\mu_1} \pm 1.96\, \estimate{\hat\sigma_1}/\sqrt{N}$, 
+* This suggests an approximate confidence interval for $\mu$ of $\estimate{\hat\mu_1} \pm 1.96\, \estimate{\hat\sigma_1}/\sqrt{N}$.
+
+---
 
 * 1955 has missing data, coded as `NA`, requiring a minor modification. So, we compute $\estimate{\hat\mu_1}$ and $\SE_1=\estimate{\hat\sigma_1}/\sqrt{N}$ as
 
@@ -216,69 +183,65 @@ se1 <- sd(y$Low,na.rm=TRUE)/sqrt(sum(!is.na(y$Low)))
 cat("mu1 =", mu1, ",  se1 =", se1, "\n")
 ```
 
-* Note that $\SE_1$ is also an estimate. We could therefore write $\estimate{\SE_1}$, but here there is less room for misinterpretation.
-
-<br>
-
------------
-
------------
-
 ### Question: What are the assumptions behind the resulting confidence interval, $`r round(mu1,2)` \pm `r round(1.96*se1,2)`$.
 
-<br>
+
+<br><br>
 
 ### Question: When, in practice, is it reasonable to present this confidence interval? Is it reasonable here?
 
 <br>
+
 
 ### Question: How would you proceed?
 
 <br>
 
 
------------------------------------
-
--------------------
-
-
-### Some data analysis
+## Some data analysis
 
 * The first rule of data analysis is to plot the data in as many ways as you can think of! For time series, we usually start with a time plot
 
-```{r weather_plot}
+
+```{r weather_plot_code,echo=T,eval=F}
 plot(Low~Year,data=y,ty="l")
 ```
 
-* Another simple thing to do is to fit an **autoregressive-moving average** (ARMA) model. 
-We'll look at ARMA models in much more detail later in the course.
+```{r weather_plot,out.width="80%",echo=F}
+par(mar=c(0.1,0.1,0.1,0.1))
+plot(Low~Year,data=y,ty="l")
+```
 
-* Let's fit an ARMA model given by
+## ARMA models
+
+Another basic thing to do is to fit an **autoregressive-moving average** (ARMA) model. 
+We'll look at ARMA models in much more detail later in the course.
+Let's fit an ARMA model given by
 $$ Y_n = \mu + \alpha(Y_{n-1}-\mu) + \epsilon_n + \beta \epsilon_{n-1}.$$
 This has a one-lag autoregressive term, $\alpha(Y_{n-1}-\mu)$, and a one-lag moving average term, $\beta \epsilon_{n-1}$. It is therefore called an ARMA(1,1) model. These lags give the model some time dependence. 
 
-    + If $\alpha=\beta=0$, we get back to the basic independent model, $Y_n = \mu + \epsilon_n$.
+* If $\alpha=\beta=0$, we get back to the basic independent model, $Y_n = \mu + \epsilon_n$.
  
-    + If $\alpha=0$ we have a moving average model with one lag, MA(1).
+* If $\alpha=0$ we have a moving average model with one lag, MA(1).
 
-    + If $\beta=0$, we have an autoregressive model with one lag, AR(1).
+* If $\beta=0$, we have an autoregressive model with one lag, AR(1).
 
-* We model $\epsilon_1\dots,\epsilon_N$ to be an independent, identically distributed sequence. 
+We model $\epsilon_1\dots,\epsilon_N$ to be an independent, identically distributed sequence. 
 To be concrete, let's specify a model where they are normally distributed with mean zero and variance $\sigma^2$.
 
-* A note on notation:
+## A note on notation:
 
-    + In this course, capital Roman letters, e.g., $X$, $Y$, $Z$, denote random variables. We may also use $\epsilon$, $\eta$, $\xi$, $\zeta$ for random noise processes. Thus, these symbols are used to build models.
+* In this course, capital Roman letters, e.g., $X$, $Y$, $Z$, denote random variables. We may also use $\epsilon$, $\eta$, $\xi$, $\zeta$ for random noise processes. Thus, these symbols are used to build models.
 
-    + We use lower case Roman letters ($x$, $y$, $z$, $\dots$) to denote fixed numbers. 
+* We use lower case Roman letters ($x$, $y$, $z$, $\dots$) to denote numbers. These are not random variables. Often, $y$ will denote a data point.
 
-    + When fixed numbers are data,  or are derived from data, we will often add an asterisk ($x^*$, $y^*$, $\dots$). A quantity derived from data is called a **statistic**.
+*  "We must be careful not to confuse data with the abstractions we use to analyze them." (William James, 1842-1910).
 
-    + "We must be careful not to confuse data with the abstractions we use to analyze them." (William James, 1842-1910).
+* Other Greek letters will usually be parameters, i.e., real numbers that form part of the model.
 
-    + Other Greek letters will usually be parameters, i.e., real numbers that form part of the model.
+## Maximum likelihood
 
-* We can readily fit the ARMA(1,1) model by maximum likelihood,
+We can readily fit the ARMA(1,1) model by maximum likelihood,
 
 ```{r arma}
 arma11 <- arima(y$Low, order=c(1,0,1))
@@ -290,7 +253,10 @@ We can see a summary of the fitted model, where $\alpha$ is called `ar1`, $\beta
 arma11
 ```
 
-We will write the ARMA(1,1) estimate of $\mu$ as $\estimate{\hat\mu_2}$, and its standard error as $\SE_2$. 
+We will write the ARMA(1,1) estimate of $\mu$ as $\estimate{\hat\mu_2}$, and its standard error as $\SE_2$.
+
+## Investigating R objects
+ 
 Some poking around is required to extract the quantities of primary interest from the fitted ARMA model in R. 
 
 ```{r names}
@@ -303,12 +269,19 @@ se2 <- sqrt(arma11$var.coef["intercept","intercept"])
 cat("mu2 =", mu2, ",  se2 =", se2, "\n")
 ```
 
-* We see that the two estimates, $\estimate{\hat\mu_1}=`r round(mu1,2)`$ and $\estimate{\hat\mu_2}=`r round(mu2,2)`$, are close. 
-However, $\SE_1=`r formatC(round(se1,2),2,format="f")`$ is an underestimate of error, compared to the better estimate $\SE_2=`r formatC(round(se2,2),2,format="f")`$.
-The naive standard error needs to be inflated by $100(\SE_2/\SE_1-1)=$ `r round((se2/se1 - 1)*100,1)` percent.
- 
-* Exactly how the ARMA(1,1) model is fitted and the standard errors computed will be covered later.
+## Comparing the iid estimate with the ARMA estimate
 
+We see that the two estimates, $\estimate{\hat\mu_1}=`r round(mu1,2)`$ and $\estimate{\hat\mu_2}=`r round(mu2,2)`$, are close. 
+
+* However, $\SE_1=`r formatC(round(se1,2),2,format="f")`$ is an underestimate of error, compared to the better estimate $\SE_2=`r formatC(round(se2,2),2,format="f")`$.
+
+* The naive standard error needs to be inflated by $100(\SE_2/\SE_1-1)=$ `r round((se2/se1 - 1)*100,1)` percent.
+ 
+Exactly how the ARMA(1,1) model is fitted and the standard errors computed will be covered later.
+
+### Question: How do we know if the ARMA analysis is more trustworthy?
+
+## Model diagnostic analysis
 
 * We should do **diagnostic analysis**. The first thing to do is to look at the residuals. For an ARMA model, the residual $\data{r_n}$ at time $t_n$ is defined to be the difference between the data, $\data{y_n}$, and a one-step ahead prediction of $\data{y_n}$ based on $\data{y_{1:n-1}}$, written as $\predict{y_n}$. From the ARMA(1,1) definition, 
 $$ Y_n = \mu + \alpha(Y_{n-1}-\mu) + \epsilon_n + \beta \epsilon_{n-1},$$
@@ -318,130 +291,110 @@ A so-called residual time series, $\{\data{r_n}\}$, is then given by
 $$ \data{r_n} = \data{y_n} - \predict{y_n}.$$
 In fact, R does something slightly more sophisticated.
 
-```{r arma_diag}
+---
+
+```{r arma_diag_code,echo=T,eval=F}
 plot(arma11$resid)
 ```
 
-<br>
+```{r arma_diag, out.width="65%",echo=F}
+par(mai=c(0.8,0.5,0.1,0.1))
+plot(arma11$resid)
+```
 
-* We see that there seems to be some slow variation in the residuals, over a decadal time scale.
-However, the residuals are close to uncorrelated, as we can check by plotting their pairwise sample correlations at a range of lags. This is called the sample autocorrelation function, or sample ACF, which can be computed at each lag $h$ for the residual time series $\{\data{r_n}\}$ as
-$$ \estimate{\rho_h} = \frac{\frac{1}{N}\sum_{n=1}^{N-h} \data{r_n} \, \data{r_{n+h}}}
+We see some slow variation in the residuals, over a decadal time scale. However, the residuals $\data{r_{1:N}}$ are close to uncorrelated. We see this by plotting their pairwise sample correlations at a range of lags. This is the <b>sample autocorrelation function</b>, or <b>sample ACF</b>, written for each lag $h$ as
+$$ \estimate{\hat\rho_h} = \frac{\frac{1}{N}\sum_{n=1}^{N-h} \data{r_n} \, \data{r_{n+h}}}
 {\frac{1}{N}\sum_{n=1}^{N} \data{r_{n}}^2}.$$
-We will discuss the sample ACF at greater length later.
 
-```{r acf}
+
+---
+
+```{r acf_code, out.width="70%",echo=T,eval=F}
 acf(arma11$resid,na.action=na.pass)
 ```
 
-* This shows not much sign of autocorrelation. In other words, fitting ARMA models is unlikely to be a good way to describe the slow variation present in the residuals of the ARMA(1,1) model. 
+```{r acf, out.width="70%",echo=F}
+par(mai=c(0.8,0.5,0.7,0.1))
+acf(arma11$resid,na.action=na.pass)
+```
 
-* There is probably some room for improvement over $\SE_2$, which might lead to a somewhat larger standard error estimate.
+This shows no substantial autocorrelation. An ARMA model may not be a good way to describe the slow variation present in the residuals of the ARMA(1,1) model. 
 
-* Although this is just a toy example, the issue of inadequate models giving poor statistical uncertainty estimates is a major concern whenever working with time series data.
+This is a toy example. However, inadequate models giving poor statistical uncertainty estimates is a real concern when working with time series data.
 
-* Usually, omitted dependency in the model will give overconfident (too small) standard errors. 
+## Quantifying uncertainty for scientific reproducibility
 
-    + This leads to scientific reproducibility problems, where chance variation is too often assigned statistical significance. 
+Usually, omitted dependency in the model will give overconfident (too small) standard errors. 
 
-    + It can also lead to improper pricing of risk in financial markets, a factor in the US financial crisis of 2007-2008.
+* This leads to scientific reproducibility problems, where chance variation is too often assigned statistical significance. 
 
-<br>
-
----------------------
-
------------------------------------------
+* It can also lead to improper pricing of risk in financial markets, a factor in the US financial crisis of 2007-2008.
 
 
 ## Models dynamic systems: State-space models
 
-* Scientists and engineers often have equations in mind to describe a system they're interested in.
+Scientists and engineers often have equations in mind to describe a system they're interested in.
+Often, we have a model for how the state of a stochastic dynamic system evolves through time, and another model for how imperfect measurements on this system gives rise to a time series of observations. 
 
-* Often, we have a model for how the state of a stochastic dynamic system evolves through time, and another model for how imperfect measurements on this system gives rise to a time series of observations. 
+This is called a **state-space model**. The **state** models the quantities that we think determine how the system changes with time. However, these idealized state variables are not usually directly and perfectly measurable. 
 
-   + This is called a **state-space model**.
+Statistical analysis of time series data on a system should be able to 
 
-   + The **state** models the quantities that we think determine how the system changes with time. However, these idealized state variables are not usually directly and perfectly measurable.
+1. Help scientists choose between rival hypotheses.
 
-* Statistical analysis of time series data on a system should be able to 
+2. Estimate unknown parameters in the model equations.
 
-    1. Help scientists choose between rival hypotheses.
+We will look at examples from a wide range of scientific applications. The dynamic model may be linear or nonlinear, Gaussian or non-Gaussian.  
 
-    2. Estimate unknown parameters in the model equations.
 
-* We will look at examples from a wide range of scientific applications. The dynamic model may be linear or nonlinear, Gaussian or non-Gaussian. Here is an example from finance. 
+## A finance example: fitting a model for volatility of a stock market index
 
-<br>
-
----------------------------------------------
-
---------------------------------------------
-
-### Fitting a model for volatility of a stock market index
-
-* Let $\{y^*_n,n=1,\dots,N\}$ be the daily returns on a stock market index, such as the S&P 500. 
+* Let $\{\data{y_n},n=1,\dots,N\}$ be the daily returns on a stock market index, such as the S&P 500. 
 
 * Since the stock market is notoriously unpredictable, it is often unproductive to predict the mean of the returns and instead there is much emphasis on predicting the variability of the returns, known as the **volatility**.
 
 * Volatility is critical to assessing the risk of financial investments.
 
-* Financial mathematicians have postulated the following model.
-We will not work on understanding it right now. 
-The relevant point here is that investigators often find it useful to write down models for how a dynamic system progresses through time, and this gives rise to the time series analysis goals of estimating unknown parameters and assessing how successfully the fitted model describes the data.
+---
 
+Financial mathematicians have postulated the following model.
+We do not need to understand it in detail right now. 
+The point is that investigators find it useful to develop models for how dynamic systems progress through time, and this gives rise to the time series analysis goals of estimating unknown parameters and assessing how successfully the fitted model describes the data.
 $$
-\begin{aligned} Y_n &= \exp\left\{\frac{H_n}{2}\right\} \epsilon_n, \\
+\begin{aligned} Y_n &= \exp\left\{\frac{H_n}{2}\right\} \epsilon_n,  \quad G_n = G_{n-1}+\nu_n,
+\\
 H_n &= \mu_h(1-\phi) + \phi H_{n-1} \\
-&\quad\quad +  Y_{n-1}\sigma_\eta\sqrt{1-\phi^2}\tanh(G_{n-1}+\nu_n)\exp\left\{\frac{-H_{n-1}}{2}\right\} + \omega_n,\\
-G_n &= G_{n-1}+\nu_n,
+&\quad +  Y_{n-1}\sigma_\eta\sqrt{1-\phi^2}\tanh(G_{n-1}+\nu_n)\exp\left\{\! \frac{-H_{n-1}}{2} \! \right\} + \omega_n.\\
 \end{aligned}
 $$
 
-* $\{\epsilon_n\}$ is an iid $N(0,1)$ sequence, $\{\nu_n\}$ is an iid $N(0,\sigma_{\nu}^2)$ sequence, and $\{\omega_n\}$ is an iid $N(0,\sigma_\omega^2)$ sequence.
+* $\{\epsilon_n\}$ is iid $N(0,1)$, $\{\nu_n\}$ is iid $N(0,\sigma_{\nu}^2)$, $\{\omega_n\}$ is iid $N(0,\sigma_\omega^2)$.
 
-* $H_n$ represents the volatility at time $t_n$. Volatility is unobserved; we only get to observe the return, $Y_n$.
+* $H_n$ is unobserved volatility at time $t_n$. We only observe the return, $Y_n$.
 
-* $G_n$ is a slowly-varying process that regulates $H_n$.
+*  $H_n$ has auto-regressive behavior and dependence on $Y_{n-1}$ and a slowly varying process $G_n$.
 
-*  $H_n$ has auto-regressive behavior and dependence on the previous return, $Y_{n-1}$, as well as being driven by $G_n$.
 
-This is an example of a <b>mechanistic model</b>, where scientific or engineering considerations lead to a model of interest. Now there is data and a model of interest, it is time to recruit a statistician! (Statisticians can have roles to play in data collection and model development, as well.)
+## Questions to be addressed later in the course
 
-<br>
-
------------------
-
--------------
-
-### Relevant questions to be addressed using methodology covered later in the course
+This is an example of a <b>mechanistic model</b>, where scientific or engineering considerations lead to a model of interest. Now there is data and a model of interest, it is time to recruit a statistician! 
 
 1. How can we get good estimates of the parameters, $\mu_h$, $\phi$, $\sigma_\nu$, $\sigma_\omega$, together with their uncertainties?
 
 2. Does this model fit better than alternative models? So far as it does, what have we learned?
 
-<br>
+3. Does the data analysis suggest new models, or the collection of new data?
 
-------------
-
------------
-
-### Outline of a solution
-
-* Likelihood-based inference for this partially observed stochastic dynamic system is possible, and enables addressing these questions [@breto14].
-
-* Carrying out such an analysis is facilitated by recent advances in algorithms  [@ionides15]. 
-
-* The R package system and R markdown make state-of-the-art statistical analysis reproducible and extendable by Masters level statisticians! 
-For example, with a modest amount of effort, you could run the code given in the [online tutorial](http://dept.stat.lsa.umich.edu/~ionides/tutorials/sp500/sp500.html) reproducing part of @breto14. 
-We will look more at these data and models later.
+Likelihood-based inference for this partially observed stochastic dynamic system is possible, and enables addressing these questions [@breto14]. Carrying out such an analysis is facilitated by modern algorithms  [@ionides15]. The R package system and Rmarkdown make state-of-the-art statistical analysis reproducible and extendable by Masters level statisticians.
 
 
-<br>
+## Acknowledgments 
 
-----------------------
+* Previous versions of this material have been presented in [2016](http://ionides.github.io/531w16/) and [2018](http://ionides.github.io/531w18/).
 
----------------------
-
+* Licensed under the Creative Commons attribution-noncommercial license, http://creativecommons.org/licenses/by-nc/3.0/.
+Please share and remix noncommercially, mentioning its origin.  
+![CC-BY_NC](cc-by-nc.png)
 
 
 ## References

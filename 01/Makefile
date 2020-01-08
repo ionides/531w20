@@ -6,7 +6,10 @@ r-scripts: notes01.R
 html-docs: notes01.html
 
 %.html: %.Rmd
-	Rscript --vanilla -e "rmarkdown::render(\"$*.Rmd\",output_format=\"html_document\")"
+	Rscript --vanilla -e "rmarkdown::render(\"$*.Rmd\")"
+
+%.pdf: %.Rmd
+	Rscript --vanilla -e "rmarkdown::render(\"$*.Rmd\")"
 
 %.R: %.Rmd
 	Rscript --vanilla -e "library(knitr); purl(\"$*.Rmd\",output=\"$*.R\")"
