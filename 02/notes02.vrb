@@ -1,0 +1,17 @@
+
+\frametitle{Generalized least squares}
+
+\bi
+\item Suppose for the moment that we knew the covariance matrix, $\Gamma$, for a model with dependent errors,
+
+[L2] $\quad\quad\quad\quad Y = Z\beta + \zeta, \quad \quad \zeta \sim N[0,\Gamma].$
+
+We read ``$\zeta \sim N[0,\Gamma]$'' as ``$\zeta$ follows a multivariate normal distribution with mean zero and covariance matrix $\Gamma$.''
+
+\item The minimum variance unbiased estimator of $\beta$ for model L2 is the generalized least square (GLS) estimator,
+$$\hat \beta_{GLS}(y_{1:N}) = \big( Z^\transpose \Gamma^{-1} Z \big)^{-1} \, Z^\transpose \Gamma^{-1} y.$$
+
+\item The OLS estimator remains unbiased for L2 (you can check this as an exercise). In this sense it remains a reasonable estimator. It is often a practical solution to use the OLS estimator, expecially for preliminary data analysis. We don't know $\Gamma$ so can't necessarily make a good estimator based on the GLS model. It might be easier to get an estimate of $\Gamma$ once we have a reasonable estimate of the trend.
+
+\ei
+

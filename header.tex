@@ -1,0 +1,153 @@
+
+\usefonttheme[onlymath]{serif}
+% use article-like math letters, from http://tex.stackexchange.com/questions/34265/how-to-get-beamer-math-to-look-like-article-math
+
+\newcommand\code[1]{\url{#1}}
+\newcommand\question{{\bf Question}}
+\newcommand\mysolution{{\bf Solution}}
+\newcounter{Qcounter}
+\newcommand\myquestion{{\stepcounter{Qcounter} \bf Question \CHAPTER.\theQcounter}}
+\newcounter{WorkedExampleCounter}
+\newcommand\WorkedExample{{\stepcounter{WorkedExampleCounter} \bf Worked example \CHAPTER.\theWorkedExampleCounter}}
+
+\newcommand\myexample{{\bf Example}}
+\newcommand\mydot{{\,\cdot\,}}
+\newcommand\myref[1]{\m{#1}}
+%\newcommand\mynotes[2]{#1}
+\newcommand\mynotes[2]{#2}
+\newcommand\Rspace{\mathcal{R}}
+\newcommand\Sspace{\mathcal{S}}
+\usepackage{amsmath}
+\renewcommand\vec[1]{\boldsymbol{\mathrm{#1}}}
+\newcommand\vect[1]{\vec{#1}}
+\newcommand\mat[1]{\mathbb{#1}}
+%\newcommand\mat[1]{\mathcal{#1}}
+\newcommand\mymatrix[3]{\left[
+\begin{array}{cccc}
+{#1}_{11} & {#1}_{12} & \dots & {#1}_{1{#3}} \\
+{#1}_{21}& {#1}_{22} & \dots & {#1}_{2{#3}} \\ 
+\vdots & \vdots & \ddots & \vdots \\
+{#1}_{{#2}1} & {#1}_{{#2}2} & \dots & {#1}_{{#2}{#3}} 
+\end{array}
+\right]
+}
+\newcommand\myvector[2]{\left[
+\begin{array}{c}
+{#1}_{1} \\
+{#1}_{2} \\
+\vdots \\
+{#1}_{{#2}}
+\end{array}
+\right]
+}
+\newcommand\mytwovector[2]{\left[
+\begin{array}{c}
+{#1} \\
+{#2}
+\end{array}
+\right]
+}
+\newcommand\mytwomatrix[4]{\left[
+\begin{array}{cc}
+{#1} & {#2} \\
+{#3} & {#4}
+\end{array}
+\right]
+}
+\newcommand\mysmallmatrix[3]{\left[
+\begin{array}{ccc}
+{#1}_{11} & \dots & {#1}_{1{#3}} \\
+\vdots & \ddots & \vdots \\
+{#1}_{{#2}1} & \dots & {#1}_{{#2}{#3}} 
+\end{array}
+\right]
+}
+
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\loglik{\ell}
+\newcommand\R{\mathbb{R}}
+%\newcommand\data[1]{#1^*}
+\newcommand\data[1]{#1}
+\newcommand\estimate[1]{\data{#1}}
+\newcommand\bi{\begin{itemize}}
+\newcommand\ei{\end{itemize}}
+\newcommand\normal{\mathrm{normal}}
+\newcommand\iid{\mathrm{iid}}
+\newcommand\MVN{\mathrm{MVN}}
+\newcommand\SE{\mathrm{SE}}
+%\newcommand\SD{\mathrm{SD}}
+\newcommand\RSS{\mathrm{RSS}}
+\newcommand\SST{\mathrm{SST}}
+\newcommand\pval{\mathrm{pval}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\sd{\mathrm{SD}}
+\newcommand\sdSample{\mathrm{sd}}
+\newcommand\varSample{\mathrm{var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\covSample{\mathrm{cov}}
+\newcommand\corSample{\mathrm{cor}}
+\newcommand\cor{\mathrm{Cor}}
+\newcommand\given{{\, | \,}}
+\newcommand\param{\,;}
+\newcommand\transpose{{\raisebox{0.5mm}{\mbox{\scriptsize \textsc{t}}}}}
+%\newcommand\transpose{\scriptsize{T}}
+\newcommand\mycolon{{\hspace{0.5mm}:\hspace{0.5mm}}}
+%\newcommand\mycolon{\,{:}\,}
+\newcommand\myemph[1]{{\textbf{#1}}}
+\newcommand\mymathenv[1]{\textcolor{blue}{#1}}
+\newcommand\mymath[1]{\begin{math}\textcolor{blue}{#1}\end{math}}
+\newcommand\m[1]{\mymath{#1}}
+\newcommand\mydisplaymath[1]{\begin{displaymath}\textcolor{blue}{#1}\end{displaymath}}
+\newcommand\myeqnarray[1]{\textcolor{blue}{\begin{eqnarray*}#1 \end{eqnarray*}}}
+\newcommand\myspace{\quad}
+\newcommand\altdisplaymath[1]{\vspace{1mm}\textcolor{blue}{\begin{math}\displaystyle #1 \end{math}}\vspace{1mm}}
+\usepackage{natbib}
+\usepackage{url}
+%\usepackage{ulem}
+%\renewcommand\emph[1]{{\it #1}} % the ulem package redefines \emph
+%\renewcommand\em{\it} % the ulem package redefines \emph
+
+\newcommand\enumerateSpace{\hspace{2mm}}
+\usepackage{amssymb}
+\newenvironment {myitemize} {
+                 \begin{list}{\textcolor{black}{$\bullet$} \hfill}
+%                 \begin{list}{\textcolor{blue}{{\small{$\blacktriangleright$}}} \hfill}
+                 {\setlength{\labelwidth}{0.3 cm}
+                  %\setlength{\leftmargin}{0em}
+                  \setlength{\leftmargin}{0.15cm}
+                  \setlength{\itemindent}{0.15cm}
+                  \setlength{\labelsep}{0cm}
+                  \setlength{\parsep}{0.2 ex}
+%                  \setlength{\itemsep}{0.25 cm}
+                  \setlength{\itemsep}{1 mm}
+%                   \setlength{\itemsep}{0.0 cm}
+      \setlength{\topsep}{0.0cm}}} %space between title and 1st item
+   {\end{list}}
+
+\usepackage{graphicx} % Allows including images
+%\usepackage{booktabs} % Allows the use of \toprule, \midrule and \bottomrule in tables
+\mode<presentation> {
+
+\usetheme{Madrid}
+
+\setbeamertemplate{footline} 
+
+\setbeamertemplate{navigation symbols}{} 
+
+}
+
+\setlength{\parskip}{0mm}
+\setlength{\parindent}{0mm}
+%\newcommand\negBeforeCode{\vspace{-2mm}}
+%\newcommand\negAfterCode{\vspace{-3mm}}
+\newcommand\negBeforeCode{}
+\newcommand\negAfterCode{}
+
+%\renewenvironment{knitrout}{\vspace{-3mm}}{\vspace{-5mm}}
+
+
+
+
+
