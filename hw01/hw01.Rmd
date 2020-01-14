@@ -1,5 +1,5 @@
 ---
-title: "Homework 1, due Wednesday 1/17"
+title: "Homework 1, due Monday 1/20"
 author: "Stats 531, Winter 2020"
 output:
   html_document:

@@ -20,7 +20,8 @@ csl: ecology.csl
 
     
 * GSI team: Sunrit Chakraborty (<sunritc@umich.edu>) and Saptarshi Roy (<roysapta@umich.edu>)
-    + Office hours: to be arranged
+    + Sunrit sffice hours: Tue 2:30-3:00, Fri 1-2 at Science Learning Center.
+    + Saptarshi office hours: Friday 2-3:30 at Science Learning Center.
     + Computing support: inquire by email, with a detailed description of the problem, what you did, and what error message you obtained.
 
 
