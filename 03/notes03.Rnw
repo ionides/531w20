@@ -54,11 +54,24 @@ opts_chunk$set(
 #  comment=NA # to remove ## on output
 )
 options(width = 60) # number of characters in R output before wrapping
+
 @
 
 % other set up
 <<setup,echo=F,results=F,cache=F>>=
-library(broman) # used for myround 
+myround<- function (x, digits = 1) {
+  # taken from the broman package
+  if (digits < 1) 
+    stop("This is intended for the case digits >= 1.")
+  if (length(digits) > 1) {
+    digits <- digits[1]
+    warning("Using only digits[1]")
+  }
+  tmp <- sprintf(paste("%.", digits, "f", sep = ""), x)
+  zero <- paste0("0.", paste(rep("0", digits), collapse = ""))
+  tmp[tmp == paste0("-", zero)] <- zero
+  tmp
+}
 @
 
 \begin{frame}[fragile]
@@ -283,7 +296,7 @@ abline(v=c(1/4,1/2,3/4),lty="dotted")
 
 \begin{frame}[fragile]
 
-\frametitle{Using white noise as a building block for other time series models}
+\frametitle{Using white noise to build other time series models}
 
 Reminder: Why do we even need time series models?
 
@@ -369,19 +382,27 @@ where $\epsilon_n\sim \mathrm{IID} N[0,1]$. We will initialize with $Y_1\sim N[0
 
 \frametitle{Simulating an autoregressive model}
 
-\bi
+Looking at simulated sample paths is a good way to get some intuition about a random process model. 
+We will do this for the AR(1) model M2.
+One approach is to use the \code{arima.sim} function in R.
 
-\item Looking at simulated sample paths is a good way to get some intuition about a random process model. 
-
-\item We will do this for the AR(1) model M2
-
-\item One approach is to use the \code{arima.sim} function in R.
-
-<< ar_arima_sim,fig.width=4>>=
+<< ar_arima_sim_code,echo=T,eval=F>>=
 set.seed(123456789)
 ar1 <- arima.sim(list(ar=0.6),n=100,sd=1)
 plot(ar1,type="l")
 @
+
+\vspace{-3mm}
+
+<< ar_arima_sim,fig.width=4,fig.height=2.5,echo=F,eval=T,out.width="8cm">>=
+par(mai=c(0.8,0.8,0.1,0.1))
+<<ar_arima_sim_code>>
+@
+
+\end{frame}
+
+\begin{frame}[fragile]
+\bi
 
 \item Does your intuition tell you that these data are evidence for a model with a linear trend?
 
@@ -393,9 +414,17 @@ plot(ar1,type="l")
 
 \item Play with simulating different models with different seeds to train your intuition.
 
-\item A direct approach to simulating model M2 is to write out the model equation explicitly.
+\ei
 
-<< ar_sim,fig.width=4>>=
+\end{frame}
+
+\begin{frame}[fragile]
+A direct approach to simulate model M2 is to write the model equation explicitly.
+
+
+\vspace{-2mm}
+
+<< ar_sim_code,echo=T,eval=F>>=
 set.seed(123456789)
 N <- 100
 X <- numeric(N)
@@ -404,9 +433,14 @@ for(n in 2:N) X[n] <- 0.6 * X[n-1] + rnorm(1)
 plot(X,type="l")
 @
 
-\item This looks very similar to the \code{arima.sim} simulation, except for a difference near the start. Can you explain this? Hint: How does \code{arima.sim} initialize the simulation?
+\vspace{-2mm}
 
-\ei
+<< ar_sim,fig.width=4,fig.height=2.5,out.width="6cm",echo=F,eval=T>>=
+par(mai=c(0.5,0.8,0.1,0.1))
+<<ar_sim_code>>
+@
+
+This looks similar to the \code{arima.sim} simulation, except near the start. Can you explain this? Hint: How does \code{arima.sim} initialize the simulation?
 
 \end{frame} 
 
@@ -419,9 +453,11 @@ plot(X,type="l")
 
 \myquestion. What are the advantages and disadvantages of \code{arima.sim} over the direct simulation method?
 
+\answer{\vspace{30mm}}{todo}
 
-\myquestion. Exercise: Compute the autcovariance function for model M2.
+\myquestion. Compute the autcovariance function for model M2.
 
+\answer{\vspace{30mm}}{todo}
 
 \end{frame}
 
@@ -467,11 +503,9 @@ where $\epsilon_n\sim \mathrm{IID} N[0,1]$.
 
 \frametitle{Simulating a moving average model}
 
-\bi
+We simulate M4 using the same methods as for the autoregressive model.
 
-\item Let's simulate M4 using both the methods we tried for the autoregressive model
-
-<< ma_sim>>=
+<< ma_sim_code,eval=F,echo=T>>=
 N <- 100
 set.seed(123456789)
 X1 <- arima.sim(list(ma=c(1.5,1)),n=N,sd=1)
@@ -479,38 +513,48 @@ set.seed(123456789)
 epsilon <- rnorm(N+2)
 X2 <- numeric(N)
 for(n in 1:N) X2[n] <- epsilon[n+2]+1.5*epsilon[n+1]+epsilon[n]
+plot(X1,type="l") ; plot(X2,type="l")
+@
+
+<< ma_sim,eval=T,echo=F,fig.width=8,fig.height=2.5,out.width="12cm">>=
 oldpars <- par(mfrow=c(1,2))
-plot(X1,type="l")
-plot(X2,type="l")
+par(mai=c(0.8,0.8,0.1,0.1))
+<<ma_sim_code>>
 par(oldpars)
 @
 
-\item \code{X1} and \code{X2} look identical. We can check this
+\end{frame}
+
+\begin{frame}[fragile]
+\code{X1} and \code{X2} look identical. We can check this
 << check>>=
 all(X1==X2)
 @
 
-\item Perhaps you agree that the spurious evidence for a trend that we saw for the AR(1) model is still somewhat present for the MA(2) simulation.
+Do you agree that the spurious evidence for a trend that we saw for the AR(1) model is still somewhat present for the MA(2) simulation? Let's see if we can also see it in the underlying white noise process:
 
-\item We could be curious about what the underlying white noise process looks like
-
-<< noise_sim,fig.width=4>>=
+<< noise_sim_code,echo=T,eval=F>>=
 N <- 100
 set.seed(123456789)
 epsilon <- rnorm(N)
 plot(epsilon,type="l")
 @
 
-\item To me, the trend-like behavior is not visually apparent in the white noise that ``drives'' the AR and MA models.
+\vspace{-2mm}
 
-\ei
+<< noise_sim,fig.width=4,fig.height=2.5,out.width="6cm",echo=F,eval=T>>=
+par(mai=c(0.8,0.5,0.1,0.1))
+<<noise_sim_code>>
+@
+
+To me, the trend-like behavior is not visually apparent in the white noise that ``drives'' the AR and MA models.
 
 \end{frame} 
 
 
 \begin{frame}[fragile]
 
-\frametitle{A random walk model}
+\frametitle{The random walk model}
 
 \bi
 
@@ -535,6 +579,12 @@ $$ Y_n = \sum_{k=1}^n\epsilon_k.$$
 
 \item If data $\data{y_{1:N}}$ are modeled as a random walk, the value of $Y_0$ is usually an unknown. Rather than introducing an unknown parameter to our model, we may initialize our model at time $t_1$ with $Y_1=\data{y_1}$.
 
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+\bi
 \item The \myemph{first difference} time series $\data{z_{2:N}}$ is defined by
 $$ \data{z_n}= \Delta \data{y_n} = \data{y_{n}}-\data{y_{n-1}}$$ 
 
@@ -542,6 +592,13 @@ $$ \data{z_n}= \Delta \data{y_n} = \data{y_{n}}-\data{y_{n-1}}$$
 
 \item A random walk model for $\data{y_{1:N}}$ is essentially equivalent to a white noise model for $\data{z_{2:N}}= \Delta \data{y_{2:N}}$, apart from the issue of initialization.
 
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{The random walk with drift}
+\bi
 \item The \myemph{random walk with drift} model is given by the difference equation
 
 \vspace{2mm}
@@ -566,39 +623,42 @@ $$ Y_n = Y_0 + n\mu + \sum_{k=1}^n\epsilon_k.$$
 \begin{frame}[fragile]
 
 
-\myquestion. Exercise: compute the mean and covariance functions for the random walk model with and without drift. 
+\myquestion. Compute the mean and covariance functions for the random walk model with and without drift. 
+
+\answer{\vspace{50mm}}{todo}
 
 \end{frame}
 
 
 \begin{frame}[fragile]
 
-\frametitle{An example of a random walk: Modeling financial markets}
+\frametitle{Modeling financial markets as a random walk}
 
-\bi
-\item The theory of efficient financial markets suggests that the logarithm of a stock market index (or, for that matter, the value of an individual stock or other investment) might behave like a random walk with drift
-
-\item Let's test that out on daily S\&P 500 data, downloaded from \url{yahoo.com}.
+The theory of efficient financial markets suggests that the logarithm of a stock market index (or, for that matter, the value of an individual stock or other investment) might behave like a random walk with drift.
+We test this on daily S\&P 500 data, downloaded from \url{yahoo.com}.
 %% \url{http://real-chart.finance.yahoo.com/table.csv?s=%5EGSPC&d=0&e=15&f=2016&g=d&a=0&b=3&c=1950&ignore=.csv}.
 
-<< sp500>>=
+<< sp500_code,echo=T,eval=F>>=
 dat <- read.table("sp500.csv",sep=",",header=TRUE)
 N <- nrow(dat)
 sp500 <- dat$Close[N:1] # data are in reverse order in sp500.csv
 par(mfrow=c(1,2))
-plot(sp500,type="l")
-plot(log(sp500),type="l")
+plot(sp500,type="l") ; plot(log(sp500),type="l")
 @
 
-\ei
+\vspace{-8mm}
+
+<< sp500,echo=F,eval=T,fig.width=6,out.width="8cm">>=
+<<sp500_code>>
+@
+
 
 \end{frame}
 
 \begin{frame}[fragile]
-\bi
-\item To train our intuition, we can compare the data with simulations from a fitted model. A simple starting point is a Gaussian random walk with drift, having parameters estimated by
+To train our intuition, we can compare the data with simulations from a fitted model. A simple starting point is a Gaussian random walk with drift, having parameters estimated from the data.
 
-<< sp500params>>=
+<< sp500params_code,echo=T,eval=F>>=
 mu <- mean(diff(log(sp500)))
 sigma <- sd(diff(log(sp500)))
 set.seed(95483123)
@@ -606,39 +666,54 @@ X1 <- log(sp500[1])+cumsum(c(0,rnorm(N-1,mean=mu,sd=sigma)))
 set.seed(324324587)
 X2 <- log(sp500[1])+cumsum(c(0,rnorm(N-1,mean=mu,sd=sigma)))
 par(mfrow=c(1,2))
-plot(X1,type="l")
-plot(X2,type="l")
+plot(X1,type="l") ; plot(X2,type="l")
 @
 
-\item Seems reasonable enough so far. Let's plot the sample autocorrelation function (sample ACF) of \code{diff(log(sp500))}. 
+<< sp500params,echo=T,eval=F,fig.width=4,fig.height=2.5,out.width="8cm">>=
+par(mai=c(0.8,0.5,0.1,0.1))
+<< sp500params_code>>
+@
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+\item This seems reasonable so far. Now we plot the sample autocorrelation function (sample ACF) of \code{diff(log(sp500))}. 
 
 \item It is bad style to refer to quantities using computer code notation. We should set up mathematical notation in the text. Let's try again...
 
 \item Let $\data{y_{1:N}}$ be the time series of S\&P 500 daily closing values downloaded from yahoo.com.  Let $\data{z_n}= \Delta \log \data{y_n} = \log \data{y_{n}}-\log \data{y_{n-1}}$. 
 
-\item The temporal difference of the log of the value of an investment is called the \myemph{return} on the investment. Let's plot the sample autocorrelation function of the time series of S\&P 500 returns, $\data{z_{2:N}}$.
-<< sp500_acf>>=
+\item The temporal difference of the log of the value of an investment is called the \myemph{return} on the investment. We plot the sample autocorrelation function of the time series of S\&P 500 returns, $\data{z_{2:N}}$.
+<< sp500_acf_code,eval=F,echo=T>>=
 z <- diff(log(sp500))
 acf(z)
 @
+\ei
+\vspace{-2mm}
 
+<< sp500_acf,echo=F,fig.width=4,fig.height=2.5,out.width="8cm">>=
+par(mai=c(0.8,0.5,0.1,0.1))
+<<sp500_acf_code>>
+@
+
+\end{frame}
+
+\begin{frame}[fragile]
+\bi
 \item This looks pretty close to the ACF of white noise. There is some evidence for a small nonzero autocorrelation at lags 0 and 1. 
 
 \item Here, we have have a long time series ($N=\Sexpr{N}$). For such a long time series, statistically significant effects may be practically insignificant. 
  
 \ei
 
-\end{frame} 
-
-\begin{frame}[fragile]
-
 \myquestion. Why may the length of the time series be relevant when considering practical versus statistical significance? 
+
+\answer{\vspace{30mm}}{todo}
 
 \bi
 \item It seems like the S\&P 500 returns (centered, by subtracting the sample mean) may be a real-life time series well modeled by white noise.
-
-\item However, things become less clear when we look at the absolute value of the centered returns. 
-
 \ei
 
 \end{frame} 
@@ -646,11 +721,27 @@ acf(z)
 
 \begin{frame}[fragile]
 
+\bi
+
+\item However, things become less clear when we look at the absolute value of the centered returns. 
+
+\ei
+
+
 \myquestion. How should we interpret the following plot? To what extent does this plot refute the white noise model for the centered returns (or, equivalently, the random walk model for the log index value)?
 
-<< sp500_abs_return_acf>>=
+\answer{\vspace{20mm}}{todo}
+
+<< sp500_abs_return_acf_code,echo=T,eval=F>>=
 acf(abs(z-mean(z)),lag.max=200)
 @
+
+
+<< sp500_abs_return_acf,echo=F,eval=T,fig.height=2.5,fig.width=4,out.width="6cm">>=
+par(mai=c(0.8,0.5,0.1,0.1))
+<<sp500_abs_return_acf_code>>
+@
+
 
 \end{frame}
 
