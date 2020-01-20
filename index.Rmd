@@ -24,11 +24,21 @@ A course outline, course information and grading policies are described in the [
 
 ## Class notes
 
-1. Introduction. [ html. ](01/notes01.html) [ pdf. ](01/notes01.pdf) [ R script. ](01/notes01.R) [ annotations. ](01/notes01-annotated.pdf)
+1. Introduction.
+[ html. ](01/notes01.html)
+[ pdf. ](01/notes01.pdf)
+[ R script. ](01/notes01.R)
+[ annotations. ](01/notes01-annotated.pdf)
 
-2. Time series models, trend and autocovariance. [ pdf.  ](02/notes02.pdf) [ R script. ](02/notes02.R)  [ annotations. ](02/notes02-annotated.pdf)
+2. Time series models, trend and autocovariance.
+[ pdf.  ](02/notes02.pdf)
+[ R script. ](02/notes02.R)
+[ annotations. ](02/notes02-annotated.pdf)
 
-3. Stationarity, white noise, and some basic time series models. [ pdf. ](03/notes03.pdf) [ R script. ](03/notes03.R)
+3. Stationarity, white noise, and some basic time series models.
+[ pdf. ](03/notes03.pdf)
+[ R script. ](03/notes03.R)
+[ annotations. ](03/notes03-annotated.pdf)
 
 <!--
 4. [Linear time series models and the algebra of ARMA models](04/notes04.html). [(R script)](04/notes04.R)

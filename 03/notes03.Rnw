@@ -154,11 +154,11 @@ Supposed they are equally spaced, we can
 
 \begin{frame}[fragile]
 
-\myquestion. Question: Is it usual for time series to be well modeled as stationary (either weakly or strictly)?
+\myquestion. Is it usual for time series to be well modeled as stationary (either weakly or strictly)?
 
 \answer{\vspace{25mm}}{It sometimes happens. However, systems often change over time, and that may be one of the things we are interested in.}
 
-\myquestion. Question: If data do not often show stationary behavior, why do many fundamental models have stationarity?
+\myquestion. If data do not often show stationary behavior, why do many fundamental models have stationarity?
 
 \answer{\vspace{25mm}}{todo}
 
@@ -167,7 +167,7 @@ Supposed they are equally spaced, we can
 \begin{frame}[fragile]
 
 
-\myquestion. Question: Is a stationary model appropriate for either (or both) the time series below? Explain.
+\myquestion. Is a stationary model appropriate for either (or both) the time series below? Explain.
 
 \answer{\vspace{25mm}}{todo}
 
