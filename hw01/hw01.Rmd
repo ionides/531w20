@@ -91,6 +91,7 @@ ci: coverage probability for confidence interval.  Plotting of the confidence in
 
 Use a definition of a confidence interval to explain how these lines do, or do not, construct a confidence interval. 
 
+------------
 
 **<big>Question 1.3</big>**. Explain which parts of your responses above made use of a source, meaning anything or anyone you consulted (including classmates or office hours) to help you write or check your answers. All sources are permitted, but failure to attribute material from a source is unethical. See the syllabus for additional information on grading.
 
