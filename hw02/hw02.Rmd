@@ -19,7 +19,7 @@ Submit your solution as a pdf via Canvas. You may scan a handwritten solution. L
 
 --------
 
-**<big>Question 2.1</big>**. We investigate two ways to calculate the autocovariance function for an ARMA model. The instructions below help you work through the case of a causal AR(1) model,
+**<big>Question 2.1</big>**. We investigate two ways to calculate the autocovariance function for AR and MA models. These methods extend to ARMA models. The instructions below help you work through the case of a causal AR(1) model,
 $$X_n = \phi X_{n-1} + \epsilon_n.$$
 where $\{\epsilon_n\}$ is white noise with variance $\sigma^2$, and $-1<\phi<1$. Assume the process is stationary, i.e., it is initialized with a random draw from its stationary distribution.
 Show your working for both the approaches A and B explained below. If you want an additional challenge, you can work through the AR(2) or ARMA(1,1) case instead.

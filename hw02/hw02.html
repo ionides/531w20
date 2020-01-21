@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 
-<html>
+<html xmlns="http://www.w3.org/1999/xhtml">
 
 <head>
 
 <meta charset="utf-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta name="generator" content="pandoc" />
 <meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
 
@@ -348,7 +349,6 @@ summary {
   border: none;
   display: inline-block;
   border-radius: 4px;
-  background-color: transparent;
 }
 
 .tabset-dropdown > .nav-tabs.nav-tabs-open > li {
@@ -390,7 +390,7 @@ summary {
 <hr />
 <p>Submit your solution as a pdf via Canvas. You may scan a handwritten solution. Later in the course, we will be using Rmarkdown for projects, so you might like to use that also for this homework. In that case, the source code for this assignment is available on github to help get you started. Rmarkdown combines R with Latex, so extra work will be required initially if you are unfamiliar with either of these.</p>
 <hr />
-<p><strong><big>Question 2.1</big></strong>. We investigate two ways to calculate the autocovariance function for an ARMA model. The instructions below help you work through the case of a causal AR(1) model, <span class="math display">\[X_n = \phi X_{n-1} + \epsilon_n.\]</span> where <span class="math inline">\(\{\epsilon_n\}\)</span> is white noise with variance <span class="math inline">\(\sigma^2\)</span>, and <span class="math inline">\(-1&lt;\phi&lt;1\)</span>. Assume the process is stationary, i.e., it is initialized with a random draw from its stationary distribution. Show your working for both the approaches A and B explained below. If you want an additional challenge, you can work through the AR(2) or ARMA(1,1) case instead.</p>
+<p><strong><big>Question 2.1</big></strong>. We investigate two ways to calculate the autocovariance function for AR and MA models. These methods extend to ARMA models. The instructions below help you work through the case of a causal AR(1) model, <span class="math display">\[X_n = \phi X_{n-1} + \epsilon_n.\]</span> where <span class="math inline">\(\{\epsilon_n\}\)</span> is white noise with variance <span class="math inline">\(\sigma^2\)</span>, and <span class="math inline">\(-1&lt;\phi&lt;1\)</span>. Assume the process is stationary, i.e., it is initialized with a random draw from its stationary distribution. Show your working for both the approaches A and B explained below. If you want an additional challenge, you can work through the AR(2) or ARMA(1,1) case instead.</p>
 <p><strong>A</strong>. Using the stochastic difference equation to obtain a difference equation for the autocovariance function (ACF). Start by writing the ACF as <span class="math display">\[\gamma_h = \mathrm{Cov}(X_n,X_{n+h})= \mathrm{Cov}(X_n, \phi X_{n+h-1} + \epsilon_{n+h}), \mbox{ for $h&gt;0$}.\]</span> Writing the right hand side in terms of <span class="math inline">\(\gamma_{h-1}\)</span> leads to an equation which is formally a <a href="https://en.wikipedia.org/wiki/Recurrence_relation#Linear_homogeneous_recurrence_relations_with_constant_coefficients">first order linear homogeneous recurrence relation with constant coefficients</a>. To solve such an equation, we look for solutions of the form <span class="math display">\[\gamma_h = A\lambda^h.\]</span> Substituting this general solution into the recurrence relation, together with an initial condition derived from explicitly computing <span class="math inline">\(\gamma_0\)</span>, provides an approach to finding two equations that can be solved for the two unknowns, <span class="math inline">\(A\)</span> and <span class="math inline">\(\lambda\)</span>.</p>
 <p><strong>B</strong>. Via the MA(<span class="math inline">\(\infty\)</span>) representation. Construct a Taylor series expansion of <span class="math inline">\(g(x)=(1-\phi x)^{-1}\)</span> of the form <span class="math display">\[g(x) = g_0 + g_1 x + g_2 x^2 + g_3 x^3 + \dots\]</span> Do this either by hand or using your favorite math software (if you use software, please say what software you used and what you entered to get the output). Use this Taylor series to write down the MA(<span class="math inline">\(\infty\)</span>) representation of an AR(1) model. Then, apply the general formula for the autocovariance function of an MA(<span class="math inline">\(\infty\)</span>) process.</p>
 <p><strong>C</strong>. Check your work for the specific case of an AR(1) model with <span class="math inline">\(\phi_1=0.6\)</span> by comparing your formula with the result of the R function <code>ARMAacf</code>.</p>
