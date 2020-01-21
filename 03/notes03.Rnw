@@ -298,7 +298,9 @@ abline(v=c(1/4,1/2,3/4),lty="dotted")
 
 @
 
-\answer{\vspace{50mm}}{If $\epsilon_1$ is close to 1 then $\epsilon_2$ is necessarily close to 0. This violated an independence relation: $\prob[1-\delta\le \epsilon_1\le 1,0\le \epsilon_2\le \delta]\neq \prob[1-\delta\le \epsilon_1\le 1]\,\prob[0\le \epsilon_2\le \delta]$.}
+\answer{\vspace{50mm}}{
+A counterexample: e.g., $\prob[\epsilon_2=0\given \epsilon_1=1]=1$, whereas  $\prob[\epsilon_3=0\given \epsilon_2=1]=0$
+}
 
 \end{frame}
 
@@ -376,7 +378,7 @@ where $\{\epsilon_n\}$ is a white noise process.
 
 \vspace{2mm}
 
-where $\epsilon_n\sim \mathrm{IID} N[0,1]$. We will initialize with $Y_1\sim N[0,1.56^2]$.
+where $\epsilon_n\sim \mathrm{IID } N[0,1]$. We will initialize with $Y_1\sim N[0,1.56]$.
 
 \ei
 
@@ -427,8 +429,7 @@ par(mai=c(0.8,0.8,0.1,0.1))
 \end{frame}
 
 \begin{frame}[fragile]
-A direct approach to simulate model M2 is to write the model equation explicitly.
-
+We can simulate model M2 directly by writing the model equation explicitly.
 
 \vspace{-2mm}
 
@@ -436,9 +437,10 @@ A direct approach to simulate model M2 is to write the model equation explicitly
 set.seed(123456789)
 N <- 100
 X <- numeric(N)
-X[1] <- rnorm(1,sd=1.56)
+X[1] <- rnorm(1,sd=sqrt(1.56))
 for(n in 2:N) X[n] <- 0.6 * X[n-1] + rnorm(1)
 plot(X,type="l")
+points(lag(ar1,-13),col="red",lty="dotted",pch=1)
 @
 
 \vspace{-2mm}
@@ -448,7 +450,9 @@ par(mai=c(0.5,0.8,0.1,0.1))
 <<ar_sim_code>>
 @
 
-This looks similar to the \code{arima.sim} simulation, except near the start. Can you explain this? Hint: How does \code{arima.sim} initialize the simulation?
+\vspace{-2mm}
+
+We see that our simulation matches \code{arima.sim} perfectly when the latter is shifted by 13 time points. Explain this. Hint: How does \code{arima.sim} initialize the simulation?
 
 \end{frame} 
 
@@ -461,11 +465,11 @@ This looks similar to the \code{arima.sim} simulation, except near the start. Ca
 
 \myquestion. What are the advantages and disadvantages of \code{arima.sim} over the direct simulation method?
 
-\answer{\vspace{30mm}}{todo}
+\answer{\vspace{20mm}}{todo}
 
 \myquestion. Compute the autcovariance function for model M2.
 
-\answer{\vspace{30mm}}{todo}
+\answer{\vspace{40mm}}{todo}
 
 \end{frame}
 
