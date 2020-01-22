@@ -1,4 +1,4 @@
-## ----setup,echo=F,results=F,cache=F--------------------------------------
+## ----setup,echo=F,results=F,cache=F-------------------------------------------
 myround<- function (x, digits = 1) {
   # taken from the broman package
   if (digits < 1) 
@@ -22,23 +22,33 @@ options(
 
 
 
-## ----root----------------------------------------------------------------
+## ----root---------------------------------------------------------------------
 roots <- polyroot(c(1,2,2))
 roots
 
 
-## ----abs_roots-----------------------------------------------------------
+## ----abs_roots----------------------------------------------------------------
 abs(roots)
 
 
-## ----reducibility--------------------------------------------------------
-list(AR_roots=polyroot(c(1,-5/6,1/6)),MA_roots=polyroot(c(1,-1,1/4)))
+## ----reducibility-------------------------------------------------------------
+list(AR_roots=polyroot(c(1,-5/6,1/6)),
+     MA_roots=polyroot(c(1,-1,1/4)))
 
 
-## ----quasi_periodic------------------------------------------------------
+## ----quasi_periodic_code,echo=T,eval=F----------------------------------------
+## omega <- 0.1
+## ar_coefs <- c(2/(1+omega^2), - 1/(1+omega^2))
+## X <- arima.sim(list(ar=ar_coefs),n=500,sd=1)
+## par(mfrow=c(1,2))
+## plot(X)
+## plot(ARMAacf(ar=ar_coefs,lag.max=500),type="l",ylab="ACF of X")
+
+
+## ----quasi_periodic,echo=F,eval=T,out.width="12cm",fig.width=8,fig.height=3.5----
+set.seed(8395200)
 omega <- 0.1
 ar_coefs <- c(2/(1+omega^2), - 1/(1+omega^2))
-set.seed(8395200)
 X <- arima.sim(list(ar=ar_coefs),n=500,sd=1)
 par(mfrow=c(1,2))
 plot(X)

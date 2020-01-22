@@ -2,7 +2,7 @@
 \documentclass{beamer}
 
 \input{../header.tex}
-\newcommand\CHAPTER{3}
+\newcommand\CHAPTER{4}
 
 
 \newcommand\eqspace{\quad\quad\quad}
@@ -224,13 +224,11 @@ It also has a non-causal solution,
 
 \begin{frame}[fragile]
 
-\myquestion. Assess the convergence of the infinite sums in [M8.1] and [M8.2].
-
-\answer{\vspace{30mm}}{todo}
+\frametitle{Assessing the convergence of the infinite sums in [M8.1] and [M8.2]}
 
 \myquestion. For what values of $\ar$ is the causal solution [M8.1] a convergent infinite sum, meaning that it converges to a random variable with finite variance? For what values is the non-causal solution [M8.2] a convergent infinite sum? 
 
-\answer{\vspace{30mm}}{todo}
+\answer{\vspace{50mm}}{todo}
 
 \end{frame}   
 
@@ -456,21 +454,24 @@ Hint: One answer to this question involves diagnosing model misspecification.
 
 \bi
 \item The ARMA model can be viewed as a ratio of two polynomials,
+
+\vspace{-2mm}
+
 $$ Y_n = \frac{\ar(B)}{\ma(B)} \epsilon_n.$$
 
 \item If the two polynomials $\ar(x)$ and $\ma(x)$ share a common factor, it can be canceled out without changing the model. 
 
-\item The fundamental theorem of algebra (\url{wikipedia.org/wiki/Fundamental_theorem_of_algebra}) tells us that every polynomial $\ar(x) = 1-\ar_1 x - \dots - \ar_p x^p$ of degree $p$ can be written in the form
+\item The \myemph{fundamental theorem of algebra} says that every polynomial $\ar(x) = 1-\ar_1 x - \dots - \ar_p x^p$ of degree $p$ can be written in the form
 $$(1-x/\lambda_1) \times (1-x/\lambda_2) \times \dots \times (1-x/\lambda_p),$$
 where $\lambda_{1:p}$ are the $p$ roots of the polynomial, which may be real or complex valued.
 
+ \item The Taylor series expansion of $\ar(B)^{-1}$ is convergent if and only if $(1-B/\lambda_i)^{-1}$ has a convergent expansion for each $i\in 1:p$. This happens if $|\lambda_i|>1$ for each $i$.
 
 \ei
 
 \end{frame}
 \begin{frame}[fragile]
 \bi
- \item The Taylor series expansion of $\ar(B)^{-1}$ is convergent if and only if $(1-B/\lambda_i)^{-1}$ has a convergent expansion for each $i\in 1:p$. This happens if $|\lambda_i|>1$ for each $i$.
 
 %, explaining where we get the requirement that roots of the AR polynomial all fall outside the unit circle for causality of an ARMA model.
 
@@ -486,7 +487,8 @@ $ Y_n = \frac{1}{3} Y_{n-1} + \epsilon_n- \frac{1}{2}\epsilon_{n-1}.$
 
 \item To see this, you have to do the math! We see that the second of these equations is derived from the first by canceling out the common factor $(1-0.5B)$ in the ARMA model specification.
 << reducibility>>=
-list(AR_roots=polyroot(c(1,-5/6,1/6)),MA_roots=polyroot(c(1,-1,1/4)))
+list(AR_roots=polyroot(c(1,-5/6,1/6)),
+     MA_roots=polyroot(c(1,-1,1/4)))
 @
 
 \ei
@@ -523,12 +525,15 @@ list(AR_roots=polyroot(c(1,-5/6,1/6)),MA_roots=polyroot(c(1,-1,1/4)))
 \item In physics, a basic model for processes that oscillate (springs, pendulums, vibrating machine parts, etc) is simple harmonic motion. 
 
 \item The differential equation for a simple harmonic motion process $x(t)$ is
-  
+
+\vspace{2mm}
   
 [M10] $\eqspace \frac{d^2}{dt^2} x(t) = -\omega^2 x(t)$.
 
-\item This is a second order linear differential equation with constant coefficients (\url{wikipedia.org/wiki/Linear_differential_equation#Homogeneous_equations_with_constant_coefficients}).
-Such equations have a closed form solution, which is fairly straightforward to compute once you know how! 
+\vspace{2mm}
+
+\item This is a second order linear differential equation with constant coefficients.
+Such equations have a closed form solution, which is fairly straightforward to compute once you know how.
 
 \item The solution method is very similar to the method for solving difference equations coming up elsewhere in time series analysis, so let's see how it is done.
 
@@ -556,7 +561,7 @@ we can rewrite the general solution as
 $$ x(t) = A \sin(\omega t) + B\cos(\omega t),$$
 which can also be written as 
 
-\vspace{-1mm}
+\vspace{-3mm}
 
 $$ x(t) = A\sin(\omega t + \beta).$$
 
@@ -565,7 +570,7 @@ $$ x(t) = A\sin(\omega t + \beta).$$
 \begin{frame}[fragile]
 %\frametitle{}
 
-For the solution in this form, 
+For the solution in the form $x(t) = A\sin(\omega t + \beta)$, 
 \bi
 \item 
 $\omega$ is called the \myemph{frequency}
@@ -590,31 +595,46 @@ $$\eqspace \Delta^2 y_n = - \omega^2 y_n.$$
 
 \item It seems reasonable to hope that model [M11] would be a good candidate to describe systems that have semi-regular but somewhat eratic fluctuations, called \myemph{quasi-periodic} behavior. Such behavior is evident in business cycles or wild animal populations.
 
-\item Let's look at a simulation from [M11] with $\omega=0.1$ and $\epsilon_n\sim \mbox{IID } N[0,1]$. From our exact solution to the deterministic skeleton, we expect that the \myemph{period} of the oscillations (i.e., the time for each completed oscillation) should be approximately $2\pi/\omega$.
+\ei
+\end{frame}
 
-<< quasi_periodic>>=
+\begin{frame}[fragile]
+
+Let's look at a simulation from [M11] with $\omega=0.1$ and $\epsilon_n\sim \mbox{IID } N[0,1]$. From our exact solution to the deterministic skeleton, we expect that the \myemph{period} of the oscillations (i.e., the time for each completed oscillation) should be approximately $2\pi/\omega$.
+
+<< quasi_periodic_code,echo=T,eval=F>>=
 omega <- 0.1
 ar_coefs <- c(2/(1+omega^2), - 1/(1+omega^2))
-set.seed(8395200)
 X <- arima.sim(list(ar=ar_coefs),n=500,sd=1)
 par(mfrow=c(1,2))
 plot(X)
 plot(ARMAacf(ar=ar_coefs,lag.max=500),type="l",ylab="ACF of X")
 @
 
+\vspace{-10mm}
+
+<< quasi_periodic,echo=F,eval=T,out.width="12cm",fig.width=8,fig.height=3.5>>=
+set.seed(8395200)
+<<quasi_periodic_code>>
+@
+
+
+
+\end{frame}
+
+\begin{frame}
+\bi
 \item Quasi-periodic fluctuations are said to be "phase locked" as long as the random peturbations are not able to knock the oscillations away from being close to their initial phase.
 
 \item Eventually, the randomness should mean that the process is equally likely to have any phase, regardless of the initial phase.
 
 \ei
 
-\end{frame}
-
-\begin{frame}[fragile]
-
 \myquestion. 
 What is the timescale on which the simulated model shows phase locked behavior? 
 Equivalently, on what timescale does the phase of the fluctuations lose memory of its initial phase?
+
+\answer{\vspace{30mm}}{todo}
 
 \end{frame}   
 
