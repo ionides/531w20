@@ -148,17 +148,19 @@ plot(sp500,type="l") ; plot(log(sp500),type="l")
 ## ----sp500params_code,echo=T,eval=F--------------------------------------
 ## mu <- mean(diff(log(sp500)))
 ## sigma <- sd(diff(log(sp500)))
-## set.seed(95483123)
 ## X1 <- log(sp500[1])+cumsum(c(0,rnorm(N-1,mean=mu,sd=sigma)))
-## set.seed(324324587)
 ## X2 <- log(sp500[1])+cumsum(c(0,rnorm(N-1,mean=mu,sd=sigma)))
-## par(mfrow=c(1,2))
 ## plot(X1,type="l") ; plot(X2,type="l")
 
 
-## ----sp500params,echo=T,eval=F,fig.width=4,fig.height=2.5,out.width="8cm"----
-## par(mai=c(0.8,0.5,0.1,0.1))
-## 
+## ----sp500params,echo=F,eval=T,,fig.width=6,out.width="8cm"--------------
+set.seed(95483123)
+par(mfrow=c(1,2))
+mu <- mean(diff(log(sp500)))
+sigma <- sd(diff(log(sp500)))
+X1 <- log(sp500[1])+cumsum(c(0,rnorm(N-1,mean=mu,sd=sigma)))
+X2 <- log(sp500[1])+cumsum(c(0,rnorm(N-1,mean=mu,sd=sigma)))
+plot(X1,type="l") ; plot(X2,type="l")
 
 
 ## ----sp500_acf_code,eval=F,echo=T----------------------------------------

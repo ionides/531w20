@@ -670,20 +670,20 @@ plot(sp500,type="l") ; plot(log(sp500),type="l")
 \begin{frame}[fragile]
 To train our intuition, we can compare the data with simulations from a fitted model. A simple starting point is a Gaussian random walk with drift, having parameters estimated from the data.
 
-<< sp500params_code,echo=T,eval=F>>=
+<<sp500params_code,echo=T,eval=F>>=
 mu <- mean(diff(log(sp500)))
 sigma <- sd(diff(log(sp500)))
-set.seed(95483123)
 X1 <- log(sp500[1])+cumsum(c(0,rnorm(N-1,mean=mu,sd=sigma)))
-set.seed(324324587)
 X2 <- log(sp500[1])+cumsum(c(0,rnorm(N-1,mean=mu,sd=sigma)))
-par(mfrow=c(1,2))
 plot(X1,type="l") ; plot(X2,type="l")
 @
 
-<< sp500params,echo=T,eval=F,fig.width=4,fig.height=2.5,out.width="8cm">>=
-par(mai=c(0.8,0.5,0.1,0.1))
-<< sp500params_code>>
+\vspace{-3mm}
+
+<< sp500params,echo=F,eval=T,,fig.width=6,out.width="8cm">>=
+set.seed(95483123)
+par(mfrow=c(1,2))
+<<sp500params_code>>
 @
 
 \end{frame}
