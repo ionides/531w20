@@ -1,4 +1,4 @@
-## ----setup,echo=F,results=F,cache=F-------------------------------------------
+## ----setup,echo=F,results=F,cache=F--------------------------------------
 myround<- function (x, digits = 1) {
   # taken from the broman package
   if (digits < 1) 
@@ -22,11 +22,11 @@ options(
 
 
 
-## ----chi_squared--------------------------------------------------------------
+## ----chi_squared---------------------------------------------------------
 qchisq(0.95,df=1)
 
 
-## ----read_data----------------------------------------------------------------
+## ----read_data-----------------------------------------------------------
 dat <- read.table(file="huron_depth.csv",sep=",",header=TRUE)
 dat$Date <- strptime(dat$Date,"%m/%d/%Y")
 dat$year <- as.numeric(format(dat$Date, format="%Y"))
@@ -34,21 +34,21 @@ dat$month <- as.numeric(format(dat$Date, format="%m"))
 head(dat,3)
 
 
-## ----select_annual_code,echo=T,eval=F-----------------------------------------
+## ----select_annual_code,echo=T,eval=F------------------------------------
 ## dat <- subset(dat,month==1)
 ## huron_depth <- dat$Average
 ## year <- dat$year
 ## plot(huron_depth~year,type="l")
 
 
-## ----select_annual,echo=F,eval=T----------------------------------------------
+## ----select_annual,echo=F,eval=T-----------------------------------------
 dat <- subset(dat,month==1)
 huron_depth <- dat$Average
 year <- dat$year
 plot(huron_depth~year,type="l")
 
 
-## ----aic_table_code,echo=T,eval=F---------------------------------------------
+## ----aic_table_code,echo=T,eval=F----------------------------------------
 ## aic_table <- function(data,P,Q){
 ##   table <- matrix(NA,(P+1),(Q+1))
 ##   for(p in 0:P) {
@@ -64,7 +64,7 @@ plot(huron_depth~year,type="l")
 ## kable(huron_aic_table,digits=2)
 
 
-## ----aic_table,echo=F,eval=T--------------------------------------------------
+## ----aic_table,echo=F,eval=T---------------------------------------------
 aic_table <- function(data,P,Q){
   table <- matrix(NA,(P+1),(Q+1))
   for(p in 0:P) {
@@ -80,17 +80,17 @@ require(knitr)
 kable(huron_aic_table,digits=2)
 
 
-## ----arma21fit----------------------------------------------------------------
+## ----arma21fit-----------------------------------------------------------
 huron_arma21 <- arima(huron_depth,order=c(2,0,1))
 huron_arma21
 
 
-## ----huron_roots--------------------------------------------------------------
+## ----huron_roots---------------------------------------------------------
 AR_roots <- polyroot(c(1,-coef(huron_arma21)[c("ar1","ar2")]))
 AR_roots
 
 
-## ----huron_profile_code,echo=T,eval=F-----------------------------------------
+## ----huron_profile_code,echo=T,eval=F------------------------------------
 ## K <- 500
 ## ma1 <- seq(from=0.2,to=1.1,length=K)
 ## profile_loglik <- rep(NA,K)
@@ -101,7 +101,7 @@ AR_roots
 ## plot(profile_loglik~ma1,ty="l")
 
 
-## ----huron_profile,echo=F,fig.width=5,fig.height=2.5,out.width="9cm"----------
+## ----huron_profile,echo=F,fig.width=5,fig.height=2.5,out.width="9cm"-----
 par(mai=c(0.8,0.8,0.1,0.1))
 K <- 500
 ma1 <- seq(from=0.2,to=1.1,length=K)
@@ -113,7 +113,7 @@ for(k in 1:K){
 plot(profile_loglik~ma1,ty="l")
 
 
-## ----simA_code,echo=T,eval=F--------------------------------------------------
+## ----simA_code,echo=T,eval=F---------------------------------------------
 ## set.seed(57892330)
 ## J <- 1000
 ## params <- coef(huron_arma21)
@@ -134,7 +134,7 @@ plot(profile_loglik~ma1,ty="l")
 ## hist(theta[,"ma1"],freq=FALSE)
 
 
-## ----simA,echo=F,eval=T,fig.width=5,fig.height=2.5,out.width="10cm"-----------
+## ----simA,echo=F,eval=T,fig.width=5,fig.height=2.5,out.width="10cm"------
 par(mai=c(0.8,0.8,0.5,0.1))
 set.seed(57892330)
 J <- 1000
@@ -156,25 +156,25 @@ for(j in 1:J){
 hist(theta[,"ma1"],freq=FALSE) 
 
 
-## ----density_code,eval=F,echo=T-----------------------------------------------
+## ----density_code,eval=F,echo=T------------------------------------------
 ## plot(density(theta[,"ma1"],bw=0.05))
 
 
-## ----density,echo=F,eval=T,fig.width=5,fig.height=2.5,out.width="10cm"--------
+## ----density,echo=F,eval=T,fig.width=5,fig.height=2.5,out.width="10cm"----
 par(mai=c(0.8,0.8,0.5,0.1))
 plot(density(theta[,"ma1"],bw=0.05))
 
 
-## ----range--------------------------------------------------------------------
+## ----range---------------------------------------------------------------
 range(theta[,"ma1"])
 
 
-## ----parallel-setup,cache=FALSE-----------------------------------------------
+## ----parallel-setup,cache=FALSE------------------------------------------
 library(doParallel)
 registerDoParallel()
 
 
-## ----simB---------------------------------------------------------------------
+## ----simB----------------------------------------------------------------
 J <- 1000
 huron_ar1 <- arima(huron_depth,order=c(1,0,0))
 params <- coef(huron_ar1)
@@ -189,17 +189,17 @@ t1 <- system.time(
 ) 
 
 
-## ----out, cache=FALSE---------------------------------------------------------
+## ----out, cache=FALSE----------------------------------------------------
 sum(sapply(huron_sim, function(x) inherits(x,"try-error"))) 
 
 
-## ----histB, cache=FALSE-------------------------------------------------------
+## ----histB, cache=FALSE--------------------------------------------------
 ma1 <- unlist(lapply(huron_sim,function(x)
    if(!inherits(x,"try-error"))x["ma1"] else NULL ))
 hist(ma1,breaks=50)  
 
 
-## ----repeated_aic,echo=FALSE--------------------------------------------------
+## ----repeated_aic,echo=FALSE---------------------------------------------
 require(knitr)
 kable(huron_aic_table,digits=1)
 

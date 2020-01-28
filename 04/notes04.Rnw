@@ -624,7 +624,7 @@ set.seed(8395200)
 
 \begin{frame}
 \bi
-\item Quasi-periodic fluctuations are said to be "phase locked" as long as the random peturbations are not able to knock the oscillations away from being close to their initial phase.
+\item Quasi-periodic fluctuations are \myemph{phase locked} when the random peturbations are not able to knock the oscillations away from being close to their initial phase.
 
 \item Eventually, the randomness should mean that the process is equally likely to have any phase, regardless of the initial phase.
 

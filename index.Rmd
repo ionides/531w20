@@ -48,6 +48,7 @@ A course outline, course information and grading policies are described in the [
 5. Parameter estimation and model identification for ARMA models.
 [ pdf. ](05/notes05.pdf)
 [ R script. ](05/notes05.R)
+[ annotations. ](05/notes05-annotated.pdf)
 
 <!--
 

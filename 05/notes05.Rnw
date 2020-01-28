@@ -268,7 +268,7 @@ This asserts that the MLE is asymptotically unbiased, with variance asymptotical
 
 \item We can interpret $\approx$ in the above normal approximation to mean ``one could write a limit statement formally justifying this approximation in a suitable limit.'' Almost equivalently, $\approx$ can mean ``this approximation is useful in the finite sample situation at hand.''
 
-\item A corresponding approximate 95% confidence interval for $\theta_d$ is
+\item A corresponding approximate 95\% confidence interval for $\theta_d$ is
 $\estimate{\hat\theta_d} \pm 1.96 \big[{\estimate{\hat{I}}}^{-1}\big]_{dd}^{1/2}$. The R function \code{arima} computes standard errors for the MLE of an ARMA model in this way.
 
 \item We usually only have one time series, with some fixed $N$, and so we cannot in practice take $N\to\infty$. When our time series model is non-stationary it may not even be clear what it would mean to take $N\to\infty$. These asymptotic results should be viewed as nice mathematical reasons to consider computing an MLE, but not a substitute for checking how the MLE behaves for our model and data. 
