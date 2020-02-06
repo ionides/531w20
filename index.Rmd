@@ -116,46 +116,40 @@ Please read the [grading policy in the syllabus](syllabus.html) before turning i
 -->
 
 
-<!--
-
 ------------
 
 ## Midterm exam information
 
-* The midterm exam will involve reasoning about a data analysis using the theoretical and computational techniques we have studied in class. 
+* The midterm exam is in class on Thursday February 20.
+
+* The exam will involve reasoning about a data analysis using the theoretical and computational techniques we have studied in class. 
 
 * The exam may include techniques covered in homeworks and will assume familiarity with the notes.
 Reading the textbook is not mandatory for the exam, but may be useful to get a broader perspective.
 
-* You do not need to review algebraic manipulation of state space models beyond what was in homework. [IF WE GOT THIS FAR]XS
-
 * You should bring to the exam just pens and/or pencils. The exam will be taken without any electronic devices, books or notes.
 
-* The best predictor of the style of the exam is the past papers from the Winter 2016 version of this course:
+* The best predictor of the style of the exam is the past papers from the 2016 and 2018 versions of this course:
 
     +  [Midterm exam for STATS 531 Winter 2016](exam/w16/mt531w16.pdf). [Solutions](exam/w16/mt531w16sol.pdf).
 
     +  [Midterm exam for STATS 531 Winter 2018](exam/w18/mt531w18.pdf). [Solutions](exam/w18/mt531w18sol.pdf).
     
--->
 
-
-<!--
 
 -------------------
 
 
 ## Midterm project
 
-* [Information](midterm_project/midterm_project_info.html)
+* [Information](midterm_project/midterm_project_info.html).
 
-* [Grading scheme](midterm_project/grade_scheme_midterm_project.html)
-
+<!--
 * [Projects](midterm_project/index.html)
-
-* You're also welcome to browse previous midterm projects [available online](http://ionides.github.io/531w16/midterm_project/)
-
 -->
+
+* You are welcome to browse previous [2016 midterm projects](http://ionides.github.io/531w16/midterm_project/) and  [2018 midterm projects](http://ionides.github.io/531w18/midterm_project/).
+
 
 <!--
 
