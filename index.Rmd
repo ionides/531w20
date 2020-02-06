@@ -54,13 +54,12 @@ A course outline, course information and grading policies are described in the [
 6. Extending the ARMA model: Seasonality and trend.
 [ pdf. ](06/notes06.pdf)
 [ R script. ](06/notes06.R)
-<!--
 [ annotations. ](06/notes06-annotated.pdf)
--->
 
 7. Introduction to the frequency domain.
 [ pdf. ](07/notes07.pdf)
 [ R script. ](07/notes07.R)
+[ annotations. ](07/notes07-annotated.pdf)
 
 <!--
 8. [Smoothing in the time and frequency domains](08/notes08.html). [(R script)](08/notes08.R)
