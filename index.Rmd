@@ -90,11 +90,7 @@ Please read the [grading policy in the syllabus](syllabus.html) before turning i
 
 * [Homework 1](hw01/hw01.html), due 5pm Mon Jan 20. [Solution](hw01/sol01.html).
 
-* [Homework 2](hw02/hw02.html), due 5pm Mon Jan 27.
-
-<!--
-[Solution](hw02/sol02.html).
--->
+* [Homework 2](hw02/hw02.html), due 5pm Mon Jan 27. [Solution](hw02/sol02.html).
 
 * [Homework 3](hw03/hw03.html), due 5pm on Mon Feb 10. 
 
