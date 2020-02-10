@@ -108,7 +108,6 @@ options(
 
 \end{frame}
 
-\end{frame}
 
 \begin{frame}[fragile]
 
@@ -122,33 +121,61 @@ options(
 
 \item Economists try to distinguish between fundamental structural changes in the economy and the shorter-term cyclical booms and busts that appear to be a natural part of capitalist business activity.
 
-\item [Monthly unemployment figures](http://data.bls.gov/timeseries/LNU04000000) for the USA are published by the Bureau of Labor Statistics. Measuring unemployment has subtleties, which should be acknowledged but are not the focus of our current exploration.
+\item Monthly US unemployment figures are published by the Bureau of Labor Statistics (BLS) \url{(data.bls.gov/timeseries/LNU04000000)}. 
+
+\item Measuring unemployment has subtleties, but these are not our immediate focus.
 \ei
+
+\end{frame}
+\begin{frame}[fragile]
 <<data_unadj>>=
 system("head unadjusted_unemployment.csv",intern=TRUE)
-U1 <- read.table(file="unadjusted_unemployment.csv",sep=",",header=TRUE)
-head(U1)
+U1 <- read.table(file="unadjusted_unemployment.csv",
+  sep=",",header=TRUE)
+head(U1,3)
 @
 
-\bi
-\item The data are in a table, and we want a time series. Here's one way to do that.
-\ei
+\end{frame}
 
-<<reshape>>=
+\begin{frame}[fragile]
+
+The data are in a table, and we want a time series.
+
+<<reshape_code,echo=T,eval=F>>=
 u1 <- t(as.matrix(U1[2:13]))
 dim(u1) <- NULL
 date <- seq(from=1948,length=length(u1),by=1/12)
 plot(date,u1,type="l",ylab="Percent unemployment (unadjusted)")
 @
 
+\myquestion. Explain how this code works.
+
+\answer{\vspace{5mm}}{todo}
+
+
+<<reshape,echo=F,out.width="10cm">>=
+<<reshape_code>>
+@
+
+
+\end{frame}
+
+
+
+\begin{frame}[fragile]
+
 \bi
 \item We see seasonal variation, and perhaps we see business cycles on top of a slower trend.
 
-\item The seasonal variation looks like an additive effect, say an annual fluctation with amplitude around 1 percentage point. For many purposes, we may prefer to look at a measure of [monthly seasonally adjusted unemployment](http://data.bls.gov/timeseries/LNS14000000), which the Bureau of Labor Statistics also provides. 
+\item The seasonal variation looks like an additive effect, say an annual fluctation with amplitude around 1 percentage point. 
+
+\item Sometimes, we may prefer to look at monthly seasonally adjusted unemployment \url{(data.bls.gov/timeseries/LNS14000000)}.
 
 \ei
 
-<<data_adj>>=
+\vspace{-1mm}
+
+<<data_adj_code,echo=F,eval=T,out.width="10cm">>=
 U2 <- read.table(file="adjusted_unemployment.csv",sep=",",header=TRUE)
 u2 <- t(as.matrix(U2[2:13]))
 dim(u2) <- NULL
@@ -157,29 +184,51 @@ lines(date,u2,type="l",col="red")
 title("Unemployment. Raw (black) and seasonally adjusted (red)")
 @
 
+\vspace{-3mm}
+
+We may be curious how the Bureau of Labor Statistics adjusts the data, and if this introduces any artifacts that a careful statistician should be aware of.
+
+\end{frame}
+
+
+\begin{frame}[fragile]
+
 \bi
 
-\item As statisticians, we may be curious about how the Bureau of Labor Statistics adjusts the data, and whether this might introduce any artifacts that a careful statistician should be aware of.
+\item To help understand the seasonal adjustment, we look at what it does to the smoothed periodogram.
 
-\item Let's look at what the adjustment does to the smoothed periodogram.
-
-\item To help R figure out units for plotting the spectrum, we're going to put our time series in the \code{ts} class. 
+\item Using the \code{ts} class we can tell R the units of time.
 
 \ei
 
-<<adjustment_spectrum>>=
+\vspace{-1mm}
+
+<<adjustment_spectrum_code,eval=F,echo=T>>=
 u1_ts <- ts(u1,start=1948,frequency=12)
 u2_ts <- ts(u2,start=1948,frequency=12)
-spectrum(ts.union(u1_ts,u2_ts),spans=c(3,5,3),main="Unemployment. Raw (black) and seasonally adjusted (red)")
+spectrum(ts.union(u1_ts,u2_ts),spans=c(3,5,3),
+  main="Unemployment. Raw (black) and seasonally adjusted (red)")
 @
 
-\myquestion. What are the x-axis units?
+\vspace{-2mm}
+
+<<adjustment_spectrum,eval=T,echo=F,out.width="10cm">>=
+<<adjustment_spectrum_code>>
+@
+
 
 \end{frame}
 
 \begin{frame}[fragile]
 
+\myquestion. What are the x-axis units?
+
+\answer{\vspace{20mm}}{todo}
+
+
 \myquestion. Comment on what you learn from comparing these smoothed periodograms.
+
+\answer{\vspace{30mm}}{todo}
 
 \end{frame}
 
@@ -187,20 +236,25 @@ spectrum(ts.union(u1_ts,u2_ts),spans=c(3,5,3),main="Unemployment. Raw (black) an
 
 The \code{ts} class can also be useful for helping R choose other plotting options in a way appriate for time series. For example,
 
-<<plot.ts>>=
+<<plot.ts_code,echo=T,eval=F>>=
 plot(u1_ts)
+@
+
+<<plot.ts,echo=F,out.width="10cm">>=
+par(mai=c(0.8,0.8,0.1,0.1))
+<<plot.ts_code>>
 @
 
 \bi
 
-\item Note: For a report, we should add units to plots. Also, extra details (like \code{bandwith} in the periodogram plot) should be explained or removed.
+\item Note: For a report, we should add units to plots. Extra details (like \code{bandwith} in the periodogram plot) should be explained or removed.
 \ei
 
 \end{frame}
 
 \begin{frame}[fragile]
 
-\frametitle{The transfer function (or frequency response function) of a smoother
+\frametitle{The transfer (or frequency response) function
 }
 
 \bi
@@ -221,35 +275,43 @@ s <- spectrum(ts.union(u1_ts,u2_ts),plot=FALSE)
 names(s)
 @
 
-<<s_spec_dim>>=
-dim(s$spec)
-@
 
-<<s_transfer>>=
+\end{frame}
+
+\begin{frame}[fragile]
+
+<<s_transfer_code,eval=F,echo=T>>=
 plot(s$freq,s$spec[,2]/s$spec[,1],type="l",log="y",
   ylab="frequency ratio", xlab="frequency",  
   main="frequency response (dashed lines at 0.9 and 1.1)")
 abline(h=c(0.9,1.1),lty="dashed",col="red")
 @
 
-\end{frame}
+\vspace{-5mm}
 
-\begin{frame}[fragile]
+<<s_transfer,eval=T,echo=F,out.width="10cm">>=
+<<s_transfer_code>>
+@
+
+\vspace{-3mm}
 
 \myquestion. What do you learn from this frequency response plot?
 
+\answer{\vspace{20mm}}{todo}
+
 \end{frame}
 
 \begin{frame}[fragile]
 
-\frametitle{Loess smoothing}
+\frametitle{Estimating trend by Loess smoothing}
 
 \bi
 
 \item Loess is a \myemph{Local linear regression} approach (perhaps an acronym for LOcal Estimation by Smoothing?)
 
-\item The basic idea is quite simple: at each point in time, we carry out a linear regression (e.g., fit a constant, linear or quadratic polynomial) using only points close in time. Thus, we can imagine a moving window of points included in the regression.
+\item At each point in time, Loess makes a linear regression (e.g., fit a constant, linear or quadratic polynomial) using only points close in time. 
 
+\item We can imagine a moving window of points included in the regression.
 
 \item \code{loess} is an R implementation, with the fraction of points included in the moving window being scaled by the \code{span} argument. 
 
@@ -257,17 +319,30 @@ abline(h=c(0.9,1.1),lty="dashed",col="red")
 
 \ei
 
-<<loess}
+\end{frame}
+
+\begin{frame}[fragile]
+
+<<loess_code,echo=T,eval=F>>=
 u1_loess <- loess(u1~date,span=0.5)
 plot(date,u1,type="l",col="red")
 lines(u1_loess$x,u1_loess$fitted,type="l")
 @
 
-\bi
-\item Now, we can compute the frequency response function for what we have done.
-\ei
+\vspace{-15mm}
 
-<<loess_transfer}
+<<loess,echo=F,out.width="10cm">>=
+<<loess_code>>=
+@
+\end{frame}
+
+\begin{frame}[fragile]
+
+Now, we compute the frequency response function for what we have done.
+
+\vspace{-2mm}
+
+<<loess_transfer_code,echo=T,eval=F>>=
 s2 <- spectrum(ts.union(
   u1_ts,ts(u1_loess$fitted,start=1948,frequency=12)),
   plot=FALSE)
@@ -277,11 +352,19 @@ plot(s2$freq,s2$spec[,2]/s$spec[,1],type="l",log="y",
 abline(h=1,lty="dashed",col="red")
 @
 
+\vspace{-5mm}
+
+<<loess_transfer,eval=T,echo=F,out.width="10cm">>=
+<<loess_transfer_code>>
+@
+
 \end{frame}
 
 \begin{frame}[fragile]
 
 \myquestion. Describe the frequency domain behavior of this filter.
+
+\answer{\vspace{50mm}}{todo}
 
 \end{frame}
 
@@ -298,15 +381,34 @@ abline(h=1,lty="dashed",col="red")
 \item Let's build a smoothing operation in the time domain to extract business cycles, and then look at its frequency response function.
 \ei
 
-<<cycles,fig.height=6>>=
-u_low <- ts(loess(u1~date,span=0.5)$fitted,start=1948,frequency=12)
-u_hi <- ts(u1 - loess(u1~date,span=0.1)$fitted,start=1948,frequency=12)
+<<cycles_code,echo=T,eval=F>>=
+u_low <- ts(loess(u1~date,span=0.5)$fitted,
+  start=1948,frequency=12)
+u_hi <- ts(u1 - loess(u1~date,span=0.1)$fitted,
+  start=1948,frequency=12)
 u_cycles <- u1 - u_hi - u_low
 plot(ts.union(u1, u_low,u_hi,u_cycles),
   main="Decomposition of unemployment as trend + noise + cycles")
 @
 
-<<freq_response>>=
+\vspace{10mm}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+<<cycles,echo=F,eval=T,fig.width=7,fig.height=5,out.width="10cm">>=
+par(mai=c(0.8,0.8,0.5,0.1))
+<<cycles_code>>
+@
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\vspace{-3mm}
+
+<<freq_response,echo=F,out.width="10cm">>=
 spec_cycle <- spectrum(ts.union(u1_ts,u_cycles),
   spans=c(3,3),
   plot=FALSE)
@@ -319,18 +421,22 @@ abline(h=1,lty="dashed",col="red")
 
 @
 
+\vspace{-3mm}
 
-\myquestion. Describe the frequencies (and corresponding periods) that this decomposition identifies as business cycles
+\myquestion. Describe the frequencies (and corresponding periods) that this decomposition identifies as business cycles. Note: Usually, we should specify units for frequency and period. Here, the units are omitted to give you an exercise!
 
-\bi
 
-\item Note: Usually, we should specify units for frequency and period. Here, the units are omitted to give you an exercise!
+\answer{\vspace{15mm}}{todo}
 
-\item To help answer this question, let's add some lines to the previous plot
 
-\ei
+\end{frame}
 
-<<show_range>>=
+\begin{frame}[fragile]
+
+
+ To help answer this question, let's add some lines to the previous plot
+
+<<show_range,echo=F,out.width="10cm">>=
 cut_fraction <- 0.5
 plot(spec_cycle$freq,freq_response_cycle,
   type="l",log="y",
@@ -342,8 +448,11 @@ abline(v=freq_cycles,lty="dashed",col="blue")
 abline(h=cut_fraction,lty="dashed",col="blue")
 @
 
+\vspace{-3mm}
+
 <<print_range>>=
-kable(matrix(freq_cycles,nrow=1,dimnames=list("frequency",c("low","hi"))),digits=3)
+kable(matrix(freq_cycles,nrow=1,
+  dimnames=list("frequency",c("low","hi"))),digits=3)
 @
 
 \end{frame}
@@ -351,22 +460,9 @@ kable(matrix(freq_cycles,nrow=1,dimnames=list("frequency",c("low","hi"))),digits
 \begin{frame}[fragile]
 
 
-\myquestion. So far as we have opinions on business cycles, use them to criticize this decomposition.
+\myquestion. So far as we have opinions on business cycles, use them to comment on this decomposition.
 
-\end{frame}
-
-\begin{frame}[fragile]
-
-\frametitle{Criticizing the construction of the blue dashed lines}
-
-\bi
-
-\item Why do the blue dashed lines in the above figure not meet exactly on the frequency response curve? 
-
-\item What could or should be done to improve this?
-
-\ei
-
+\answer{\vspace{50mm}}{todo}
 
 \end{frame}
 
@@ -374,25 +470,22 @@ kable(matrix(freq_cycles,nrow=1,dimnames=list("frequency",c("low","hi"))),digits
 
 \frametitle{Looking for business cycles}
 
-\bi
 
-\item We can plot just the lower frequencies of a smoothed periodogram for the raw unemployment data, to zoom in on the frequencies around the business cycle frequency.
+We plot the lower frequencies of a smoothed periodogram for the raw unemployment data to zoom in on frequencies around the business cycle frequency.
 
-\item Standard periodogram smoothers use the same smoothing bandwidth across all frequencies. This may not always be appropriate. Why?
+\vspace{-1mm}
 
-\item Sometimes in practice we want to use less smoothing when we are focusing on low frequency behaviors.
-
-\ei
-
-<<zoomed_spectrum>>=
+<<zoomed_spectrum,echo=F,fig.width=6,fig.height=3,out.width="10cm">>=
 s1 <- spectrum(u1_ts,spans=c(3),plot=FALSE)
-plot(s1,xlim=c(0,0.7),ylim=c(1e-2,max(s1$spec)))
+par(mai=c(1,0.8,0.1,0.1))
+plot(s1,xlim=c(0,0.7),ylim=c(1e-2,max(s1$spec)),main="")
 @
 
+\vspace{-2mm}
 
 \myquestion. Comment on the evidence for and against the concept of a business cycle in the above figure.
 
-\answer{\vspace{30mm}}{todo}
+\answer{\vspace{20mm}}{todo}
 
 \end{frame}
 
