@@ -1,0 +1,51 @@
+---
+title: "Homework 4, due 5pm on Monday 2/17"
+author: "STATS 531, Winter 2020"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+
+-----------
+
+This homework gives you some experience at manipulating models and data in the frequency domain. 
+It should be turned in as an Rmd file on Canvas.
+There will be no class on Tuesday 2/18. The midterm exam is in class on Thursday 2/20.
+
+
+--------
+
+**<big>Question 4.1</big>**. 
+
+<b>A</b>. Compute and plot the spectral density function of a stationary AR2 model,
+$$ X_n =  1.5 X_{n-1} - 0.8X_{n-2} + \epsilon_n,$$
+where $\{\epsilon_n\}$ is white noise with $\var(\epsilon_n)=\sigma^2$.
+You can use software to do this, or carry out some computations analytically. 
+It is up to you how much (or little) algebra you choose to work through, but please explain fully how you carried out your calculation.
+Also, plot the autocovariance function.
+
+<b>B</b>. Compute and plot the spectral density function of an MA(2) moving mean,
+$$ X_n = \epsilon_{n-2} + \epsilon_{n-1}+\epsilon_n,$$
+where $\{\epsilon_n\}$ is white noise with $\var(\epsilon_n)=\sigma^2$.
+As in part (A), you can use software to do this or carry out some computations analytically. 
+Also, plot the autocovariance function.
+
+
+<b>C</b>. Comment briefly on what you find in parts A and B.
+
+
+--------
+
+**<big>Question 4.2</big>**. Present an estimated spectral density of the sunspot time series in [sunspots.txt](sunspots.txt). Comment on your choice of estimator. Comment on the resulting estimate. These data, as well as some background on the historical and current interest in sunspot activity, are described at [http://www.sidc.be/silso/datafiles].
+
+------------
+
+**<big>Question 4.3</big>**. Explain which parts of your responses above made use of a source, meaning anything or anyone you consulted (including classmates or office hours) to help you write or check your answers. All sources are permitted, but failure to attribute material from a source is unethical. See the syllabus for additional information on grading.
+
+-----------------
