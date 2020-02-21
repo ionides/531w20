@@ -66,9 +66,11 @@ A course outline, course information and grading policies are described in the [
 [ R script. ](08/notes08.R)
 [ annotations. ](08/notes08-annotated.pdf)
 
-<!--
-9. [Introduction to partially observed Markov process models](09/notes09.html). [(R script)](09/notes09.R)
+9. Introduction to partially observed Markov process models.
+[ pdf. ](09/notes09.pdf)
+[ R script. ](09/notes09.R)
 
+<!--
 10. [Statistical methodology for nonlinear partially observed Markov process models](10/notes10.html). [(R script)](10/notes10.R)
 
 11. [Dynamic models and their simulation by Euler’s method](11/notes11.html). [(R script)](11/notes11.R)
