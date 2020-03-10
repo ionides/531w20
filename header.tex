@@ -4,6 +4,8 @@
 
 
 \newcommand\code[1]{\url{#1}}
+\newcommand\package[1]{\url{#1}}
+\newcommand\R{R}
 \newcommand\question{{\bf Question}}
 \newcommand\mysolution{{\bf Solution}}
 \newcounter{Qcounter}
@@ -71,7 +73,7 @@
 \newcommand\lik{\mathcal{L}}
 \newcommand\loglik{\ell}
 \newcommand\profileloglik[1]{\ell^\mathrm{profile}_#1}
-\newcommand\R{\mathbb{R}}
+\newcommand\Real{\mathbb{R}}
 %\newcommand\data[1]{#1^*}
 \newcommand\data[1]{#1}
 \newcommand\estimate[1]{\data{#1}}
@@ -116,6 +118,19 @@
 %\renewcommand\em{\it} % the ulem package redefines \emph
 
 
+
+%%% notation for ARMA models
+\newcommand\ar{\phi}
+\newcommand\ma{\psi}
+\newcommand\AR{\Phi}
+\newcommand\MA{\Psi}
+
+%%% notation for linear Gaussian POMP models
+\newcommand\matA{\mathbb{A}}
+\newcommand\matB{\mathbb{B}}
+\newcommand\matH{\mathbb{H}}
+\newcommand\covmatX{\mathbb{U}}
+\newcommand\covmatY{\mathbb{V}}
 
 
 \newcommand\enumerateSpace{\hspace{2mm}}

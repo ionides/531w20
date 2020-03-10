@@ -1,0 +1,1340 @@
+%\documentclass[handout]{beamer}
+\documentclass{beamer}\usepackage[]{graphicx}\usepackage[]{color}
+% maxwidth is the original width if it is less than linewidth
+% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+\makeatletter
+\def\maxwidth{ %
+  \ifdim\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \Gin@nat@width
+  \fi
+}
+\makeatother
+
+\definecolor{fgcolor}{rgb}{0.345, 0.345, 0.345}
+\newcommand{\hlnum}[1]{\textcolor[rgb]{0.686,0.059,0.569}{#1}}%
+\newcommand{\hlstr}[1]{\textcolor[rgb]{0.192,0.494,0.8}{#1}}%
+\newcommand{\hlcom}[1]{\textcolor[rgb]{0.678,0.584,0.686}{\textit{#1}}}%
+\newcommand{\hlopt}[1]{\textcolor[rgb]{0,0,0}{#1}}%
+\newcommand{\hlstd}[1]{\textcolor[rgb]{0.345,0.345,0.345}{#1}}%
+\newcommand{\hlkwa}[1]{\textcolor[rgb]{0.161,0.373,0.58}{\textbf{#1}}}%
+\newcommand{\hlkwb}[1]{\textcolor[rgb]{0.69,0.353,0.396}{#1}}%
+\newcommand{\hlkwc}[1]{\textcolor[rgb]{0.333,0.667,0.333}{#1}}%
+\newcommand{\hlkwd}[1]{\textcolor[rgb]{0.737,0.353,0.396}{\textbf{#1}}}%
+\let\hlipl\hlkwb
+
+\usepackage{framed}
+\makeatletter
+\newenvironment{kframe}{%
+ \def\at@end@of@kframe{}%
+ \ifinner\ifhmode%
+  \def\at@end@of@kframe{\end{minipage}}%
+  \begin{minipage}{\columnwidth}%
+ \fi\fi%
+ \def\FrameCommand##1{\hskip\@totalleftmargin \hskip-\fboxsep
+ \colorbox{shadecolor}{##1}\hskip-\fboxsep
+     % There is no \\@totalrightmargin, so:
+     \hskip-\linewidth \hskip-\@totalleftmargin \hskip\columnwidth}%
+ \MakeFramed {\advance\hsize-\width
+   \@totalleftmargin\z@ \linewidth\hsize
+   \@setminipage}}%
+ {\par\unskip\endMakeFramed%
+ \at@end@of@kframe}
+\makeatother
+
+\definecolor{shadecolor}{rgb}{.97, .97, .97}
+\definecolor{messagecolor}{rgb}{0, 0, 0}
+\definecolor{warningcolor}{rgb}{1, 0, 1}
+\definecolor{errorcolor}{rgb}{1, 0, 0}
+\newenvironment{knitrout}{}{} % an empty environment to be redefined in TeX
+
+\usepackage{alltt}
+
+\input{../header.tex}
+\newcommand\CHAPTER{10}
+
+
+\newcommand\eqspace{\quad\quad\quad}
+\newcommand\eqskip{\vspace{2.5mm}}
+
+\newcommand\myeq{\hspace{10mm}}
+
+% \newcommand\answer[2]{\textcolor{blue}{#2}} % to show answers
+% \newcommand\answer[2]{{\color{blue}{#2}}} % to show answers
+\newcommand\answer[2]{#1} % to show blank space
+
+
+
+\usepackage{bbm} % for blackboard bold 1
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\begin{document}
+
+% knitr set up
+
+
+
+
+\begin{frame}[fragile]
+\frametitle{Chapter \CHAPTER. Statistical methodology for nonlinear partially observed Markov process models}
+
+\hspace{3cm} {\large \bf Objectives}
+
+\vspace{3mm}
+
+\begin{enumerate}
+
+\item To introduce students to the \package{pomp} package
+
+\item To explain how the components of a POMP model are encoded in this package
+
+
+\item To give some experience in the use and manipulation of \code{pomp} objects.
+
+\end{enumerate}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Time series analysis via nonlinear partially observed Markov process (NL-POMP) models}
+
+Six problems of Bjornstad and Grenfell (Science, 2001): obstacles for ecological modeling and inference via nonlinear mechanistic models:
+
+\begin{enumerate}
+
+\item Combining measurement noise and process noise.
+
+\item Including covariates in mechanistically plausible ways.
+
+\item Continuous time models.
+
+\item Modeling and estimating interactions in coupled systems. 
+
+\item Dealing with unobserved variables.
+
+\item Modeling spatial-temporal dynamics.
+
+\end{enumerate}
+
+\end{frame}  
+
+\begin{frame}[fragile] 
+
+\frametitle{Applications of NL-POMP models}
+
+\bi
+
+\item Modeling and inference via nonlinear mechanistic models arises throughout engineering, the sciences (social, biological and physical) and business.
+
+\item In finance, we considered a stochastic volatility example in Chapter 1.
+
+\item Infectious disease transmission dynamics can be highly nonlinear. Transmission arises when an infected individual contacts a susceptible individual, thus the rate of infections gets a nonlinear term:
+$$\begin{array}{ll}
+\mbox{Fraction of individuals infected}\\
+\quad\times\quad \mbox{Fraction of individuals susceptible to infection}
+\end{array}$$
+
+\item Each new infection depletes the pool of susceptible individuals.  Without depletion of susceptibles, the fraction of individuals susceptible to infection is constant and the epidemic grows exponentially. 
+
+\item Data on infectious diseases are generally limited to diagnosed cases. Much of the transmission dynamics cannot be directly observed. 
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Ecology and epidemiology as historical motivation for NL-POMP methods}
+
+\bi
+
+\item Infectious disease epidemiology has motivated developments in statistical methodology and software for NL-POMP models.
+
+\item Many other biological populations have similar nonlinearities: the population grows exponentially until limited by some constraint, such as a food resource or a predator. When the resource is used up, or the predator becomes abundant, the population crashes. Then a new cycle begins.
+
+\item Ecological systems and epidemiological systems have much in common. Disease systems can be relatively simple ecosystems with just two species: host and pathogen.
+
+\ei
+
+\end{frame}   
+
+\begin{frame}[fragile] 
+
+\frametitle{An algorithmic approach to inference for POMP models}
+
+Recall our notation for partially observed Markov process models. The latent process is $X_n=X(t_n)$ and we write $X_{0:N}=(X_0,\dots,X_N)$. The observation at time $t_n$ is modeled by a random variable $Y_n$. The one-step transition density, $f_{X_n|X_{n-1}}(x_n|x_{n-1};\theta)$, together with the measurement density, $f_{Y_n|X_n}(y_n|x_n;\theta)$ and the initial density, $f_{X_0}(x_0;\theta)$, specify the entire joint density via
+$$f_{X_{0:N},Y_{1:N}}(x_{0:N},y_{1:N};\theta) = f_{X_0}(x_0;\theta)\,\prod_{n=1}^N\!f_{X_n | X_{n-1}}(x_n|x_{n-1};\theta)\,f_{Y_n|X_n}(y_n|x_n;\theta).$$
+The marginal density for $Y_{1:N}$, evaluated at the data, $\data{y_{1:N}}$, is
+$$ f_{Y_{1:N}}(\data{y}_{1:N}\param\theta)=\int f_{X_{0:N},Y_{1:N}}(x_{0:N},\data{y}_{1:N}\param\theta)\, dx_{0:N}.
+$$
+
+
+\vspace{2mm}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Algorithmic notation matching the mathematical notation for POMP models}
+
+To think algorithmically, we define some function calls that provide \myemph{basic elements} specifying a POMP model.
+
+\bi
+\item \code{rprocess( )}: a draw from the one-step transition distribution, with density $f_{X_n|X_{n-1}}(x_n| x_{n-1};\theta)$.
+
+\item \code{dprocess( )}: evaluation of the one-step transition density, $f_{X_n|X_{n-1}}(x_n| x_{n-1};\theta)$.
+
+\item \code{rmeasure( )}: a draw from the measurement distribution with density $f_{Y_n|X_n}(y_n| x_n;\theta)$.
+
+\item \code{dmeasure( )}: evaluation of the measurement density, $f_{Y_n|X_n}(y_n| x_n;\theta)$.
+
+\item This follows the standard R notation, for example we expect \code{rnorm} to draw from the normal distribution, and \code{dnorm} to evaluate the normal density.
+
+\item A general POMP model is fully specified by defining these basic elements.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Specifying our own POMP model}
+
+\bi
+
+\item The user will have to say what the basic elements are for their chosen POMP model.
+
+\item Algorithms can then use these basic elements to carry out inference for the POMP model.
+
+\item We will see that there are algorithms that can carry out likelihood-based inference for this general POMP model specification.
+
+\ei
+
+\end{frame}  
+
+\begin{frame}[fragile] 
+
+\frametitle{What does it mean for statistical methodology to be simulation-based?}
+
+\bi
+
+\item Simulating random processes can be easier than evaluating their transition probabilities.
+
+\item Thus, we may be able to write \code{rprocess()} but not \code{dprocess()}.
+
+\item  \myemph{Simulation-based} methods require the user to specify \code{rprocess()} but not \code{dprocess()}.
+ 
+\item \myemph{Plug-and-play}, \myemph{likelihood-free} and \myemph{equation-free} are alternative terms for simulation-based.
+
+\item Much development of simulation-based statistical methodology has occurred in the past decade.
+
+\ei
+
+\end{frame}    
+
+\begin{frame}[fragile] 
+
+\frametitle{The \myemph{pomp}  {\R}  package for POMP models}
+
+\bi
+
+\item \package{pomp} is an  {\R}  package for data analysis using partially observed Markov process (POMP) models.
+
+\item Note the distinction: lower case \package{pomp} is a software package; 
+upper case POMP is a class of models.
+
+\item \package{pomp} builds methodology for POMP models in terms of arbitrary user-specified \code{rprocess()}, \code{dprocess()}, \code{rmeasure()}, and \code{dmeasure()} functions.
+ 
+\item Following modern practice, most methodology in \package{pomp} is simulation-based, so does not require specification of \code{dprocess()}.
+
+\item \package{pomp} has facilities to help construct \code{rprocess()}, \code{rmeasure()}, and \code{dmeasure()} functions for model classes of scientific interest.
+
+\item \package{pomp} provides a forum for development, modification and sharing of models, methodology and data analysis workflows.
+
+\item \package{pomp} is available from CRAN or github.
+
+\ei
+
+\end{frame}    
+
+\begin{frame}[fragile] 
+
+\frametitle{Example: the Ricker model}
+
+
+\vspace{-1mm}
+
+\bi
+
+\item The Ricker model is a basic model in population biology. We start with a deterministic version and then add process noise and measurement error.
+
+
+\item The \myemph{Ricker equation} is a deterministic differential equation modeling the dynamics of a simple population, including population growth and resource depletion.
+\ei
+\vspace{1mm}
+
+[R1] $ \myeq P_{n+1} = r\,P_{n}\,\exp(-P_{n}).$
+
+\vspace{1mm}
+\bi
+\item Here, $P_n$ is the population density at time $t_n=n$ and $r$ is a fixed value (a parameter), related to the population's intrinsic capacity to increase.
+
+\item $P_n=\log(r)$ is an \myemph{equilibrium}, meaning that if $P_n=\log(r)$ then $P_{n+1}=P_{n+2}=\dots = P_n$. Another equilibrium is $P_n=0$. 
+
+\item  $P$ is a \myemph{state variable}, $r$ is a \myemph{parameter}.
+
+\item If we know $r$ and the \myemph{initial condition} $P_0$, this deterministic Ricker equation predicts the future population density at all times.
+
+\item The initial condition, $P_0$ is a special kind of parameter, an \myemph{initial-value parameter}.
+\ei
+
+\end{frame}   
+
+\begin{frame}[fragile] 
+
+\frametitle{Adding stochasticity to the Ricker equation}
+
+\bi
+
+\item We can model process noise by making the growth rate $r$ into a random variable.
+
+\item For example, if we assume that the intrinsic growth rate is log-normally distributed, $P$ becomes a stochastic process governed by
+
+\ei
+
+\vspace{2mm}
+
+[R2] $\myeq P_{n+1} = r\,P_{n}\,\exp(-P_{n}+\varepsilon_{n}), \qquad \varepsilon_{n}\;\sim\;\mathrm{Normal}(0,\sigma^2)$,
+
+\vspace{1mm}
+
+\bi
+
+\item Here, the new parameter $\sigma$ is the standard deviation of the noise process $\varepsilon$.
+
+\ei
+
+\end{frame}    
+
+\begin{frame}[fragile] 
+
+\myquestion. Does adding Gaussian noise mean we have a Gaussian latent process model? What does it mean to say that the model for $P_{0:N}$ described by equation [R2] is Gaussian?
+
+\answer{\vspace{60mm}}{todo}
+
+\end{frame}    
+
+\begin{frame}[fragile] 
+\frametitle{Adding measurement error to the Ricker model}
+
+\bi
+\item Let's suppose that the Ricker model is our model for the dynamics of a real population.
+
+\item For most populations, outside of controlled experiments, we cannot know the exact population density at any time, but only estimate it through sampling.
+
+\item Let's model measurement error by treating the measurement $\data{y_{n}}$, conditional on $P_n$, as a draw from a Poisson distribution with mean $\phi\,P_n$. This corresponds to the model
+
+\ei
+
+\vspace{2mm}
+
+[R3] $\myeq Y_{n}|P_n\;\sim\;\mathrm{Poisson}(\phi\,P_{n})$.
+
+\vspace{1mm}
+
+\bi
+
+\item The parameter $\phi$ is proportional to the sampling effort.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Writing the Ricker model as a POMP model}
+
+\bi
+\item For our standard definition of a POMP model $(X_{0:N},Y_{0:N})$, we can check that equations [R2] and [R3] together with the parameter $P_0$ define a POMP model with
+\begin{eqnarray}
+X_n &=& P_n \\
+Y_n &=& Y_n 
+\end{eqnarray}
+
+\item Following the usual POMP paradigm, $P_n$ is a true but unknown population density at time $t_n$.
+
+\ei
+
+\end{frame}    
+
+\begin{frame}[fragile] 
+
+\frametitle{Working with the Ricker model in \package{pomp}}
+
+\bi
+
+\item The  R  package \package{pomp} provides facilities for modeling POMPs, a toolbox of statistical inference methods for analyzing data using POMPs, and a development platform for implmenting new POMP inference methods.
+
+\item The basic data-structure provided by \package{pomp} is the object of class \code{pomp}, alternatively known as a \code{pomp} object.
+
+\item A \code{pomp} object is a container that holds real or simulated data and a POMP model, possibly together with other information such as model parameters, that may be needed to do things with the model and data.
+
+\item Let's see what can be done with a \code{pomp} object.
+
+\item First, if we haven't already, we must install \package{pomp}. The package needs access to code compilers to operate properly so you should check the installation instructions at
+\url{https://kingaa.github.io/pomp/install.html}
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+\bi
+\item For the following, we also load some other packages.
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{set.seed}\hlstd{(}\hlnum{594709947L}\hlstd{)}
+\hlkwd{require}\hlstd{(ggplot2)}
+\hlkwd{require}\hlstd{(plyr)}
+\hlkwd{require}\hlstd{(reshape2)}
+\hlkwd{require}\hlstd{(pomp)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\bi
+\item A pre-built \code{pomp} object encoding the Ricker model comes included with the package.
+Load it by
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{ricker} \hlkwb{<-} \hlkwd{ricker}\hlstd{()}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+We can plot the data:
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{plot}\hlstd{(ricker)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\vspace{-15mm}
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
+
+{\centering \includegraphics[width=12cm]{tmp/figureplot-ricker-1} 
+
+}
+
+
+
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\bi
+
+\item We can simulate from the model:
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{simulated_ricker} \hlkwb{<-} \hlkwd{simulate}\hlstd{(ricker)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\bi
+
+\item What kind of object have we created?
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{class}\hlstd{(simulated_ricker)}
+\end{alltt}
+\begin{verbatim}
+## [1] "pomp"
+## attr(,"package")
+## [1] "pomp"
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
+
+
+\end{frame}    
+
+\begin{frame}[fragile]  
+
+\frametitle{What is a generic function?}
+
+\bi
+
+\item How does the concept of a \myemph{generic function} fit in with the following related concepts,
+
+\item \myemph{object-oriented programming}
+
+\item assigning a \myemph{class} to an object.
+
+\item \myemph{overloading} of functions or operators.
+
+\item \myemph{inheritance} between classes, when one class extends another.
+
+\item How does object-oriented programming work in R? How is this similar or different from any other environment in which you have seen object-oriented programming?
+
+\item For current purposes, we don't need to be experts in object-oriented programming in R. However, we should be familiar with some R object-orientated basics.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+
+\item \myemph{S3 classes} (\url{http://adv-r.had.co.nz/OO-essentials.html#s3})
+
+\item \myemph{S4 classes} (\url{http://adv-r.had.co.nz/S4.htm})
+
+\item We should be able to recognize when code we are using employs S3 and S4 classes.
+
+\item We should know where to turn to for help if we find ourselves needing to know more details about how these work.
+
+\item \package{pomp} uses the S4 class system, so that system is of more immediate relevance. Many older R packages use S3 classes.
+
+\ei
+
+\end{frame}    
+
+\begin{frame}[fragile] 
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{plot}\hlstd{(simulated_ricker)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\vspace{-10mm}
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
+
+{\centering \includegraphics[width=12cm]{tmp/figureplot_simulated_ricker-1} 
+
+}
+
+
+
+\end{knitrout}
+
+\vspace{-3mm}
+
+\bi
+\item This \package{pomp} representation uses \code{N} for our variable \code{P_n} 
+\ei
+
+\myquestion. Why do we see more time series in the simulated \code{pomp} object?
+
+\answer{\vspace{30mm}}{todo}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Different formats for simulation}
+
+
+\bi
+\item We can turn a \code{pomp} object into a data frame:
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{y} \hlkwb{<-} \hlkwd{as.data.frame}\hlstd{(ricker)}
+\hlkwd{head}\hlstd{(y,}\hlnum{3}\hlstd{)}
+\end{alltt}
+\begin{verbatim}
+##   time  y
+## 1    0 68
+## 2    1  2
+## 3    2 87
+\end{verbatim}
+\begin{alltt}
+\hlkwd{head}\hlstd{(}\hlkwd{simulate}\hlstd{(ricker,}\hlkwc{format}\hlstd{=}\hlstr{"data.frame"}\hlstd{))}
+\end{alltt}
+\begin{verbatim}
+##   time .id            N         e   y
+## 1    0   1 7.000000e+00 0.0000000  85
+## 2    1   1 4.326721e-01 0.4163146   1
+## 3    2   1 1.406521e+01 0.1141514 147
+## 4    3   1 7.566248e-04 0.4348591   0
+## 5    4   1 4.084348e-02 0.1893917   0
+## 6    5   1 1.794869e+00 0.0237836  21
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
+
+\bi
+\item We can also run multiple simulations simultaneously:
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{x} \hlkwb{<-} \hlkwd{simulate}\hlstd{(ricker,}\hlkwc{nsim}\hlstd{=}\hlnum{10}\hlstd{)}
+\hlkwd{class}\hlstd{(x)}
+\end{alltt}
+\begin{verbatim}
+## [1] "pompList"
+## attr(,"package")
+## [1] "pomp"
+\end{verbatim}
+\begin{alltt}
+\hlkwd{sapply}\hlstd{(x,class)}
+\end{alltt}
+\begin{verbatim}
+##  [1] "pomp" "pomp" "pomp" "pomp" "pomp" "pomp" "pomp" "pomp"
+##  [9] "pomp" "pomp"
+\end{verbatim}
+\begin{alltt}
+\hlstd{x} \hlkwb{<-} \hlkwd{simulate}\hlstd{(ricker,}\hlkwc{nsim}\hlstd{=}\hlnum{10}\hlstd{,}\hlkwc{format}\hlstd{=}\hlstr{"data.frame"}\hlstd{)}
+\hlkwd{head}\hlstd{(x,}\hlnum{3}\hlstd{)}
+\end{alltt}
+\begin{verbatim}
+##   time .id N e  y
+## 1    0   1 7 0 63
+## 2    0   2 7 0 76
+## 3    0   3 7 0 70
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{x} \hlkwb{<-} \hlkwd{simulate}\hlstd{(ricker,}\hlkwc{nsim}\hlstd{=}\hlnum{9}\hlstd{,}\hlkwc{format}\hlstd{=}\hlstr{"data.frame"}\hlstd{,}\hlkwc{include.data}\hlstd{=}\hlnum{TRUE}\hlstd{)}
+\hlkwd{ggplot}\hlstd{(}\hlkwc{data}\hlstd{=x,}\hlkwd{aes}\hlstd{(}\hlkwc{x}\hlstd{=time,}\hlkwc{y}\hlstd{=y,}\hlkwc{group}\hlstd{=.id,}\hlkwc{color}\hlstd{=(.id}\hlopt{==}\hlstr{"data"}\hlstd{)))}\hlopt{+}
+  \hlkwd{geom_line}\hlstd{()}\hlopt{+}\hlkwd{guides}\hlstd{(}\hlkwc{color}\hlstd{=}\hlnum{FALSE}\hlstd{)}\hlopt{+}
+  \hlkwd{facet_wrap}\hlstd{(}\hlopt{~}\hlstd{.id,}\hlkwc{ncol}\hlstd{=}\hlnum{2}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
+
+{\centering \includegraphics[width=12cm]{tmp/figureplot_sim_demo-1} 
+
+}
+
+
+
+\end{knitrout}
+
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{The deterministic skeleton}
+\bi
+\item The \myemph{deterministic skeleton} is a version of the POMP model without process noise.
+\item It is generated by \code{trajectory()}.
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{y} \hlkwb{<-} \hlkwd{trajectory}\hlstd{(ricker)}
+\hlkwd{dim}\hlstd{(y)}
+\end{alltt}
+\begin{verbatim}
+## [1]  2  1 51
+\end{verbatim}
+\begin{alltt}
+\hlkwd{dimnames}\hlstd{(y)}
+\end{alltt}
+\begin{verbatim}
+## $variable
+## [1] "N" "e"
+## 
+## $rep
+## NULL
+## 
+## $time
+## NULL
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{plot}\hlstd{(}\hlkwd{time}\hlstd{(ricker),y[}\hlstr{"N"}\hlstd{,}\hlnum{1}\hlstd{,],}\hlkwc{type}\hlstd{=}\hlstr{"l"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
+
+{\centering \includegraphics[width=12cm]{tmp/figureplot_ricker_traj-1} 
+
+}
+
+
+
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile,allowframebreaks]
+\frametitle{Working with model parameters}
+\bi
+\item \code{ricker} has parameters associated with it:
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{coef}\hlstd{(ricker)}
+\end{alltt}
+\begin{verbatim}
+##        r    sigma      phi        c      N_0      e_0 
+## 44.70118  0.30000 10.00000  1.00000  7.00000  0.00000
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
+\bi
+\item These are the parameters at which the simulations and deterministic trajectory computations above were done.
+
+\item We can run these at different parameters:
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{theta} \hlkwb{<-} \hlkwd{coef}\hlstd{(ricker)}
+\hlstd{theta[}\hlkwd{c}\hlstd{(}\hlstr{"r"}\hlstd{,}\hlstr{"N.0"}\hlstd{)]} \hlkwb{<-} \hlkwd{c}\hlstd{(}\hlnum{5}\hlstd{,}\hlnum{3}\hlstd{)}
+\hlstd{y} \hlkwb{<-} \hlkwd{trajectory}\hlstd{(ricker,}\hlkwc{params}\hlstd{=theta)}
+\hlkwd{plot}\hlstd{(}\hlkwd{time}\hlstd{(ricker),y[}\hlstr{"N"}\hlstd{,}\hlnum{1}\hlstd{,],}\hlkwc{type}\hlstd{=}\hlstr{"l"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=10cm]{tmp/figureplot_at_different_parameters-1} 
+
+}
+
+
+\begin{kframe}\begin{alltt}
+\hlstd{x} \hlkwb{<-} \hlkwd{simulate}\hlstd{(ricker,}\hlkwc{params}\hlstd{=theta)}
+\hlkwd{plot}\hlstd{(x,}\hlkwc{var}\hlstd{=}\hlstr{"y"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=10cm]{tmp/figureplot_at_different_parameters-2} 
+
+}
+
+
+
+\end{knitrout}
+
+\end{frame}
+\begin{frame}[fragile]
+\bi
+\item We can also change the parameters stored inside of \code{ricker}:
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{coef}\hlstd{(ricker,}\hlkwd{c}\hlstd{(}\hlstr{"r"}\hlstd{,}\hlstr{"N.0"}\hlstd{,}\hlstr{"sigma"}\hlstd{))} \hlkwb{<-} \hlkwd{c}\hlstd{(}\hlnum{39}\hlstd{,}\hlnum{0.5}\hlstd{,}\hlnum{1}\hlstd{)}
+\hlkwd{coef}\hlstd{(ricker)}
+\hlkwd{plot}\hlstd{(}\hlkwd{simulate}\hlstd{(ricker),}\hlkwc{var}\hlstd{=}\hlstr{"y"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\vspace{-5mm}
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{verbatim}
+##     r sigma   phi     c   N_0   e_0   N.0 
+##  39.0   1.0  10.0   1.0   7.0   0.0   0.5
+\end{verbatim}
+\end{kframe}
+
+{\centering \includegraphics[width=12cm]{tmp/figurechange_ricker_coef-1} 
+
+}
+
+
+
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+It is possible to work with more than one set of parameters at a time:
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{p} \hlkwb{<-} \hlkwd{parmat}\hlstd{(}\hlkwd{coef}\hlstd{(ricker),}\hlnum{500}\hlstd{)}
+\hlstd{p[}\hlstr{"r"}\hlstd{,]} \hlkwb{<-} \hlkwd{seq}\hlstd{(}\hlkwc{from}\hlstd{=}\hlnum{2}\hlstd{,}\hlkwc{to}\hlstd{=}\hlnum{40}\hlstd{,}\hlkwc{length}\hlstd{=}\hlnum{500}\hlstd{)}
+\hlstd{y} \hlkwb{<-} \hlkwd{trajectory}\hlstd{(ricker,}\hlkwc{params}\hlstd{=p,}\hlkwc{times}\hlstd{=}\hlnum{200}\hlopt{:}\hlnum{1000}\hlstd{)}
+\hlkwd{matplot}\hlstd{(p[}\hlstr{"r"}\hlstd{,],y[}\hlstr{"N"}\hlstd{,,],}\hlkwc{pch}\hlstd{=}\hlstr{"."}\hlstd{,}\hlkwc{col}\hlstd{=}\hlstr{'black'}\hlstd{,}\hlkwc{xlab}\hlstd{=}\hlstr{'r'}\hlstd{,}\hlkwc{ylab}\hlstd{=}\hlstr{'N'}\hlstd{,}\hlkwc{log}\hlstd{=}\hlstr{'x'}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\vspace{-1mm}
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
+
+{\centering \includegraphics[width=8cm]{tmp/figurebifdiag-1} 
+
+}
+
+
+
+\end{knitrout}
+
+This is a bifurcation diagram (\url{https://en.wikipedia.org/wiki/Bifurcation_diagram}) for the Ricker equation.
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\myquestion. How do you interpret this bifurcation diagram? 
+\bi
+\item What does it mean when the single line for small values of $r$ splits into a double line, around $r=0.8$? 
+
+\answer{\vspace{25mm}}{todo}
+
+\item What does it mean when solid vertical lines appear, around $r=18$?
+
+\answer{\vspace{25mm}}{todo}
+
+\item A bifurcation diagram like this can only be computed for a deterministic map. However, the bifurcation diagram for the deterministic skeleton can be useful to help understand a stochastic process. We'll see an example later in this chapter.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Burn-in}
+
+\bi
+
+\item Look at the R code for the bifurcation diagram. Notice that the first 200 iterations of the Ricker map are discarded, by setting \code{times=200:1000}. This is a technique called \myemph{burn-in}. 
+
+\item This is used when aiming to simulate the steady state of a dynamic system, ignoring \myemph{transient behavior} from initial conditions.
+
+
+%\item More information on manipulating and extracting information from \code{pomp} objects can be viewed in the help pages (\code{methods?pomp}).
+
+\ei
+
+
+\end{frame}    
+
+\begin{frame}[fragile] 
+
+\frametitle{Inference algorithms in \package{pomp}}
+
+\bi
+\item \package{pomp} provides a wide range of inference algorithms.
+We'll learn about these in detail soon, but for now, let's just look at some of their general features.
+
+\item The \code{pfilter} function runs a simple \myemph{particle filter}, which is a Monte Carlo algorithm that can be used to evaluate the likelihood at a particular set of parameters.
+One uses the \code{Np} argument to specify the number of particles to use:
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{pf} \hlkwb{<-} \hlkwd{pfilter}\hlstd{(ricker,}\hlkwc{Np}\hlstd{=}\hlnum{1000}\hlstd{)}
+\hlkwd{class}\hlstd{(pf)}
+\end{alltt}
+\begin{verbatim}
+## [1] "pfilterd_pomp"
+## attr(,"package")
+## [1] "pomp"
+\end{verbatim}
+\begin{alltt}
+\hlkwd{plot}\hlstd{(pf)}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=\maxwidth]{tmp/figurepfilter1-1} 
+
+}
+
+
+\begin{kframe}\begin{alltt}
+\hlkwd{logLik}\hlstd{(pf)}
+\end{alltt}
+\begin{verbatim}
+## [1] -157.7213
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
+\bi
+\item Note that \code{pfilter} returns an object of class \code{pfilterd.pomp}.
+This is the general rule: inference algorithms return objects that are \code{pomp} objects with additional information.
+
+\item We can run the same particle filter computation again by doing
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{pf} \hlkwb{<-} \hlkwd{pfilter}\hlstd{(pf)}
+\hlkwd{logLik}\hlstd{(pf)}
+\end{alltt}
+\begin{verbatim}
+## [1] -157.9107
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
+\bi
+\item Because the particle filter is a Monte Carlo algorithm, we get a slightly different estimate of the log likelihood.
+
+\item By default, running \code{pfilter} on a \code{pfilterd.pomp} object causes the computation to be re-run with the same parameters as before.
+Any additional arguments we add override these defaults.
+This is the general rule in \package{pomp}.
+For example, to repeat the particle filter with only 100 particles:
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{pf} \hlkwb{<-} \hlkwd{pfilter}\hlstd{(pf,}\hlkwc{Np}\hlstd{=}\hlnum{100}\hlstd{)}
+\hlkwd{logLik}\hlstd{(pf)}
+\end{alltt}
+\begin{verbatim}
+## [1] -160.3186
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}    
+
+\begin{frame}[fragile] 
+\frametitle{Building a custom \code{pomp} object}
+
+A real \package{pomp} data analysis begins with constructing one or more \code{pomp} objects to hold the data and the model or models under consideration.
+We illustrate this process a dataset of the abundance of the great tit ({\it Parus major} in Wytham Wood, near Oxford \citep{mccleery91}.
+
+First, we load and plot the data:
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{dat} \hlkwb{<-} \hlkwd{read.csv}\hlstd{(}\hlstr{"parus.csv"}\hlstd{)}
+\hlkwd{head}\hlstd{(dat)}
+\end{alltt}
+\begin{verbatim}
+##   year pop
+## 1 1960 148
+## 2 1961 258
+## 3 1962 185
+## 4 1963 170
+## 5 1964 267
+## 6 1965 239
+\end{verbatim}
+\begin{alltt}
+\hlkwd{plot}\hlstd{(pop}\hlopt{~}\hlstd{year,}\hlkwc{data}\hlstd{=dat,}\hlkwc{type}\hlstd{=}\hlstr{'o'}\hlstd{)}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=\maxwidth]{tmp/figureparus-data-1} 
+
+}
+
+
+
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+Let's suppose that we want to fit the stochastic Ricker model discussed above to these data.
+\bi
+\item The call to construct a \code{pomp} object is, naturally enough, \code{pomp}.
+\item Documentation on this function can be had by doing \code{?pomp}. 
+\item Do \code{class?pomp} to get documentation on the \code{pomp} class.
+\item Learn about the various things you can do once you have a \code{pomp} object by doing \code{methods?pomp} and following the links therein.
+\item Read an overview of the package as a whole with links to its main features by doing \code{package?pomp}.
+\item A complete index of the functions in \package{pomp} is returned by the command \code{library(help=pomp)}.
+\item The home page for the \code{pomp} project is (http://kingaa.github.io/pomp);
+there you have access to the complete source code, manuals, mailing lists, etc.
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+The simplest \code{pomp} object has only the data:
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{parus} \hlkwb{<-} \hlkwd{pomp}\hlstd{(dat,}\hlkwc{times}\hlstd{=}\hlstr{"year"}\hlstd{,}\hlkwc{t0}\hlstd{=}\hlnum{1959}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+The \code{times} argument specifies that the column labelled "year" gives the measurement times;
+\code{t0} is the "zero-time", the time at which the state process will be initialized.
+We've set it to one year prior to the beginning of the data.
+\end{frame}
+
+\begin{frame}[fragile]
+\bi
+\item  We can now plot the data:
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{plot}\hlstd{(parus)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
+
+{\centering \includegraphics[width=12cm]{tmp/figureparus-plot1-1} 
+
+}
+
+
+
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Adding in the deterministic skeleton}
+
+We can add the Ricker model deterministic skeleton to the \code{parus} \code{pomp} object.
+Since the Ricker model is a discrete-time model, its skeleton is a map that takes $P_n$ to $P_{n+1}$ according to the Ricker model equation
+\[
+P_{n+1} = r\,P_{n}\,\exp(-P_{n}).
+\]
+We provide this to \code{pomp} in the form of a \code{Csnippet}, a little snippet of C code that performs the computation.
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{skel} \hlkwb{<-} \hlkwd{Csnippet}\hlstd{(}\hlstr{"DN = r*N*exp(-N);"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+We then add this to the \code{pomp} object:
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{parus} \hlkwb{<-} \hlkwd{pomp}\hlstd{(parus,}\hlkwc{skeleton}\hlstd{=}\hlkwd{map}\hlstd{(skel),}\hlkwc{statenames}\hlstd{=}\hlstr{"N"}\hlstd{,}\hlkwc{paramnames}\hlstd{=}\hlstr{"r"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+Note that we have to inform \package{pomp} as to which of the variables we've referred to in \code{skel} is a state variable (\code{statenames}) and which is a parameter (\code{paramnames}).
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+With just the skeleton defined, we are in a position to compute the trajectories of the deterministic skeleton at any point in parameter space.
+For example,
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{traj} \hlkwb{<-} \hlkwd{trajectory}\hlstd{(parus,}\hlkwc{params}\hlstd{=}\hlkwd{c}\hlstd{(}\hlkwc{N.0}\hlstd{=}\hlnum{1}\hlstd{,}\hlkwc{r}\hlstd{=}\hlnum{12}\hlstd{),} \hlkwc{format}\hlstd{=}\hlstr{"data.frame"}\hlstd{)}
+\hlkwd{ggplot}\hlstd{(}\hlkwc{data}\hlstd{=traj,}\hlkwd{aes}\hlstd{(}\hlkwc{x}\hlstd{=year,}\hlkwc{y}\hlstd{=N))}\hlopt{+}\hlkwd{geom_line}\hlstd{()}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=8cm]{tmp/figureparus-first-traj-1} 
+
+}
+
+
+
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\bi
+\item
+Note that the dynamics become very different if the skeleton is considered as the derivative of a differential equation rather than as a discrete time map. It is harder to get chaotic dynamics in a continuous time system. 
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{parus2} \hlkwb{<-} \hlkwd{pomp}\hlstd{(parus,}\hlkwc{skeleton}\hlstd{=}\hlkwd{vectorfield}\hlstd{(skel),}\hlkwc{statenames}\hlstd{=}\hlstr{"N"}\hlstd{,}\hlkwc{paramnames}\hlstd{=}\hlstr{"r"}\hlstd{)}
+\hlstd{traj2} \hlkwb{<-} \hlkwd{trajectory}\hlstd{(parus2,}\hlkwc{params}\hlstd{=}\hlkwd{c}\hlstd{(}\hlkwc{N.0}\hlstd{=}\hlnum{1}\hlstd{,}\hlkwc{r}\hlstd{=}\hlnum{12}\hlstd{),}\hlkwc{format}\hlstd{=}\hlstr{"data.frame"}\hlstd{)}
+\hlkwd{ggplot}\hlstd{(}\hlkwc{data}\hlstd{=traj2,}\hlkwd{aes}\hlstd{(}\hlkwc{x}\hlstd{=year,}\hlkwc{y}\hlstd{=N))}\hlopt{+}\hlkwd{geom_line}\hlstd{()}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=8cm]{tmp/figureparus-first-traj-vector-1} 
+
+}
+
+
+
+\end{knitrout}
+
+\end{frame}   
+
+ \begin{frame}[fragile] 
+
+\frametitle{A note on terminology}
+
+\bi
+
+\item If we know the state, $x(t_0)$, of the system at time $t_0$, it makes sense to speak about the entire trajectory of the system for all $t>t_0$.
+
+\item This is true whether we are thinking of the system as deterministic or stochastic.
+
+\item Of course, in the former case, the trajectory is uniquely determined by $x(t_0)$, while in the stochastic case, only the probability distribution of $x(t)$, $t>t_0$ is determined.
+
+\item In \package{pomp}, to avoid confusion, we use the term ``trajectory'' exclusively to refer to \myemph{trajectories of a deterministic process}.
+Thus, the \code{trajectory} command iterates or integrates the deterministic skeleton forward in time, returning the unique trajectory determined by the specified parameters.
+When we want to speak about sample paths of a stochastic process, we use the term \myemph{simulation}.
+
+\item Accordingly, the \code{simulate} command always returns individual sample paths from the POMP.
+In particular, we avoid ``simulating a set of differential equations'', preferring instead to speak of ``integrating'' the equations, or ``computing trajectories''.
+
+\ei
+
+\end{frame}    
+
+\begin{frame}[fragile] 
+
+\frametitle{Adding in the process model simulator}
+
+\bi
+\item We can add the stochastic Ricker model to \code{parus} by writing a Csnippet that simulates one realization of the stochastic process, from an arbitary time $t$ to $t+1$, given arbitrary states and parameters:
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{stochStep} \hlkwb{<-} \hlkwd{Csnippet}\hlstd{(}\hlstr{"
+  e = rnorm(0,sigma);
+  N = r*N*exp(-N+e);
+"}\hlstd{)}
+\hlkwd{pomp}\hlstd{(parus,}\hlkwc{rprocess}\hlstd{=}\hlkwd{discrete.time.sim}\hlstd{(}\hlkwc{step.fun}\hlstd{=stochStep,}\hlkwc{delta.t}\hlstd{=}\hlnum{1}\hlstd{),}
+     \hlkwc{paramnames}\hlstd{=}\hlkwd{c}\hlstd{(}\hlstr{"r"}\hlstd{,}\hlstr{"sigma"}\hlstd{),}\hlkwc{statenames}\hlstd{=}\hlkwd{c}\hlstd{(}\hlstr{"N"}\hlstd{,}\hlstr{"e"}\hlstd{))} \hlkwb{->} \hlstd{parus}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\bi
+
+\item Note that in the above, we use the \code{exp} and \code{rnorm} functions from the  C language API for {\R} 
+(\url{https://cran.r-project.org/doc/manuals/R-exts.html})
+
+\item In general any C function provided by {\R} is available to you.
+\package{pomp} also provides a number of C functions that are documented in the header file, \code{pomp.h}, that is installed with the package.
+
+\item See the \code{Csnippet} documentation (\code{?Csnippet}) to read more about how to write them.
+
+% \item Note too that we use \code{discrete.time.sim} here because the model is a stochastic map.
+
+% \item We specify that the time step of the discrete-time process is \code{delta.t}, here, 1 year.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+\bi
+\item At this point, we have what we need to simulate the stochastic Ricker model.
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{sim} \hlkwb{<-} \hlkwd{simulate}\hlstd{(parus,}\hlkwc{params}\hlstd{=}\hlkwd{c}\hlstd{(}\hlkwc{N.0}\hlstd{=}\hlnum{1}\hlstd{,}\hlkwc{e.0}\hlstd{=}\hlnum{0}\hlstd{,}\hlkwc{r}\hlstd{=}\hlnum{12}\hlstd{,}\hlkwc{sigma}\hlstd{=}\hlnum{0.5}\hlstd{),}
+                \hlkwc{format}\hlstd{=}\hlstr{"data.frame"}\hlstd{)}
+\hlkwd{plot}\hlstd{(N}\hlopt{~}\hlstd{year,}\hlkwc{data}\hlstd{=sim,}\hlkwc{type}\hlstd{=}\hlstr{'o'}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
+
+{\centering \includegraphics[width=12cm]{tmp/figurericker-first-sim-1} 
+
+}
+
+
+
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Adding in the measurement model and parameters}
+
+\bi
+
+\item We complete the specification of the POMP by specifying the measurement model.
+To obtain the Poisson measurement model described above, we write two Csnippets. The first simulates:
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{rmeas} \hlkwb{<-} \hlkwd{Csnippet}\hlstd{(}\hlstr{"pop = rpois(phi*N);"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+\bi
+\item The second computes the likelihood of observing \code{pop} birds given a true density of \code{N}:
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{dmeas} \hlkwb{<-} \hlkwd{Csnippet}\hlstd{(}\hlstr{"lik = dpois(pop,phi*N,give_log);"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+\bi
+\item Note the \code{give_log} argument. When this code is evaluated, \code{give_log} will be set to 1 if the log likelihood is desired, and 0 else.
+
+\item We add these specifications of \code{rmeasure} and \code{dmeasure} into the \code{pomp} object:
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{pomp}\hlstd{(parus,}\hlkwc{rmeasure}\hlstd{=rmeas,}\hlkwc{dmeasure}\hlstd{=dmeas,}\hlkwc{statenames}\hlstd{=}\hlkwd{c}\hlstd{(}\hlstr{"N"}\hlstd{),}
+  \hlkwc{paramnames}\hlstd{=}\hlkwd{c}\hlstd{(}\hlstr{"phi"}\hlstd{))} \hlkwb{->} \hlstd{parus}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+\item To simulate, we must add some parameters to the \code{pomp} object:
+\ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{coef}\hlstd{(parus)} \hlkwb{<-} \hlkwd{c}\hlstd{(}\hlkwc{N.0}\hlstd{=}\hlnum{1}\hlstd{,}\hlkwc{e.0}\hlstd{=}\hlnum{0}\hlstd{,}\hlkwc{r}\hlstd{=}\hlnum{20}\hlstd{,}\hlkwc{sigma}\hlstd{=}\hlnum{0.1}\hlstd{,}\hlkwc{phi}\hlstd{=}\hlnum{200}\hlstd{)}
+\hlstd{sims} \hlkwb{<-} \hlkwd{simulate}\hlstd{(parus,}\hlkwc{nsim}\hlstd{=}\hlnum{3}\hlstd{,}\hlkwc{format}\hlstd{=}\hlstr{"data.frame"}\hlstd{,}
+  \hlkwc{include.data}\hlstd{=}\hlnum{TRUE}\hlstd{)}
+\hlkwd{ggplot}\hlstd{(}\hlkwc{data}\hlstd{=sims,}\hlkwc{mapping}\hlstd{=}\hlkwd{aes}\hlstd{(}\hlkwc{x}\hlstd{=year,}\hlkwc{y}\hlstd{=pop))}\hlopt{+}\hlkwd{geom_line}\hlstd{()}\hlopt{+}
+  \hlkwd{facet_wrap}\hlstd{(}\hlopt{~}\hlstd{.id)}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=10cm]{tmp/figurericker-add-params-1} 
+
+}
+
+
+
+\end{knitrout}
+
+\end{frame}    
+
+\begin{frame}[fragile] 
+
+\frametitle{Exercise: Ricker model parameters}
+\bi
+\item Fiddle with the parameters to try and make the simulations look more like the data.
+
+\item This will help you build some intuition for what the various parameters do.
+\ei
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Exercise: reformulating the Ricker model}
+\bi
+\item Reparameterize the Ricker model so that the scaling of $P$ is explicit:
+$$P_{n+1} = r\,P_{n}\,\exp\left(-\frac{P_{n}}{K}\right).$$
+
+\item Modify the \code{pomp} object we created above to reflect this reparameterization.
+
+\item Modify the measurement model so that
+$$\mathrm{pop}_n \sim \mathrm{Negbin}(\phi\,P_n,k),$$
+i.e., $\mathrm{pop}_n$ is negative-binomially distributed with mean $\phi\,P_t$ and clumping parameter $k$.
+
+\item See \code{?NegBinomial} for documentation on the negative binomial distribution and the {\R} Extensions Manual section on distribution functions (\url{https://cran.r-project.org/doc/manuals/R-exts.html}) for information on how to access these in C.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Exercise: The Beverton-Holt model}
+
+\bi
+
+\item Construct a \code{pomp} object for the {\it Parus major} data and the \myemph{stochastic Beverton-Holt} model,
+$$P_{n+1} = \frac{a\,P_n}{1+b\,P_n}\,\varepsilon_n,$$
+where $a$ and $b$ are parameters and
+$$\varepsilon_t \sim \mathrm{Lognormal}(-\tfrac{1}{2}\sigma^2,\sigma^2).$$
+
+\item Assume the same measurement model as we used for the Ricker model.
+
+\ei
+
+\end{frame} 
+
+
+\begin{frame}[fragile]
+\frametitle{Acknowledgments and License}
+
+\bi
+\item These notes build on previous versions at \url{ionides.github.io/531w16} and \url{ionides.github.io/531w18}. 
+\item Those notes draw on material developed for a short course on Simulation-based Inference for Epidemiological Dynamics (\url{http://kingaa.github.io/sbied/}) by Aaron King and Edward Ionides, taught at the University of Washington Summer Institute in Statistics and Modeling in Infectious Diseases, from 2015 through 2018.
+\item
+Licensed under the Creative Commons attribution-noncommercial license, \url{http://creativecommons.org/licenses/by-nc/3.0/}.
+Please share and remix noncommercially, mentioning its origin.  
+\includegraphics[width=2cm]{cc-by-nc.png}
+\ei
+
+\end{frame}
+
+
+%\begin{frame}[allowframebreaks]
+%\frametitle{References}
+%\bibliography{notes03.bib}
+%\end{frame}
+
+\end{document}
+
