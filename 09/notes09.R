@@ -1,4 +1,4 @@
-## ----setup,echo=F,results=F,cache=F-------------------------------------------
+## ----setup,echo=F,results=F,cache=F--------------------------------------
 myround<- function (x, digits = 1) {
   # taken from the broman package
   if (digits < 1) 
