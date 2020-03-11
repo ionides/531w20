@@ -1,0 +1,46 @@
+---
+title: "Homework 5, due 5pm Monday 3/16"
+author: "STATS 531, Winter 2020"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+
+-----------
+
+This homework gives you some experience at algebraic manipulation of POMP models by deriving the prediction, filtering and smoothing formulas in Chapter 9 of the notes.  
+
+
+The calculations are all applications of basic definitions (such as the Markov property) and basic identities for joint, conditional and marginal probability density functions. 
+The goal is to check carefully how the formulas follow from these properties, so please explain this explicitly in your solutions.
+You may follow the Hints for Homework in Chapter 9 of the notes.
+
+
+The homework can be handwritten and scanned to pdf, however it is recommended to use Latex in Rmarkdown. If you are relatively unfamiliar with Latex and Rmarkdown, this will take more time but it is a worthwhile exercise. As usual, you are welcome to use the Latex from the notes as a source, if you like.
+
+--------
+
+**<big>Question 5.1</big>**. Derive the identity [MP2].
+
+
+**<big>Question 5.2</big>**. Derive the prediction formula, [MP4].
+
+
+**<big>Question 5.3</big>**. Derive the filtering formulas [MP5] and [MP6].
+
+
+**<big>Question 5.4</big>**. Derive the backward recursion formulas [MP8] and [MP9].
+
+
+**<big>Question 5.5</big>**. Derive the smoothing formula [MP10].
+
+
+**<big>Question 5.6</big>**. Explain which parts of your responses above made use of a source, meaning anything or anyone you consulted (including classmates or office hours) to help you write or check your answers. All sources are permitted, but failure to attribute material from a source is unethical. See the syllabus for additional information on grading.
+
+-----------------

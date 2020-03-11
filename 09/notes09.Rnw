@@ -8,20 +8,7 @@
 \newcommand\eqspace{\quad\quad\quad}
 \newcommand\eqskip{\vspace{2.5mm}}
 
-\newcommand\ar{\phi}
-\newcommand\ma{\psi}
-\newcommand\AR{\Phi}
-\newcommand\MA{\Psi}
-%\newcommand\eqspace{\hspace{10mm}}
 \newcommand\ev{u}
-
-\newcommand\matA{\mathbb{A}}
-\newcommand\matB{\mathbb{B}}
-\newcommand\matH{\mathbb{H}}
-\newcommand\covmatX{\mathbb{U}}
-\newcommand\covmatY{\mathbb{V}}
-
-
 
 % \newcommand\answer[2]{\textcolor{blue}{#2}} % to show answers
 % \newcommand\answer[2]{{\color{blue}{#2}}} % to show answers
@@ -469,7 +456,7 @@ $$ f_{X_{0}|Y_{1:0}}(x_{0}\given \data{y_{1:0}}) = f_{X_0}(x_0).$$
 {\bf Example 1}. From
 $$f_{XY}(x,y) = f_X(x)\, f_{Y|X}(y\given x)$$
 we can condition on $Z$ to obtain 
-$$f_{XY|Z}{x,y\given z} = f_{X|Z}(x\given z)\, f_{Y|XZ}(y\given x,z).$$
+$$f_{XY|Z}(x,y\given z) = f_{X|Z}(x\given z)\, f_{Y|XZ}(y\given x,z).$$
 
 
 {\bf Example 2}. the prediction formula is a special case of the identity
@@ -1176,7 +1163,7 @@ f_X(x) = \frac{1}{(2\pi)^{d_X/2}|\Sigma_X|}
 
 \begin{frame}[fragile]
 
-\frametitle{Joinly multivariate normal vectors}
+\frametitle{Jointly multivariate normal vectors}
 
 
 $X$ and $Y$ are \myemph{jointly multivariate normal} if the combined vector 
@@ -1246,7 +1233,7 @@ Since the system is Gaussian, the filtering and prediction distributions are def
 X_{n}\given Y_{1:n-1}\equals y_{1:n-1} &\sim& N\big[\, \mu_{n}^P(y_{1:n-1}),\, \Sigma_n^P \, \big],
 \vspace{3mm}
 \\
-X_n\given Y_{1:n}\equals y_{1:n} &\sim& N\big[\, \mu_n^F(y_{1:n-1}),\,\Sigma_n^F\, \big],
+X_n\given Y_{1:n}\equals y_{1:n} &\sim& N\big[\, \mu_n^F(y_{1:n}),\,\Sigma_n^F\, \big],
 \vspace{3mm}
 \\
 X_n\given Y_{1:N}\equals y_{1:N} &\sim& N\big[\, \mu_n^S(y_{1:N}),\,\Sigma_n^S \, \big].
@@ -1309,7 +1296,7 @@ $\Sigma_n^S(\data{y_{1:N}})=\var\big(X_n\given Y_{1:N}\equals \data{y_{1:N}}\big
 
 \begin{frame}
 
-\frametitle{The he Kalman matrix recursions}
+\frametitle{The Kalman matrix recursions}
 
 Applying the properties of linear combinations of Normal random variables, we get the Kalman filter and prediction recursions:
 
@@ -1343,18 +1330,22 @@ $.
 
 \vspace{2mm}
 
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Toward deriving the Kalman matrix recursions}
+
 \bi
 
-\item  The prediction recursions [KF3--4] are relatively easy to demonstrate, but it is a good exercise to go through the algebra to your own satisfaction. 
+\item  The prediction recursions [KF3] and [KF4] are relatively easy to demonstrate, but it is a good exercise to go through the algebra to your own satisfaction. 
 
 \item  A useful trick for the algebra is to notice that the conditioning identities [KF1] for joint Gaussian random variables continue to hold if left and right are both conditioned on some additional jointly Gaussian variable, such as $Y_{1:n-1}$.
 
-
-
-\item  [KF5--6] can be deduced by completing the square in an expression for the joint density,
-$f_{X_nY_n|Y_{1:n-1}} (
+\item\   
+[KF5] and [KF6] can be deduced by completing the square in an expression for the joint density,
+$$f_{X_nY_n|Y_{1:n-1}} (
   x_n,y_n\given y_{1:n-1}
-)$
+)$$
 and noticing that the marginal density of $X_n$ given $Y_{1:n}$ is proportional to the joint density, with a normalizing constant that must allow the marginal density to integrate to one. 
 
 \ei
