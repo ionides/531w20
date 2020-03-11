@@ -1,0 +1,449 @@
+\documentclass[11pt]{article}
+\usepackage{graphicx,fullpage}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\pagestyle{plain}
+\headheight0in
+\headsep0in
+\topmargin -0.1in
+\textheight 9.0in
+\oddsidemargin -0.0in
+\textwidth 6.5in
+\baselineskip 3ex
+\renewcommand\baselinestretch{1}
+\parindent 0in
+\parskip 0.1in
+\def\bc{\begin{center}}
+\def\ec{\end{center}}
+\def\qskip{\vspace{1.5in}}
+\def\qspace{\vspace{1.5in}}
+
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\loglik{\ell}
+\newcommand\R{\mathbb{R}}
+\newcommand\data[1]{#1^*}
+\newcommand\estimate[1]{\data{#1}}
+\newcommand\given{\, ; \,}
+\newcommand\transpose{\scriptsize{T}}
+\newcommand\mycolon{\,{:}\,}
+
+% show exam formatting and hide solutions
+\newcommand\exam[1]{#1}    \newcommand\solution[1]{} 
+
+% hide exam formatting and show solutions
+%\newcommand\exam[1]{}      \newcommand\solution[1]{{\it #1}} 
+
+<<knitr_opts,echo=F,cache=F,purl=F>>=
+library(knitr)
+opts_chunk$set(
+  cache=FALSE,
+#  cache=TRUE,
+  eval=TRUE,
+  include=TRUE,
+#  echo=TRUE,
+  echo=FALSE,
+#  purl=TRUE,
+  purl=FALSE,
+  cache.path=paste0("tmp/cache"),
+  dev='png',
+  dev.args=list(bg='transparent'),
+  dpi=300,
+  error=FALSE,
+  fig.pos="h!",
+  fig.align='center',
+  fig.height=4,fig.width=6.83,
+  fig.lp="fig:",
+  fig.path=paste0("tmp/figure"),
+  fig.show='asis',
+  highlight=TRUE,
+  message=FALSE,
+  progress=TRUE,
+  prompt=FALSE,
+#  results='asis',
+  results="markup",
+  size='small',
+  strip.white=TRUE,
+  tidy=FALSE,
+  warning=FALSE
+#  comment=NA # to remove ## on output
+)
+options(width = 60) # number of characters in R output before wrapping
+@
+
+<<prelim,echo=F,cache=F>>=
+par(mai=c(0.6,0.6,0.1,0.1))
+
+broman_round <-
+    function(x, digits=1)
+{
+    if(digits < 1)
+        stop("This is intended for the case digits >= 1.")
+
+    if(length(digits) > 1) {
+        digits <- digits[1]
+        warning("Using only digits[1]")
+    }
+
+    tmp <- sprintf(paste("%.", digits, "f", sep=""), x)
+
+    # deal with "-0.00" case
+    zero <- paste0("0.", paste(rep("0", digits), collapse=""))
+    tmp[tmp == paste0("-", zero)] <- zero
+
+    tmp
+}
+@
+
+<<read_data,echo=F>>=
+um=read.table("um-ertimeseries.txt",header=T)
+colnames(um)=c("date","hr","patients","beds","frac",
+paste("X",1:17,sep=""))
+
+attach(um)
+@
+
+\begin{document}
+\begin{center}
+{\bf 
+ STATS 531\\
+ Winter, 2020\\
+ Midterm Exam\\
+}
+
+\exam{
+
+ \vspace{7 mm}
+{\bf Name: \hrulefill UMID \#: \hrulefill}\\
+
+\vspace{7 mm}
+\end{center}
+{\bf There are 4 sections (A, B, C and D) worth a total of 28 points. Points will be awarded for clearly explained and accurate answers in addition to correctness.
+
+Only pens and/or pencils should be out of your bag for the duration of the exam. You may not use access any electronic device, notes, or books during the exam.
+
+}
+\begin{center}
+\renewcommand{\arraystretch}{2}
+\begin{tabular}{||c|c|c||}
+\hline
+\hline
+{Section} & {Points} & {Score}\\
+\hline
+\hline
+A & 6 & \\
+\hline
+B & 6 & \\
+\hline
+C & 8 & \\
+\hline
+D & 8 & \\
+\hline
+\hline
+Total & 28 &  \\
+\hline
+\hline
+\end{tabular}
+}
+
+\end{center}
+
+
+\exam{
+  \newpage
+}
+
+
+We investigate a time series on over-crowding in the Emergency Room of the University of Michigan Hospital.
+The data, $y_{1:N}$ with $N=24*365$, are hourly occupancy fractions for one year, starting July 1st 2005.
+Occupancy fraction is defined to be the mean number of patients in the ER during each hour  divided by the total number of beds available (the ER operates 24 hours a day, 7 days a week, 365 days a year).
+Note that the occupancy fraction, shown in Fig.~\ref{fig:plot_data}, can exceed one.
+The purposes of investigating these data are to predict future occupancy, and to make progress toward relating ER overcrowding with other variables such as errors in medical procedures.
+
+<<plot_data,echo=F,fig.width=7.5,fig.height=3.5,out.width="6in",fig.cap="Hourly occupancy fraction at the University of Michigan Emergency Room",fig.pos="h">>=
+par(mai=c(0.8,0.8,0.1,0.1))
+plot(ts(frac,freq=24),ylab="ER occupancy fraction",xlab="Time, in days since the start of July, 2005")
+@
+
+\vspace{3mm}
+
+<<spec_acf,echo=F,fig.width=7.5,fig.height=3.5,out.width="6in",fig.cap="(A) Smoothed periodogram of $y_{1:N}$. (B) sample auto-correlation function of $y_{1:N}$",fig.pos="h">>=
+par(mfrow=c(1,2))
+par(mai=c(0.8,0.8,0.1,0.1))
+tmp=spectrum(ts(frac,freq=24),spans=c(7,9,13),plot=F)
+plot.freq=(tmp$freq<3)
+tmp$spec=tmp$spec[plot.freq]
+tmp$freq=tmp$freq[plot.freq]
+plot(tmp,main="")
+text(2,2e-01,expression(bold(A)),cex=2)
+acf(ts(frac,freq=24),main="",lag.max=15*24)
+text(10,0.8,expression(bold(B)),cex=2)
+@
+
+\clearpage
+
+{\bf SECTION A}. Fig.~\ref{fig:spec_acf} shows a smoothed periodogram and an ACF of the data.
+
+
+A1. [1 point] What are the units of frequency in Fig.~\ref{fig:spec_acf}A? Explain your reasoning. Hint: Care is needed to make allowance for the x-axis truncation pointed out below.
+
+\exam{\vspace{50mm}}
+
+\solution{From figure 2B, we see a strong daily cycle and small additional
+correlation at 7 days (1 week). The strong 1 cycle/day peak is
+evident at frequency 1 in Fig.~\ref{fig:spec_acf}A, so units must be
+cycles/day.}
+
+A2. [2 points] Explain how you can tell that the periodogram in Fig.~\ref{fig:spec_acf}A has been truncated to exclude high frequencies (this is done to show more clearly the information at lower frequencies).
+
+\exam{\vspace{50mm}}
+
+\solution{The highest frequency on a periodogram is 0.5 cycles per
+observation. This corresponds to 12 cycles per day. The axis has
+therefore been cut at frequency = 3 cycles per day.}
+
+A3. [3 points] Using Fig.~\ref{fig:spec_acf}, can you reject a null hypothesis that there is no weekly pattern to occupancy fraction? Explain.
+Hint: the bar top right in Fig.~\ref{fig:spec_acf}A may be useful, though the horizonal cross for this bar is small and hard to see.
+
+
+\exam{\vspace{80mm}
+\clearpage
+}
+
+\solution{A confidence interval around the peak at frequency 1/7 cycles/day,
+constructed using the error bar in Fig. 2A, excludes the base of
+this peak. Thus, we can reject the null hypothesis that this peak is
+chance variation.}
+
+
+{\bf SECTION B}. 
+Fig.~\ref{fig:plot_data} suggests that the occupancy could be modeled by a random process $Y_{1:N}$ whose expected value $\mu_n=\E[Y_n]$ is slowly varying with time.
+The variation around the mean in  Fig.~\ref{fig:plot_data} appears quite stable.
+ Thus, it may be reasonable to model $y_n-\hat\mu_n$ as a stationary process, with  $\hat \mu_n$ constructed using local regression.
+This is done here using the R command \texttt{mu.hat=loess(y}$ \sim$ \texttt{time,span=0.5)\$fitted}.
+The estimate $\hat \mu_t$ of $\mu_n$ is shown in Fig.~\ref{fig:smo}.
+
+\vspace{-3mm}
+
+<<smo,echo=F,fig.width=5,fig.height=2,out.width="4.5in",fig.cap="Estimate $\\hat\\mu_n$ of the mean hourly occupancy fraction $\\mu_n$. Time is shown in days.",fig.pos="h",cache=TRUE>>=
+time=1:length(frac)
+mu=ts(loess(frac~time,data=um,span=0.5)$fitted,freq=24)
+lo=loess(frac~time,data=um,span=0.5)
+tt=seq(from=1,to=length(frac),length=200)
+lo.p=predict(lo, data.frame(time=tt),se=T)
+par(mai=c(0.42,0.8,0.1,0.1))
+matplot(y=cbind(lo.p$fit-2*lo.p$se,lo.p$fit,lo.p$fit+2*lo.p$se),x=tt/24,ty="l",lty=c(3,1,3),col=1,ylab="mu.hat",xlab="")
+@
+
+
+B1. [2 points] Briefly describe what is a ``local regression estimate''.
+
+\exam{\vspace{35mm}}
+
+\solution{A window around each time point is used to construct a regression
+estimate. Here, linear regression is carried out over all the data
+points falling into the window.}
+
+B2. [2 points] The dashed lines in Fig.~\ref{fig:smo} show an approximate 95\% confidence interval, constructed by adding $\pm 2SE$ where $SE$ is the standard error on the estimate of the mean, as calculated by the local regression. Is this interval appropriate? Explain. Hint: it may help you to think about what you know about ordinary linear regression. 
+
+\exam{\vspace{35mm}}
+
+\solution{We know from Fig. 2A that the time series has considerable
+autocorrelation. An ordinary regression estimate still gives a
+reasonable point estimate in this situation, but the resulting
+standard errors should not be trusted.
+}
+
+B3. [2 points] Could the data be consistent with a model where the mean is not varying with time, e.g. a stationary process? Say yes or no, and explain.
+
+\exam{\vspace{35mm}
+\clearpage
+}
+
+\solution{Yes. The low frequency behaviour could be part of a random,
+long-term pattern.
+}
+
+{\bf SECTION C}. We investigate whether a stationary model is appropriate for the detrended occupancy fraction $z_n=y_n-\hat\mu_n$. In particular, we compare the two time intervals  August/September 2005 and March/April 2006.
+First, we fit an $ARIMA(1,0,1){\times}(1,0,1)_{24}$ model to the 61 days in August and September 2005. Below is the R output.
+
+<<model_fit_setup>>=
+int1=31*24+1:(61*24) #august + sept 2005
+x1= ts( (frac- mu)[int1],freq=24)
+u1= ts( (frac)[int1],freq=24)
+#note 7/1/2005 was a friday
+#     8/1/2005 was a monday
+
+int2=5833:(5833+61*24-1) # march + april 2006
+x2= ts( (frac- mu)[int2],freq=24)
+u2= ts( (frac)[int2],freq=24)
+#
+AugSep <- int1
+MarApr <- int2
+z <- frac-mu
+@
+
+<<model_fit>>=
+arima(x = z[AugSep], order = c(1, 0, 1), seasonal = list(order=c(1, 0, 1),period=24))
+@
+
+C1. [3 points] Write out the fitted model corresponding to the R output above, carefully stating all the model assumptions.
+
+\exam{\vspace{60mm}
+\clearpage
+}
+
+\solution{
+The fitted model is
+\begin{eqnarray*}
+(1-0.9990B^{24})(1-0.9139B)(y_t + 0.006) =
+(1-0.9884B^{24})(1+0.0403B)w_t,
+\end{eqnarray*}
+where $w_t$ are independent Gaussian random variables with mean 0
+and variance 0.006561.
+}
+
+<<diag,echo=F,fig.width=7.5,fig.height=3,out.width="6in",fig.cap="Investigation of the residuals from fitting an $ARIMA(1,0,1){\\times}(1,0,1)_{24}$ model to detrended occupancy for August/September. (A) Sample ACF. (B) Normal quantile plot, which plots the sorted residuals against the corresponding quantiles of the standard normal distribution.",fig.pos="h">>=
+f1=arima(x1,order=c(1,0,1),seasonal=c(1,0,1))
+par(mfrow=c(1,2))
+par(mai=c(0.8,0.8,0.1,0.1))
+acf(resid(f1),main="",lag.max=2.5*24)
+text(1,0.8,expression(bold(A)),cex=1.5)
+qqnorm(resid(f1),main="")
+text(-2,0.2,expression(bold(B)),cex=1.5)
+@
+
+
+C2. [2 points] What do you conclude from the diagnostic plots in Fig.~\ref{fig:diag}? Also, explain at least one relevant property that is NOT checked by these diagnostic plots, and describe how you could check it. 
+
+
+\exam{\vspace{50mm}}
+
+\solution{From the normal quantile plot in B, we conclude that the distribution of the residuals is close to normal, which supports the normality
+assumption about $w_t$. From A, we conclude that the residuals
+appear to be uncorrelated. None of these diagnostics check for the
+stationarity of the process. One could check this by looking at the
+time plot of the residuals to see if there is any trend or pattern left and
+to see if the variability around the mean appears to be constant.
+Autocovariance stationarity could also be checked showing that the
+sample autocovariance function was similar at different intervals of
+the series.
+}
+
+C3. [3 points] Explain why the results in Fig.~\ref{fig:diag} and the R model for the fitted $ARIMA(1,0,1){\times}(1,0,1)_{24}$ might support the choice of any of (a) $SARIMA(1,0,1){\times}(1,0,1)_{24}$, (b) $SARIMA(1,0,1){\times}(0,1,1)_{24}$, or (c) $SARIMA(1,0,1){\times}(0,0,0)_{24}$. Explain which of these choices you think is best supported.
+
+\exam{\vspace{60mm}
+\clearpage
+}
+
+\solution{
+Fig. 4 is consistent with the choice of $ARIMA(1,0,1)\times(1,0,1)$.
+The estimate for the seasonal AR1 parameter, $\Phi_1$ from the R output is very close to 1. When
+$\Phi_{1}=1$, an $ARIMA(1,0,1)\times(1,0,1)_{24}$ is equal to
+an $ARIMA(1,0,1)\times(0,1,1)_{24}$, so this
+should be  an acceptable (and slightly simpler) model as well.
+However, on closer inspection, the two roots in the seasonal component almost cancel, which suggests instead considering $SARIMA(1,0,1){\times}(0,0,0)_{24}$.
+}
+
+<<aic_table,cache=TRUE>>=
+
+aic_table <- function(data,P,Q,...){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+    table[p+1,q+1] <- arima(data,order=c(p,0,q),...)$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+as1.3=aic_table(x1,P=3,Q=2,seasonal=c(0,1,1))
+as2.3=aic_table(x2,P=3,Q=2,seasonal=c(0,1,1))
+@
+
+\begin{table}[h]
+\begin{minipage}{0.45\textwidth}
+(A)
+<<aic_table_a>>=
+require(knitr)
+kable(as1.3,digits=1)
+@
+\end{minipage}
+\hspace{10mm}
+\begin{minipage}{0.45\textwidth}
+(B)
+<<aic_table_b>>=
+kable(as2.3,digits=1)
+@
+\end{minipage}
+\caption{AIC values from fitting $ARIMA(p,0,q){\times}(0,1,1)_{24}$ models to (A) August/September 2005, (B) March/April 2006.}\label{tab:aic}
+\end{table}   
+
+{\bf SECTION D}. We do some more analysis comparing the two time intervals August/September 2005 and March/April 2006.
+
+D1. [2 points]  A comparison of various models is presented in Table~\ref{tab:aic}. Is there any conclusive evidence of imperfect likelihood maximization from these AIC values? Explain.
+
+\exam{\vspace{60mm}}
+
+\solution{For example, -3054.8 for ARMA(3,1) is more than 2 higher than the ARMA(2,1) value of -3057.1. The true maximized log likelihood cannot be lower for ARMA(3,1) so the true AIC cannot be more than 2 higher.}
+
+D2. [2 points]  What do you learn from the AIC values in Table~\ref{tab:aic} about choice of models for these data and the appropriateness (or otherwise) of fitting a stationary model to the entire time series.
+
+\exam{\vspace{60mm}
+\newpage
+}
+
+\solution{We conclude from tables that an $ARIMA(1,0,0)\times(0,1,1)_{24}$
+seems to be preferable, with the smallest AIC in both periods.
+As an extra word of caution, we cannot compare the AIC values in the tables with the -3124.96 value for $ARIMA(1,0,0)\times (1,0,1)$ because
+the data have been transformed, i.e. differences have been taken.}
+
+
+Below is the R output from fitting an $ARIMA(1,0,0){\times}(0,1,1)_{24}$ model to detrended occupancy for August/September 2005 and March/April 2006.
+
+<<model_fit_a>>=
+arima(x = z[AugSep], order = c(1, 0, 0), seasonal = list(order=c(0, 1, 1),period=24))
+@
+
+<<model_fit_b>>=
+arima(x = z[MarApr], order = c(1, 0, 0), seasonal = list(order=c(0, 1, 1),period=24))
+@
+
+
+D3. [4 points] Show how to use this output to carry out an approximate hypothesis test that the AR1 component is the same for August/September 2005 and March/April 2006 in the context of an $ARIMA(1,0,0){\times}(0,1,1)_{24}$ model for detrended occupancy.
+Explain what your approximations are for this test. How good do you think these approximations are, and how could you check?
+Note: since you are not provided with statistical tables, you are not required to calculate a p-value.
+
+
+\exam{\vspace{80mm}}
+
+\solution{Letting $\phi_1$ and $\phi_2$ be the AR1 coefficients for the first and second intervals, we wish to test the hypothesis 
+\begin{eqnarray*}
+H_0: \phi_1 &=& \phi_2\\
+H_1: \phi_1 &\neq& \phi_2.
+\end{eqnarray*}
+Since we know that, asymptotically, $\hat{\phi}_i \sim
+N(\phi_i,\sigma^2_{\phi_i})$, a test statistic that can be
+used (and is available from the R output above) is
+\begin{eqnarray*}
+Z &=& \frac{\hat{\phi}_1 - \hat{\phi}_2}{\sqrt{\hat{\sigma}^2_{\phi 1} + \hat{\sigma}^2_{\phi 2}}},\\
+\end{eqnarray*}
+where $\hat{\sigma}_{\phi_i} = s.e.(\hat{\phi}_i)$. Here, we would
+have to rely on the central limit theorem for the MLE and on the
+MLEs being uncorrelated for the 2 time intervals. The statistic
+comes out to be
+\begin{eqnarray*}
+z &=& \frac{0.9195 - 0.9436}{\sqrt{0.0104^2 + 0.0088^2}} = -1.769\\
+\end{eqnarray*}
+This is within the acceptance region $\pm 1.96$, so we cannot reject the null hypothesis at the 5\% level.
+ The test seems to be based in enough data for the
+asymptotic approximation to be useful. One could check this and the
+assumed correlation by simulating from the fitted model and checking
+what the actual p-value is for some confidence level.}
+
+\end{document}
+
+
