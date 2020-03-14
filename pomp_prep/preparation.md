@@ -19,7 +19,6 @@ hr {
 ------------------------------
 
 Please read the appropriate sections below, which give specific instructions for installing and testing the software we will be using.
-First follow the instructions for "all users", then those for your specific operating system (OS).
 
 <div class="nb"> 
 
@@ -36,13 +35,11 @@ In **R**, you can run `Sys.info()` to get a printout of the operating system and
 
 </div>
 
-## All users
 
-### Install **R** and **RStudio**
+### Update **R** and **RStudio**
 
-**R** and **RStudio** are free and open-source.
-You’ll need at least version 3.5.1 of **R**.
-The latest version is 3.6.0, so if you need to update, go ahead and install version 3.6.0.
+The latest version is **R** 3.6.3, and it is helpful to use a current version, say 3.6.1 or later.
+If you need to update, go ahead and install version 3.6.3.
 Source code and binaries are available on CRAN (https://cran.r-project.org/).
 Install *the latest version* of **RStudio** from [rstudio.com](https://www.rstudio.com/products/rstudio/download/).
 
@@ -52,7 +49,7 @@ Open a session in **RStudio** and run the following:
 
 ```
 > update.packages()
-> source("https://kingaa.github.io/sbied/prep/packages.R")
+> source("https://ionides.github.io/531w20/pomp_prep/packages.R")
 ```
 
 *[The `>` is the command prompt; it is not part of the command.
@@ -63,8 +60,7 @@ You may be prompted to specify a CRAN mirror:
 choose one geographically near you.
 In **RStudio**, you can also push the "Update" button on the "Packages" tab to accomplish this.
 
-The second command runs a script on my website.
-It will install some needed packages if these are not already installed on your system.
+The second command runs a script which will install some packages needed to run code from the notes. It is probably helpful to install these.
 
 -------------------------------
 
@@ -103,13 +99,13 @@ This will install the "Command Line Tools" that are needed to compile native C c
 
 Open a session in **RStudio** and run the following:
 ```
-> source("https://kingaa.github.io/scripts/pompTest.R")
+> source("https://ionides.github.io/531w20/pomp_prep/pompTest.R")
 ```
 This will check whether you can work with **pomp**.
 
 If it fails, try the following:
 ```
-> source("https://kingaa.github.io/scripts/hello.R",echo=TRUE)
+> source("https://ionides.github.io/531w10/pomp_prep/hello.R",echo=TRUE)
 ```
 If this fails to give the "Hello!" message, you will need to follow the instructions below that correspond to your OS before re-trying the `pompTest.R` script.
 
@@ -133,7 +129,7 @@ If, while trying to install from source, you receive the error,
 make: gfortran-4.8: No such file or directory
 ```
 or one that otherwise refers to `gfortran`, then it is likely that you do not have the necessary version of **gfortran** installed.
-Have a look at [these instructions](https://kingaa.github.io/mac-fortran.html) and contact me at the address above if these don’t work for you.
+Have a look at [these instructions](https://kingaa.github.io/mac-fortran.html) and email me if these don’t work for you.
 
 Some users have reported receiving an error complaining that 
 ```
@@ -155,7 +151,6 @@ Revisit the [instructions above](#windows-users).
 
 ## Acknowledgments
 
-This material is shamelessly derived from [Aaron King's instructions for setting up an R environment for pomp](https://kingaa.github.io/sbied/prep/preparation.html). The main difference is that we will work on solving problems arising by ourselves before appealing to Aaron.
+This material leans heavily on Aaron King's instructions for [setting up an R environment for pomp](https://kingaa.github.io/sbied/prep/preparation.html). 
 
- 
 ------------------------------
