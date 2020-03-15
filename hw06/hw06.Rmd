@@ -16,14 +16,7 @@ output:
 --------
 
 
-<big><big><big>Objectives</big></big></big>
-
-To gain practical experience working with POMP models, we start with installing the **pomp** package and proceed to two introductory exercises.
-
-
-------
-
-## Installing the **pomp** package
+### Installing the **pomp** package
 
 
 * Computation time is an unavoidable consideration when working with simulation-based inference, for all but small datasets and simple models. 
@@ -44,16 +37,19 @@ In addition, **pomp** takes advantage of some Fortran code and therefore require
 -----------------
 
 
-## Homework problems
+### Homework questions
 
-Please submit to Canvas an Rmd file addressing the following questions. Your Rmd file can read in the *Parus major* data from the internet, e.g., by
+Please submit your solutions to Canvas as an Rmarkdown (.Rmd) file which the GSIs will compile into an HTML document. Your Rmd file can read in the *Parus major* data from the internet, e.g., by
 ```
 dat <- read.csv("https://ionides.github.io/531w20/10/parus.csv")
 ```
 
+Note: you will be using **pomp** version 2.x. There are some [differences from pomp 1.x](https://kingaa.github.io/pomp/vignettes/upgrade_guide.html) that may require attention if and when you look on the internet for pomp code.
+
+
 ------------
 
-### Question 6.1. Reformulating the Ricker model.
+**<big>Question 6.1</big>. Reformulating the Ricker model.**
 
 The Ricker equation can be reparameterized so that the scaling of $P_n$ is explicit:
 \[
@@ -69,7 +65,7 @@ Try simulating from a few choices of the parameters, and present one simulation 
 
 ----------
 
-### Question 6.2. Coding a new model.
+**<big>Question 6.2</big>. Coding a new POMP model.**
 
 Construct a pomp object for the *Parus major* data modeled using the stochastic Beverton-Holt model,
 \[
@@ -83,22 +79,28 @@ Assume the same measurement model as we used for the Ricker model. Try simulatin
 
 ----------
 
-### Question 6.3. How long did this homework take?
+**<big>Question 6.3</big>. This feedback question is worth credit.**
+
+(a) Explain which parts of your responses above made use of a source, meaning anything or anyone you consulted (including classmates or office hours) to help you write or check your answers. All sources are permitted. To encourage responsible use of these sources while maintaining class integrity, we require a response to this question, even if this may occasionally just say that you worked out everything entirely by yourself. See the syllabus for additional information on grading.
+
+(b) How long did this homework take? Report on any technical difficulties that arose.
 
 * This homework is conceptually quite simple, but involves overcoming various technical hurdles. 
 The hurdles may be overcome quite quickly, or could turn into a longer battle.
 
 * To make progress on statistical inference for POMP models, we have to solve these underlying computational issues.
 
-* If you get stuck, ask for help from your peers and/or Joonha and/or me. Please report how much time this homework ends up taking, to help me monitor how many difficulties are encountered.
+* If you get stuck, ask for help from your peers and/or the GSIs and/or me. Please report how much time this homework ends up taking, to help me monitor how many difficulties are encountered.
 
 ---------------
+
+### Acknowledgements
+
+The questions derive from material in a short course on [Simulation-based Inference for Epidemiological Dynamics](http://kingaa.github.io/sbied/index.html)
 
 Licensed under the Creative Commons attribution-noncommercial license, http://creativecommons.org/licenses/by-nc/3.0/.
 Please share and remix noncommercially, mentioning its origin.  
 ![CC-BY_NC](cc-by-nc.png)
-
-Acknowledgments: The questions derive from material in [a short course](http://kingaa.github.io/sbied/index.html)
 
 
 ---------------

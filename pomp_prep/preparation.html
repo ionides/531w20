@@ -220,14 +220,14 @@ hr {
 </div>
 <div id="update-r-and-rstudio" class="section level3">
 <h3>Update <strong>R</strong> and <strong>RStudio</strong></h3>
-<p>The latest version is <strong>R</strong> 3.6.3, and it is helpful to use a current version, say 3.6.1 or later. If you need to update, go ahead and install version 3.6.3. Source code and binaries are available on CRAN (<a href="https://cran.r-project.org/" class="uri">https://cran.r-project.org/</a>). Install <em>the latest version</em> of <strong>RStudio</strong> from <a href="https://www.rstudio.com/products/rstudio/download/">rstudio.com</a>.</p>
+<p>The latest version is <strong>R</strong> 3.6.3, and it is helpful to use a recent version, say 3.6.1 or later. If you need to update, go ahead and install version 3.6.3. Source code and binaries are available on CRAN (<a href="https://cran.r-project.org/" class="uri">https://cran.r-project.org/</a>). Install <em>the latest version</em> of <strong>RStudio</strong> from <a href="https://www.rstudio.com/products/rstudio/download/">rstudio.com</a>.</p>
 </div>
 <div id="install-needed-packages" class="section level3">
 <h3>Install needed packages</h3>
 <p>Open a session in <strong>RStudio</strong> and run the following:</p>
 <pre><code>&gt; update.packages()
 &gt; source(&quot;https://ionides.github.io/531w20/pomp_prep/packages.R&quot;)</code></pre>
-<p><em>[The <code>&gt;</code> is the command prompt; it is not part of the command. Also, depending on your email client program, you may need to replace the quotation marks with plain keyboard double quotes.]</em></p>
+<p><em>[The <code>&gt;</code> is the command prompt; it is not part of the command. Also, depending on your software configuration, you may need to replace the quotation marks with plain keyboard double quotes if you copy-paste the code.]</em></p>
 <p>The first command updates your installed packages. You may be prompted to specify a CRAN mirror: choose one geographically near you. In <strong>RStudio</strong>, you can also push the “Update” button on the “Packages” tab to accomplish this.</p>
 <p>The second command runs a script which will install some packages needed to run code from the notes. It is probably helpful to install these.</p>
 <hr />
@@ -256,7 +256,7 @@ hr {
 <pre><code>&gt; source(&quot;https://ionides.github.io/531w20/pomp_prep/pompTest.R&quot;)</code></pre>
 <p>This will check whether you can work with <strong>pomp</strong>.</p>
 <p>If it fails, try the following:</p>
-<pre><code>&gt; source(&quot;https://ionides.github.io/531w10/pomp_prep/hello.R&quot;,echo=TRUE)</code></pre>
+<pre><code>&gt; source(&quot;https://ionides.github.io/531w20/pomp_prep/hello.R&quot;,echo=TRUE)</code></pre>
 <p>If this fails to give the “Hello!” message, you will need to follow the instructions below that correspond to your OS before re-trying the <code>pompTest.R</code> script.</p>
 </div>
 <div id="linux-and-unix" class="section level3">
@@ -284,8 +284,8 @@ install_github(&quot;kingaa/pomp&quot;)</code></pre>
 <hr />
 </div>
 </div>
-<div id="acknowledgments" class="section level2">
-<h2>Acknowledgments</h2>
+<div id="acknowledgment" class="section level2">
+<h2>Acknowledgment</h2>
 <p>This material leans heavily on Aaron King’s instructions for <a href="https://kingaa.github.io/sbied/prep/preparation.html">setting up an R environment for pomp</a>.</p>
 <hr />
 </div>

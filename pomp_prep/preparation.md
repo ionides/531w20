@@ -38,7 +38,7 @@ In **R**, you can run `Sys.info()` to get a printout of the operating system and
 
 ### Update **R** and **RStudio**
 
-The latest version is **R** 3.6.3, and it is helpful to use a current version, say 3.6.1 or later.
+The latest version is **R** 3.6.3, and it is helpful to use a recent version, say 3.6.1 or later.
 If you need to update, go ahead and install version 3.6.3.
 Source code and binaries are available on CRAN (https://cran.r-project.org/).
 Install *the latest version* of **RStudio** from [rstudio.com](https://www.rstudio.com/products/rstudio/download/).
@@ -53,7 +53,7 @@ Open a session in **RStudio** and run the following:
 ```
 
 *[The `>` is the command prompt; it is not part of the command.
-Also, depending on your email client program, you may need to replace the quotation marks with plain keyboard double quotes.]*
+Also, depending on your software configuration, you may need to replace the quotation marks with plain keyboard double quotes if you copy-paste the code.]*
 
 The first command updates your installed packages.
 You may be prompted to specify a CRAN mirror:
@@ -105,7 +105,7 @@ This will check whether you can work with **pomp**.
 
 If it fails, try the following:
 ```
-> source("https://ionides.github.io/531w10/pomp_prep/hello.R",echo=TRUE)
+> source("https://ionides.github.io/531w20/pomp_prep/hello.R",echo=TRUE)
 ```
 If this fails to give the "Hello!" message, you will need to follow the instructions below that correspond to your OS before re-trying the `pompTest.R` script.
 
@@ -149,7 +149,7 @@ Revisit the [instructions above](#windows-users).
 
 ---------------------------
 
-## Acknowledgments
+## Acknowledgment
 
 This material leans heavily on Aaron King's instructions for [setting up an R environment for pomp](https://kingaa.github.io/sbied/prep/preparation.html). 
 
