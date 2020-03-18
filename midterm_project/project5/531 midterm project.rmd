@@ -1,0 +1,351 @@
+---
+title: "midterm project 531"
+date: "3/6/2020"
+output: 
+  html_document:
+    toc: yes
+    theme: flatly
+
+---
+# Introduction
+
+Consumer sentiment is a statistical measurement and economic indicator of the overall health of the economy as determined by consumer opinion. Consumer sentiment takes into account an individual's feelings toward his or her current financial health, the health of the economy in the short-term and the prospects for longer-term economic growth.[1]
+
+
+Consumer sentiment will change over time.If people are confident about the future they are likely to shop more, boosting the economy. In contrast, when consumers are uncertain about what lies ahead, they tend to save money and make fewer discretionary purchases. Gloomy sentiment weakens demand for goods and services, impacting corporate investment, the stock market, and employment opportunities, among other things.If people are confident about the future they are likely to shop more, boosting the economy. In contrast, when consumers are uncertain about what lies ahead, they tend to save money and make fewer discretionary purchases. Gloomy sentiment weakens demand for goods and services, impacting corporate investment, the stock market, and employment opportunities, among other things. [1]
+
+In this project, we will analyze the monthly consumer sentiment over the past twenty-five years. Our goals are as follows:
+
+1) despite consumer sentiment will change over time, however, we want to explore whether or not the consumer sentiment tends to move towards the mean value consumer sentiment in the midst of the fluctuations. we will also use spectrum to check the period and cycle of consumer sentiment.finally we will use model to predict future cosumer sentiment.
+
+2) we will use various methods and models learnd in stats 531 and explore the fluctuations.
+
+---
+
+# Exploratory Data Analysis
+
+The data used for this project is the consumer sentiment for the past 68 years from https://fred.stlouisfed.org/series/UMCSENT [2]. The consumer sentiment for the first of each month is recorded and used for the data, from 1952 to 2020
+
+First, we will read in the data. There are 2 variable of 807 observations each. the variable "DATE" give us the date recording the consumer sentiment, the variable "UMCSENT" give us the consumer sentiment，however, we just need the last 25 years data, since there are some missing data in the longer time, besides, this data has less meaning for us. so there are only 301 data we need to analysis. 
+
+```{r chunk_without_code, echo=FALSE}
+dat <- read.table(file="UMCSENT.csv",sep=",",header=TRUE)
+dat <- dat[507:807, ]
+dat$UMCSENT <- as.character(dat$UMCSENT)
+dat$UMCSENT <- as.numeric(dat$UMCSENT)
+dat
+summary(dat$UMCSENT)
+```
+let's look the format of the date. The first column is the date, and the second column is consumer sentiment on that day. 
+from the summary data, we see the mean data is 88.64, max data is 112, min data is 55.30.
+
+
+then, we can plot the data to observe the trend. The red line is the mean value of the consumer sentiment 
+
+```{r echo=FALSE}
+dat$DATE <- as.Date(dat$DATE)
+plot(UMCSENT~DATE,data=dat,type="l",xlab="Year", ylab="consumer sentiment",main="Monthly consumer sentiment")
+abline(h=mean(dat$UMCSENT),col="RED")
+```
+
+From the plot, we can see consumer sentiment fluctuates around the mean overall, around the year 2000, consumer sentiment reached the max value, aound 2010 , consumer sentiment is in the lowest. No matter at the biggest and lowest, they all return to the mean value gradually. 
+from the plot, we can't see obvious seasonality property of consumer sentiment.
+
+---
+
+# Data Smoothing
+
+In this section, we will use Loess smoothing to take a look at the general trend of the consumer sentiment. 
+
+```{r echo=FALSE}
+mdat <- t(as.matrix(dat[2]))
+dim(mdat) <- NULL
+date <- seq(from=1995+1/12,length=length(mdat),by=1/12)
+loess1 <- loess(mdat~date,span=0.5)
+plot(date,mdat,type="l",col="red", xlab="Year",ylab="consumer sentiment",main=" Trend of monthly consumer sentiment")
+lines(loess1$x,loess1$fitted,type="l")
+abline(h=mean(mdat),col="blue")
+```
+
+from the smoothing plot, we can find at frist the trend is increasing, and around 2010, the consumer sentiment is lowest.
+around 2000, the consumer sentiment is highest, but they all trend to the mean value
+
+We now look at the dataset in terms of the low frequency component, which acts as the trend, the high frequency component, which acts as noise, and the cycles component. I decomposite the time series by different frequency
+
+```{r echo=FALSE}
+dlow <- ts(loess(mdat~date,span=0.5)$fitted,start=1995+1/12,frequency=12)
+dhi <- ts(mdat - loess(mdat~date,span=0.1)$fitted,start=1995+1/12,frequency=12)
+dcycles <- mdat - dhi - dlow
+plot(ts.union(mdat, dlow, dhi, dcycles), main="Decomposition of consumer sentiment as trend + noise + cycles")
+```
+
+The first plot is just the time plot of our dataset. 
+The second plot show the trend of data. 
+in the third graph which shows us the low frequency, it looks like white noise.
+the last graph shows the period/cycle of the consumer sentiment[3]
+
+---
+
+# Fitting an ARMA(p,q) model
+
+from the analysis of the data, we can found although data is fluctuate, but it trend to reach the mean value of the consumer sentiment, it looks like staionary. and from the specturm and plot, we can't found obvious period property of the data, 
+so we first try to use arma model to analysis the data. Because there are some unstationay aound 2010, so later on we will use other model to better analysis the data.
+
+An ARMA(p,q) equation is written as[3]
+
+$$\phi(B)(Y_n-\mu)=\psi(B)\epsilon_n$$ 
+
+then we will use ACF to choose the best value of p and q.  The AIC of a model is :
+
+$$AIC=-2 \times \ell(\theta^*) + 2D$$
+where $\ell(\theta^**)$ is the log likelihood function $\mathscr{L}=f_{Y_{1:N}}(y^*_{1:N};\theta)$ and $D$ is the number of parameters. The second term $2D$ serves as a penalty for models with more parameters, in order to deal with the problem of overfitting. [3]
+
+
+We will construct a table that displays the AIC values for the different ARMA(p,q) models
+
+
+```{r echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR", 0:P, "<b>", sep=" "), paste("MA", 0:Q, sep=" "))
+  table
+}
+umcs <- dat$UMCSENT
+date1 <- dat$DATE
+umcs_aic_table <- aic_table(umcs,6,6)
+require(knitr)
+kable(umcs_aic_table,digits=2)
+```
+from the aic, we can see ARMA(4,3) has lowest value of aic 1657.84, and and ARMA(3,5) has second lowest value 1658.43
+so arma(4,3) is simpler than model ARMA(3,5), it only have 7 parameters. 
+
+then we use ARMA(4,3) to fit data and analysis.
+
+```{r echo=FALSE}
+arma43 <- arima(umcs, order=c(4,0,3))
+arma43
+```
+
+The equation is written as[3]
+$$ (X_n-\mu)-\phi_1(X_{n-1}-\mu)-\phi_2(X_{n-2}-\mu)-\phi_3(X_{n-3}-\mu)-\phi_4(X_{n-4}-\mu)=\epsilon_n+\theta_1\epsilon_{n-1}+\theta_2\epsilon_{n-2}+\theta_3\epsilon_{n-3} $$
+we see that the mean $\mu=90.6628$, $\phi_1=0.0424$, $\phi_2=0.7544$, $\phi_3=0.6174$, $\theta_1=0.8538$, $\theta_2=-0.0766$, and $\theta_3=-0.6951$. the estimated variance for the error is 13.28.
+
+## check casuality/invertibility of model
+we can check the causality and invertibility of our model, to check wheter is suitable to use arma(4,3) model to fit the data.
+
+In order for the model to be causal, we will need to check the roots of the AR polynomial $1-\phi_1z-\phi_2z^2-\phi_3z^3-\phi_4z^4$. to check whether the roots are outside the circle, if the roots are outside, we can prove the moodel is cansual
+
+```{r}
+abs(polyroot(c(1,0.0424,0.7544,0.6174,-0.4483)))
+```
+we can see some roots are not ouside, so the model is not causal
+
+In order for the model to be invertibility, we will need to check the roots of the MA polynomial $1+\theta_1z+\theta_2z^2+\theta_3z^3$. to check whether the roots are outside the circle, if the roots are outside, we can prove the moodel is cansual
+```{r}
+abs(polyroot(c(1,0.8538,-0.0766,-0.6951)))
+```
+we can see some roots are not ouside, so the model is not vertible.
+so there are some problem of the arma(4,3) model, it is not reliable to use this model to predict the data.
+
+## Diagnostics
+We will now do diagnostics for the assumptions to see if the ARMA model is appropriate.
+first we can check whether the residuals are white noise
+```{r echo=FALSE}
+plot(arma43$residuals, ylab="residuals", main="Residuals of ARMA(4,3) model")
+```
+
+so the residuals's mean value is around 0, and the variance is constant. so the model seems like statisfiy the white noise requirement.
+
+then we can check ACF to verity whether the residuals are iid
+```{r echo=FALSE}
+acf(arma43$resid,main="ACF of residuals")
+```
+we can see there is no autocorrelation between different residuals. so it satisfy our expectation.
+
+then we can assume the residual follow the normal distribution with mean value 0, variance 13.28. we can use qqplot to verify.
+
+```{r echo=FALSE}
+qqnorm(arma43$residuals)
+qqline(arma43$residuals)
+```
+
+we can found that most of the residuals are on the qqline, it seems like satisfied the normal distribution.
+
+# Spectrum Analysis
+In this section, we will use spectrum analysis to find the period of the cycles component
+```{r echo=FALSE}
+unsmoothed <- spectrum(dat$UMCSENT, main="Unsmoothed Periodogram")
+```
+at the frequency 0, it has the highest spectrum. so we can't find obvious cycle now.
+
+then we use smoothed periodgram to check whether there is cycle.
+
+```{r echo=FALSE}
+smoothed <- spectrum(dat$UMCSENT, spans=c(2,2), main="Smoothed Periodogram")
+```
+```{r}
+smoothed$freq[which.max(smoothed$spec)]
+```
+
+
+so the cycle is 0.003125 per month, about 320 months per cycle, 26 years per cycle. but we only choose 25 years, so it seems that there are obvious cycle of consumer sentiment,but we will use SARIMA model to fit the data and obserse wthether can get improvements
+
+---
+# Fitting an ARIMA(p,1,q) model
+from the analysis of arma(4,3), we found the data is not stationary encough and arma model is not causal and invertible, so we use arima model to fit and analysis data[3]
+
+[3]We can try to use the difference operator and use an ARMA model for the difference of adjacent data values. So, instead of the original time series $x_{1:N}$, we use $z_{2:N}$, where $z_n=\delta x=x_n-x_{n-1}. The model is called an ARIMA(p,1,q) model, and is represented by the equation
+$$ \phi(B)((1-B)X_n-\mu)=\psi(B)\epsilon_n $$
+
+
+The variables and equations that also appear in the ARMA(p,q) model are still the same in this model, and $B$ is the backward operator, $BX_n=X_{n-1}$.
+To get a feeling of the new dataset $z_{1:N}$, we will look at the time plot and the autocorrelation.
+```{r echo=FALSE}
+m <- diff(dat$UMCSENT)
+plot(m, type="l", xlab="Time")
+acf(m)
+```
+it seems more stationary than the original data. based on the data, using arma model will be more suitable
+from ACF, there is no lag between different residuals, so it also satisfied the of white noise.
+
+## Choosing a model using AIC
+we also use aic to pick q and p.
+```{r echo=FALSE}
+aic_table2 <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] <- arima(data,order=c(p,1,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR", 0:P, "<b>", sep=" "), paste("MA", 0:Q, sep=" "))
+  table
+}
+umcs_aic_table1 <- aic_table2(umcs,4,4)
+kable(umcs_aic_table1,digits=2)
+```
+
+from the aic, we can see ARIMA(4,1,4) has lowest value of aic 1649.21, and and ARIMA(2,1,2) has second lowest value 1652.52
+although ARIMA(4,1,4) has loweer value, but it has too much parameters, so we choose to use ARIMA(2,1,2) to fit the data.
+
+then we use ARIMA(2,1,2) to fit data and analysis.
+```{r echo=FALSE}
+arma212 <- arima(umcs, order=c(2,1,2))
+arma212
+```
+The general ARIMA(p,1,q) model is in the form $$ \phi(B)((1-B)X_n-\mu)=\psi(B)\epsilon_n $$. When $p=2$ and $q=2$, the equation for our model is thus[3]
+$$ (X_n-X_{n-1}-\mu)-\phi_1(X_{n-1}-X_{n-2}-\mu)-\phi_2(X_{n-2}-X_{n-3}-\mu)=\epsilon_n+\theta_1\epsilon_{n-1}+\theta_2\epsilon_{n-2}$$
+
+The output of the ARIMA(2,1,2) model for the dataset gives values of $\phi_1=1.3825$, $\phi_2=-0.6860$, $\theta_1=-1.5256$, $\theta_2=0.7413$, $\mu=0$, and $\sigma^2=13.96$.
+
+## Diagnostics
+We will now do diagnostics for the assumptions to see if the ARIMA model is appropriate.
+first we can check whether the residuals are white noise
+```{r echo=FALSE}
+plot(arma212$residuals, ylab="residuals", main="Residuals of ARIMA(2,1,2) model")
+acf(arma212$residuals, main="ACF of Residuals")
+```
+so the residuals's mean value is around 0, and the variance is constant. so the model seems like statisfiy the white noise requirement.
+
+we can see there is no autocorrelation between different residuals. so it satisfy our expectation.
+
+then we can assume the residual follow the normal distribution with mean value 0, variance 13.96. we can use qqplot to verify.
+
+```{r echo=FALSE}
+qqnorm(arma212$residuals)
+qqline(arma212$residuals)
+```
+we can found that most of the residuals are on the qqline, it seems like satisfied the normal distribution.
+
+---
+
+# Fitting an SARIMA model
+According to notes06, SARIMA$(0,1,1)\times(0,1,1)_{12}$ model is always used in monthly economic data. we can use this model to predict our data.[3]
+
+```{r echo=FALSE}
+sarima = arima(dat$UMCSENT, order=c(0,1,1), seasonal=list(order=c(0,1,1),period=12))
+sarima
+```
+
+## Diagnostics
+We will now do diagnostics for the assumptions to see if the SARIMA model is appropriate.
+first we can check whether the residuals are white noise
+```{r echo=FALSE}
+plot(sarima$residuals, ylab="residuals", main="Residuals of sarima model")
+acf(sarima$residuals, main="ACF of Residuals")
+```
+
+so the residuals's mean value is around 0, and the variance is constant. so the model seems like statisfiy the white noise requirement.
+
+we can see there is no autocorrelation between different residuals. so it satisfy our expectation.
+
+then we can assume the residual follow the normal distribution with mean value 0, variance 14.88. we can use qqplot to verify.
+
+```{r echo=FALSE}
+qqnorm(sarima$residuals)
+qqline(sarima$residuals)
+```
+we can found that most of the residuals are on the qqline, it seems like satisfied the normal distribution.
+
+---
+
+# Forecasting future exchange rate using both models
+We will now use our ARMA(4,3) and ARIMA(2,1,2) and ARIMA models to predict the consumer sentiment in the near future.[4]
+```{r echo=FALSE}
+library(forecast)
+forecast1 <- forecast(arma43, h=40)
+forecast2 <- forecast(arma212, h=40)
+forecast3 <- forecast(sarima, h=40)
+plot(forecast1, xlab="Time", ylab="UMCS")
+plot(forecast2, xlab="Time", ylab="UMCS")
+plot(forecast3, xlab="Time", ylab="UMCS")
+```
+
+We see AIRMA(2,1,2) and arima(0,1,1)(0,1,1) model that the predicted consumer sentiment in the future trend toward to the mean value also there are some fluctuations. but we use arma(4,3) to predict the future consumer sentiment, there's a lot of volatility and it's very different from the mean value of the past consumer sentiment.
+so we will use arima(2,1,2) and arima(0,1,1)(0,1,1) to predict the data.
+
+# Conclusion
+Through this project, we analysis the past 25 years monthly consumer sentiment and try to find a suitable model to predict and analysis the data. 
+
+Through dataplot, we found that the even though consumer sentiment will fluctuate over time. but no matter data become high or low, they finally toward to the mean value of the data. and through prediction analysis, we try to use model to find mean value of the consumer sentiment in the future.
+
+
+we also use spectrum analysis to find the period of the cycle, however, no matter on the plot or the specturm plot, there in no obvious cycle on the consumer sentiment, we found the period is about 25 years, but we only use 25 years data. so maybe our data set is not big encough. If we expand the data set, maybe we could find a period of consumer sentiment.
+
+
+we first use arma(4,3) to fit the data, even though it satisfied the white noise, but it is not stable encough and not causal and invertibal, so we try to find arima(0,1,1) and sarima(0,1,1)(0,1,1) to fit the data, later model is recommend in course to analysis the financial montly data, through the transformation of data, the data become more stable and can predict the data better, which gave us the prediction of the mean value of the consumer sentiment, even though there are some fluctuation due to some factors outside.
+
+
+## Exploration
+we can't found obvious cycle of the consumer sentiment in this project, maybe the data set is too small, so we could explore more data to find the period of the consumer sentiment using sepctrum analysis.
+
+we can also to analysis the volatility of the consumer sentiment, because it can help enterprise carries on the market forecast and the production better, promotes the economic development
+
+---
+# Reference
+[1] https://www.investopedia.com/terms/c/consumer-sentiment.asp
+[2] https://fred.stlouisfed.org/series/UMCSENT 
+[3] https://ionides.github.io/531w18/midterm_project/ as reference
+[4] https://www.datascience.com/blog/introduction-to-forecasting-with-arima-in-r-learn-data-science-tutorials
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
