@@ -1,0 +1,217 @@
+---
+title: "A Study on US Bond Yield Spread and Unemployment Rate"
+output: 
+  html_document:
+    theme: flatly
+    toc: true
+---
+
+# 1 Introduction
+
+The yield spread of U.S. government bond is the difference in the yield between two treasury bonds issued by the Federal Government. It is widely used as an indicator of economic recession or recovery. Typically, a negative yield spread has been viewed as a predictor of a recessionary period. For historical reference, the negative yield spread in late 2006 signaled the Great Ression in 2008. The last time the spread went negative was late 2019, which has brought much concern that market will go bearish in 2020. On the other hand, unemployment rate is also a reliable predictor of economic recession and can reflect the maturing point of a business cycle.
+
+In this report, we will investigate the cyclical pattern in 10 year-3 month treasury yield spread and unemployment rate, and furthermore model their relationship through time series models. Our goal is to justify whether the two indicators both have potential in predicting the turning point of business cycle.
+
+# 2 Time Domain Analysis
+
+## 2.1 Time Series Plot
+
+The 10 year-3 month treasury yield spread data is collected by Federal Reserve Bank of St. Louis. The unit is percent and no seasonality adjustment is applied. Monthly average is taken to reduce data length. The unemployment data is collected by U.S. Bureau of Labor Statistics. The frequancy and unit are the same as yield spread data. The time window is from Jan. 1982 to Jan. 2020.
+
+```{r, echo=FALSE}
+dat = read.csv('fredgraph.csv',header=TRUE)
+```
+
+The time series plot clearly reveals some cyclical behavior of the yield spread and the unemployment rate. Moreover, they seem to track each other over the past 30 years with period of around 7 to 11 years. This is also called "Juglar cycle" in fixed investment field. It has come to our attention that the yield spread curve also exhibit some smaller cycles. The unemployment rate demonstrates a declining trend, while there is no visible trend in yield spread. 
+
+```{r, echo=FALSE, warning=FALSE, fig.align='center', fig.width=6}
+dat$DATE = as.Date(dat$DATE)
+dat$T10Y3M = as.numeric(as.character(dat$T10Y3M))
+dat$UNRATE = as.numeric(as.character(dat$UNRATE))
+dat = na.omit(dat)
+plot(dat$DATE, dat$UNRATE, type='l', xlab='Date', ylab='Percent', ylim=c(-1,12))
+lines(dat$DATE, dat$T10Y3M, type='l', col='blue')
+lines(x=dat$DATE, y=rep(0,length(dat$DATE)),col='red',lty=2)
+legend('top', legend=c('Unemployment rate','Yield spread (10Y-3M)'), col=c('black','blue'), lty=1, cex=0.8)
+```
+
+## 2.2 Extracting Business Cycles
+
+To better investigate the association between the yield spread and unemployment rate, we further analyze the two time series with Local linear regression (Loess) approach. Since business cycles typically have mid-range frequency, we decompose them into tree different components: trend, noise and cycles. Both yield spread and unemployment rate show a declining trend after 2010.
+
+Here we only extract large business cycles, so there is still small cycles remaining in the noise part, especially for the yield spread curve. The cyclical pattern in the two curves match well in the 1990 to 2010 time window, and shows some deviation both at the beginning and end of the selected time window. Generally, the extracted business cycles almost have same period. 
+
+```{r, echo=TRUE, fig.align='center', fig.width=10}
+date = seq(from=1982,length=length(dat$DATE),by=1/12)
+
+par(mfrow=c(1,2))
+bond_trend = ts(loess(dat$T10Y3M~date,span=0.8)$fitted,start=1982,frequency=12)
+bond_noise = ts(dat$T10Y3M - loess(dat$T10Y3M~date,span=0.2)$fitted,start=1982,frequency=12)
+bond_cycles = dat$T10Y3M - bond_trend - bond_noise
+u1 = ts.union(dat$T10Y3M,bond_trend,bond_noise,bond_cycles)
+colnames(u1) = c('Raw','Trend','Noise','Cycles')
+
+unrate_trend = ts(loess(dat$UNRATE~date,span=0.8)$fitted,start=1982,frequency=12)
+unrate_noise = ts(dat$UNRATE - loess(dat$UNRATE~date,span=0.2)$fitted,start=1982,frequency=12)
+unrate_cycles = dat$UNRATE - unrate_trend - unrate_noise
+u2 = ts.union(dat$UNRATE,unrate_trend,unrate_noise,unrate_cycles)
+colnames(u2) = c('Raw','Trend','Noise','Cycles')
+
+plot(ts.union(u1,u2),main='Decomposition of yield spread (left) and unemployment rate (right)')
+```
+
+```{r, echo=FALSE, fig.align='center', fig.width=6}
+plot(unrate_cycles, type='l', xlab='Date', ylab='Percent', ylim=c(-2,3))
+lines(bond_cycles, type='l', col='blue')
+legend('top', legend=c('Unemployment rate cycles','Yield spread cycles'), col=c('black','blue'), lty=1, cex=0.8)
+```
+
+## 2.3 Time Series Models
+
+We fit a linear regression with ARMA errors model below to study the relationship between the yield spread and unemployment rate. 
+
+$$Y_n = \alpha + \beta U_n + \epsilon_n $$
+where $Y_n$ and $U_n$ denote the business cycles series of the yield spread and unemployment rate, respectively, and $\epsilon_n$ is a Gaussian ARMA$(p,q)$ model.
+
+We construct the AIC table below to select the optimal $(p,q)$ pair. The top three candidates with smallest AIC value are ARMA$(5,3)$, ARMA$(4,2)$ and ARMA$(5,5)$. We pick the smallest model ARMA$(4,2)$ to do further analysis.
+
+```{r, echo=FALSE}
+library(knitr)
+
+aic_table <- function(data1, P, Q, data2){
+  table <- matrix(NA, (P+1), (Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+       table[p+1, q+1] <- arima(data1,order=c(p,0,q),xreg=data2,optim.control=list(maxit=500))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR", 0:P, "</b>", sep = ""), paste("MA", 0:Q, sep = ""))
+  table
+}
+arma_err_aic <- aic_table(bond_cycles, 5, 5, unrate_cycles)
+kable(arma_err_aic, digits = 2)
+```
+
+We set up a likelihood ratio test to test the significance of the coefficient. The null hypothesis is 
+$$H^{\langle 0 \rangle}: \beta = 0$$ 
+and the alternative hypothesis is 
+$$H^{\langle 1 \rangle}: \beta \neq 0$$. 
+Under the null hypothesis, we have $\ell^{\langle1\rangle} - \ell^{\langle0\rangle} \approx1/2 \chi_d^2$ where $d=1$ for our case. Because the log-likelihood ratio is much larger than the cutoff value at 0.95 significance level, we can reject the null hypothesis.
+
+
+```{r, echo=TRUE}
+log_lik_ratio = as.numeric(
+   logLik(arima(bond_cycles,order=c(4,0,2),xreg=unrate_cycles,optim.control=list(maxit=500))) -
+   logLik(arima(bond_cycles,order=c(4,0,2),optim.control=list(maxit=500)))
+)
+log_lik_ratio
+qchisq(0.95,df=1)/2
+```
+
+## 2.4 Diagnostic Analysis
+
+
+We generate ACF plot of residuals to do model diagnosis. The ACF plot of ARIMA$(4,0,2)$ model residuals has non-negligible value at lag = 13 and 14, so we add seasonal part to the model based on the fact that SARIMA$(0,1,1) \times (0,1,1)_{12}$ model is often used for monthly time series in economics. 
+
+```{r, echo=TRUE, warning=FALSE, fig.align='center', fig.width=6}
+arma_model = arima(bond_cycles,order=c(4,0,2),xreg=unrate_cycles,
+                   optim.control=list(maxit=500))
+sarma_model = arima(bond_cycles,order=c(4,0,2),xreg=unrate_cycles,
+                   seasonal=list(order=c(0,1,1), period=12),
+                   optim.control=list(maxit=500))
+
+a1 = acf(arma_model$residuals,lag.max=24,plot=FALSE)
+a1$lag = a1$lag*12
+plot(a1,main='ACF of ARIMA(4,0,2) residuals')
+```
+
+The ACF plot of SARIMA$(4,0,2) \times(0,1,1)_{12}$ seems to improve a little bit at lag = 13, but not much. Generally, there is no prominent seasonal component now.
+
+```{r, echo=FALSE, fig.align='center', fig.width=6}
+a2 = acf(sarma_model$residuals,lag.max=24,plot=FALSE)
+a2$lag = a2$lag*12
+plot(a2,main='ACF of SARIMA(4,0,2)x(0,1,1)_12 residuals')
+```
+
+```{r, echo=TRUE, warning=FALSE}
+sarma_model
+```
+
+Based on the analysis till now, we can obtain the following model:
+
+$$Y_n = 0.9477 U_n + \epsilon_n $$
+where 
+$$(1-3.5868B+4.8528B^2-2.9425B^3+0.6767B^4)(1-B^{12}) \epsilon_n = (1+0.2024B-0.6635B^2)(1-0.9804B^{12}) \omega_n$$ 
+and $\omega_n \sim N[0, 1.251E{-6}]$.
+
+The residual plot demonstrates some heteroskedasticiy. The normal Q-Q plot tells us that the distribution of residuals have heavier tails than normal.
+
+```{r, echo=FALSE, fig.align='center', fig.width=6}
+plot(sarma_model$resid,ylab='residuals',type='l')
+```
+```{r, echo=FALSE, fig.align='center', fig.width=6}
+qqnorm(sarma_model$resid)
+qqline(sarma_model$resid)
+```
+
+To complete the study, we also fit an ordinary least square (OLS) model below and perform diagnosis on the residuals. Compared to time series model, the residuals of ordinary least square model still have some cyclical pattern. Clearly, OLS model fails to capture the relationship between historical and current data.
+
+```{r, echo=FALSE, fig.align='center',fig.width=10}
+lm_model = lm(bond_cycles~unrate_cycles)
+par(mfrow=c(1,2))
+plot(lm_model$resid,type='l',ylab='residuals')
+acf(lm_model$resid,main='ACF of OLS model residuals')
+```
+
+
+# 3. Frequency Domain analysis
+
+Finally, we do spectrum analysis on the yield spread and unemployment rate. The most prominent frequency component is 0.125 and 0.1 cycles per year, which corresponding to a period of 8 and 10 years, respectively. 
+
+```{r, echo=TRUE, fig.align='center', fig.width=6}
+s = spectrum(ts.union(bond_cycles,unrate_cycles),span=c(3,5,3),main='Smoothed Periodogram')
+legend('top', legend=c('Yield spread (10Y-3M)','Unemployment rate'), col=c('black','red'), lty=c(1,2), cex=0.8)
+```
+
+
+```{r, echo=TRUE}
+s$freq[which.max(s$spec[,1])]
+s$freq[which.max(s$spec[,2])]
+```
+
+# 4. Conclusion
+In this report, we have investigated the relationship between the 10-year minus 3-month bond yield spread and unemployment rate. Since we mainly concern about the large business cycles, we first decompose the time series into three parts: trend, noise and cycle, and use ARMA errors model to quantitatively explain the relationship between the two cyclical curves.
+
+We can draw the following conclusions:
+
+* In the selected time window, their relationship is statistically significant and can be modeled with SARIMA$(4,0,2) \times (0,1,1)_{12}$ model. 
+
+* The period of business cycles is around 8 years for the yield spread and 10 years for the unemployment rate, which is reasonable in economic sense. Both curves indicate that the current business cycle is nearly maturing and the turning point is about to come.
+
+* The diagnostic plots suggest that the residuals do not agree with the model assumption well, and further improvement on the model is needed. For instance, the unemployment rate alone may not be sufficient in the regression model. We may consider to include other economic indicators.
+
+# 5. Reference
+
+[1] Data source: https://fred.stlouisfed.org/series/UNRATE#0
+
+[2] Bonds Through the Cycle: https://seekingalpha.com/article/4125637-bonds-through-cycle 
+
+[3] Using the yield spread to forecast recessions and recoveries: https://journal.firsttuesday.us/using-the-yield-spread-to-forecast-recessions-and-recoveries/2933/ 
+
+[4] Business cycles: https://en.wikipedia.org/wiki/Business_cycle 
+
+[5] Edward L. Ionides, Stats 531 (Winter 2020) ‘Analysis of Time Series’ class notes: https://ionides.github.io/531w20/ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
