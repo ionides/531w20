@@ -163,7 +163,6 @@ Reading the textbook is not mandatory for the exam, but may be useful to get a b
 * You are welcome to browse previous [2016 midterm projects](http://ionides.github.io/531w16/midterm_project/) and  [2018 midterm projects](http://ionides.github.io/531w18/midterm_project/).
 
 
-<!--
 
 -------------
 
@@ -171,10 +170,12 @@ Reading the textbook is not mandatory for the exam, but may be useful to get a b
 
 * [Information](final_project/final_project_info.html)
 
-* You're welcome to browse previous final projects [available online](http://ionides.github.io/531w16/final_project/)
+* You're welcome to browse previous final projects  for [2016](http://ionides.github.io/531w16/final_project/) and  [2018](http://ionides.github.io/531w18/final_project/)
+
+
+<!--
 
 * [Projects](final_project/index.html)
-
 
 -->
 
