@@ -1,0 +1,236 @@
+---
+title: "STATS 531 Midterm Project: Seasonal sugar? A study of monthly sugar production in U.S. from 1972 to 2020"
+date: 2020/3/8
+output:
+  html_document:
+    toc: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1 Introduction of Candy Production Dataset
+  
+Candy production dateset is from $FRED^{[1]}$ economic research, which tracks the monthly production of outputs in United States from Jan.1972 to Jan.2020. The original dataset has two columns. One is date and the other is IP, known as Industrial Production showing as a percentage of 2012 production. As in winter hoildays, like Halloween and Christmas, the candy requirment increased a lot which leads to the sudden increase of sugar production. Difference of sugar requirment may lead to the seasonility of sugar production and this is the main concern of this anlysis.  
+
+# 2 Exploratory Data Analysis (EDA)  
+
+## 1 Basic Summary  
+
+Firstly, we have a look of the basic information of the candy production data. When we look at the head five lines of the data, we can clearly see the date column and the IP column in double format.From the summary of IP, the percentage values range from 50 to 140.  
+  
+```{r eda,echo=FALSE,warning=FALSE,message=FALSE}
+library(ggplot2)
+candy_production <- read.csv("IPG3113N.csv")
+head(candy_production,n=5L)
+summary(candy_production$IPG3113N)
+```
+  
+After changing the format of date and decomposing time into year,month and time of year and month, the new dataset has 5 columns which the analysis may focus on columns of IP and time.  
+
+```{r changetime,echo=FALSE,warning=FALSE,message=FALSE}
+candy_production$DATE <- strptime(candy_production$DATE,"%Y-%m-%d")
+candy_production$year <- as.numeric(format(candy_production$DATE,format = '%Y'))
+candy_production$month <- as.numeric(format(candy_production$DATE,format = '%m'))
+candy_production$time <- candy_production$year + candy_production$month/12
+head(candy_production,n=5L)
+```
+  
+From the plot of candy IP against time, there is a clear trend and seasoning in the plot, while the variance may not stationary along the time.  
+  
+```{r plotdata,echo=FALSE,warning=FALSE,message=FALSE}
+candy <- candy_production$IPG3113N
+time <- candy_production$time
+candy_loess <- loess(candy~time,span = 0.5)
+plot(candy~ time, type = 'l',main = 'Candy production against time')
+lines(candy_loess$x,candy_loess$fitted,type = 'l',col='red')
+```
+  
+## 2 Stationary and Seasonality  
+
+To have a close analysis of the data stationality and seasonality, ACF plot and spectrum plot are shown below. From ACF plot, almost all the acf value are above the dashed line indicating highly autocorrelation between lags showing unstationary and the it reaches the peak at lag 12 showing the dominant period of seasoning is 12 months. What'r more, the periodic wave in ACF plot indicates seasonality and AR model may be a good choice to fit.  
+
+In spectrum plot, the bandwidth value is small, so the plot is less smoother. As the red dashed line shows, it reached its peak at the frequency of about 0.083 and it is much higher than the local peaks at frequecies 0.16, 0.25 and so on. This proves the seasonality we found in ACF plot as a period of 12 monthes rather than 6 monthes or 4 monthes.  
+
+```{r stationary and seasonality,echo=FALSE,warning=FALSE,message=FALSE}
+par(mfrow=c(2,1))
+acf(candy)
+can_spe <- spectrum(candy,spans=c(3,5,3),main = 'Smoothed Periodogram')
+abline(v=can_spe$freq[which.max(can_spe$spec)],col='red',lty='dotted')
+```
+  
+## 3 Trend, Noise and Cycles  
+
+In last part of EDA, we decompose the original sugar industrial production into trend, noise and cycles parts. In the decomposition plot, low frequency refers to the trend is clear in the original candy production and high frequency refers to the noise is almost weak stationary with constant mean and variance and the middle frequency refers to the cycles.  
+
+```{r cycle,echo=FALSE,warning=FALSE,message=FALSE}
+candy_low <-ts(loess(candy~time,span=0.4)$fitted,start = 1972,frequency = 12)
+candy_high <-ts(candy-loess(candy~time,span=0.1)$fitted,start = 1972,frequency = 12)
+candy_cycles <- candy - candy_high - candy_low
+plot(ts.union(candy,candy_low,candy_high,candy_cycles),main='Decomposition of candy production as trend + noise +cycles')
+```
+  
+# 3 Fitting an ARMA model for annual analysis  
+
+After anaylse the basis information of candy production series, we would fit an ARMA model not considering seasoning and use the subset of production in August as they represents the middle level in each year.  
+
+```{r arma,echo=FALSE,warning=FALSE,message=FALSE}
+augpro <- subset(candy_production,month == 8)
+production <- augpro$IPG3113N
+year <- augpro$year
+plot(production~year,type = 'l',main='Candy production in August')
+```
+
+## 3.1 Choosing p,d,q for ARIMA model  
+
+Accoding to the aic table below, AR(2) has the lowest aic value as 324.2974, but AR(1) and ARMA(1,1) have similar aic value. As AR(2) model is quite simple withour MA parameters, it may not fit the long-term time series data like candy production. In that case, we would choose ARMA(1,1). Also when adding a parameter, some aic values increase more than 2, indicating the data is mathematically inconsistent.   
+
+When we fit ARMA(1,1) model to the August production data, the ar1 root is quite close to 1 which indicates ARIMA(0,1,1) model is a better choice and has lower aic value than ARMA(1,1).  
+
+```{r arma_aic,echo=FALSE,warning=FALSE,message=FALSE}
+aic_table <-function(data,P,Q){
+  table <-matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] <- arima(data,order =c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P,sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+aug_aic_table <-aic_table(production,4,5)
+aug_aic_table
+arima(production,order=c(1,0,1))
+arima(production,order=c(0,1,1))
+```
+
+## 3.2 ARIMA Model Selected  
+
+Therefore the ARIMA model selected is ARIMA(0,1,1):  
+$$
+X_n-X_{n-1}=\epsilon_n-0.2226\epsilon_{n-1}
+$$
+
+## 3.3 Diagonose Analysis  
+
+In this part, we would analyse the goodness of fit of the ARIMA(0,1,1) model we choose.  
+
+### 3.3.1 Residual Analysis  
+
+From the acf plot of residuals, we can see all the acf values are between the dashed lines, indicating there is not autocorrelation between lags. And from QQplot, we can see that the residuals fit normal distribution well with some heavy tails in both side.  
+
+```{r resid,echo=FALSE,warning=FALSE,message=FALSE}
+par(mfrow=c(1,2))
+aug_fit <- arima(production,order=c(0,1,1))
+acf(aug_fit$residuals)
+qqnorm(aug_fit$residuals)
+qqline(aug_fit$residuals)
+```
+
+### 3.3.2 Plots of orginal data v.s. fitted value  
+
+From the $ggplots^{[2]}$ below, we can see that ARIMA(0,1,1) model fits both the August subset data and the full original data well, but it still miss some peaks.  
+
+```{r resd,echo=FALSE,warning=FALSE,message=FALSE}
+aug <- ggplot(data=augpro) + geom_line(aes(x=year,y=production),col ='navy') + geom_line(aes(x=year,y=production-aug_fit$residuals),col='orange') + labs(title='August Fitted',x='Year',y='August Production') + theme(plot.title = element_text(hjust=0.5))
+plot(aug)
+all_fit <- arima(candy,order=c(0,1,1))
+allp <- ggplot(data=candy_production) + geom_line(aes(x=time,y=candy),col ='navy') + geom_line(aes(x=time,y=candy-all_fit$residuals),col='orange') + labs(title='All Fitted',x='Year',y='All Production') + theme(plot.title = element_text(hjust=0.5))
+plot(allp)
+```
+
+# 4 Fitting SARIMA model  
+
+As what shown in EDA part, the time series data has seasonality of a period of 12 monthes. This means a Seasonal-ARIMA model may fit better than a normal ARIMA model.  
+
+## 4.1 Choosing p,d,q for SARIMA model  
+
+Based on the annual anaylsis in section 3, we would fit a model of $SARIMA(p,d,q)\times(0,1,1)_{12}$ with annual polynomial of ARIMA(0,1,1). According to the AIC output, $SARIMA(4,0,3)\times(0,1,1)_{12}$ has the lowest AIC value.  
+
+```{r sarma_aic,echo=FALSE,warning=FALSE,message=FALSE}
+saic_table <-function(data,P,Q){
+  table <-matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] <- arima(data,order =c(p,0,q),seasonal = list(order=c(0,1,1),period=12))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P,sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+candy_saic_table <-saic_table(candy,4,5)
+candy_saic_table
+```
+
+When we see the summary of the selected SARIMA model, all the AR and MA roots are inside the unit circle which shows good selection.  
+
+```{r fitsarima,echo=FALSE,warning=FALSE,message=FALSE}
+fitsarima <- arima(candy,order=c(4,0,3),seasonal = list(order=c(0,1,1),period=12))
+fitsarima
+```
+
+## 4.2 SARIMA Model Selected  
+
+Therefore the SARIMA model selected is $SARIMA(4,0,3)\times(0,1,1)_{12}$:  
+
+$$
+(1-B^{12})(1-0.3528B-0.2203B^2-0.9054B^3+0.5191B^4)Y_n=(1-0.7B^{12})(1+0.3873B+0.1024B^2-0.7603B^3)\epsilon_n
+$$
+
+## 4.3 Diagonose Analysis  
+
+In this part, we would analyse the goodness of fit of the  $SARIMA(4,0,3)\times(0,1,1)_{12}$ model we choose.  
+
+### 4.3.1 Residual Analysis  
+
+From the acf plot of residuals, we can see all the acf values are between the dashed lines, indicating there is not autocorrelation between lags. And from QQplot, we can see that the residuals fit normal distribution well with some ligher tails than the QQplot of ARIMA(0,1,1) model in both side.  
+
+```{r resid4,echo=FALSE,warning=FALSE,message=FALSE}
+par(mfrow=c(1,2))
+acf(fitsarima$residuals)
+qqnorm(fitsarima$residuals)
+qqline(fitsarima$residuals)
+```
+
+### 4.3.2 Plots of orginal data v.s. fitted value  
+
+From the SARIMA fitted plot below, we can see a much lighter color of the plot which indicates that there are more orange lines of doublication with original data than the ARMA model and it better catches the peaks than before.
+
+```{r pl,echo=FALSE,warning=FALSE,message=FALSE}
+allp <- ggplot(data=candy_production) + geom_line(aes(x=time,y=candy),col ='navy') + geom_line(aes(x=time,y=candy-fitsarima$residuals),col='orange') + labs(title='SARIMA Fitted',x='Time',y='Candy Production') + theme(plot.title = element_text(hjust=0.5))
+plot(allp)
+```
+
+# 5 Conclusion and References  
+
+## 5.1 Conclusion  
+
+We made the time series anaysis of United States monthly sugar production on percentage of 2012 production from 1972 to 2020. The analysis conducted mainly in three parts.   Firstly, we made EDA of the data and found that sugar production is nonstationary with a increasing trend and has a seasonality of dominant period of 12 months. Decomposition of time series shows clear trend, noise and cycles.  
+Then we fit an ARMA model to catch the annual polynomial and SARIMA model including the obvious seasonal effects. The final SARIMA model chosen is $SARIMA(4,0,3)\times(0,1,1)_{12}$ model:  
+
+$$
+(1-B^{12})(1-0.3528B-0.2203B^2-0.9054B^3+0.5191B^4)Y_n=(1-0.7B^{12})(1+0.3873B+0.1024B^2-0.7603B^3)\epsilon_n
+$$
+The analysis of residuals and plot of fitted value shows that SARIMA model fits well on the candy productiom series. In future analysis, we could apply the model we selected to forecast further sugar production which might have some benefit in sugar business.  
+
+## 5.2 Reference  
+
+[1] Dataset  
+https://www.kaggle.com/rtatman/us-candy-production-by-month  
+Board of Governors of the Federal Reserve System (US), Industrial Production: Nondurable Goods: Sugar and confectionery product [IPG3113N], retrieved from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/IPG3113N, March 7, 2020.  
+[2] ggplot2  
+http://r-statistics.co/Complete-Ggplot2-Tutorial-Part1-With-R-Code.html#4.%20Changing%20the%20title%20and%20axis%20labels  
+https://rpubs.com/tuyenhavan/282317  
+[3] SARIMA model  
+https://otexts.com/fpp2/seasonal-arima.html  
+[4] Rmarkdown toc format  
+https://stackoverflow.com/questions/23957278/how-to-add-table-of-contents-in-rmarkdown  
+https://bookdown.org/yihui/rmarkdown/html-document.html   
+https://www.datadreaming.org/post/r-markdown-theme-gallery/  
+[5] Basic steps of conducting a time series analysis  
+https://www.quora.com/My-project-work-is-on-time-series-using-the-ARMA-model-or-ARIMA-model-How-do-I-start-analyzing-my-data-1  
+[6] Class notes  
+https://github.com/ionides/531w20  
+
