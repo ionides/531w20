@@ -1,0 +1,225 @@
+---
+title: "531 Midterm Project"
+date: "3/09/2020"
+output: 
+  html_document:
+    theme: flatly
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.align = "center")
+```
+
+# Introduction
+
+Nowadays, Boston is a popular choice when people are considering moving to a new plcae to live, so understanding the wind speed pattern of Boston is one of the important things for those people. In this project, we are going to analyze the average wind speed data for Boston within the recent 20 years. The main technique that we are going to use is time series analysis (ARMA model, spectral density, etc.). We hope to find if there is a trend, seasonality, or some other interesting facts related with the average wind speed in Boston. The analysis aims to give people reference when they choose to move to Boston.
+
+
+# Data Summary
+
+The data is retrieved from NOAA (National Centers For Environmental Information)[1]. The dataset contains the daily average wind speed data for the past 20 years (2000-2019) in Boston, MA. We pick the average wind speed for the first day and 15th day of each month to create a new dataset. The length of the new dataset is 480.
+
+$~$
+
+The table below is the summary statistics of the average wind speed, we can see that the mean is about 11 mph. The mean is very close to the medium.
+
+```{r}
+data = read.csv("2069677.csv")
+
+data = data[(format(as.Date(data$DATE,format="%Y-%m-%d"), format = "%d") == "05") |
+              (format(as.Date(data$DATE,format="%Y-%m-%d"), format = "%d") == "25"),]
+
+data$value = as.numeric(data$AWND)
+value = as.numeric(data$value)
+head(data[,c(3,4)])
+summary(value)
+```
+
+$~$
+
+The plot below is the line plot for the average wind speed. It provides a clear view about how the data looks like. The wind speed changes bewteen about 5 mph to 30 mph.
+
+```{r}
+data$Year = 1:length(data$value)
+yr = 1:length(data$value)
+plot(value~Year,data=data,type="l",main = "Average wind speed",ylab="speed")
+```
+
+
+We model the trend by using formula $y = \beta_{0} + \beta_{1}x + \beta_{2}x^2$. The red line on the plot shows the trend that we modeled. We can see that this red line is somewhat flat. It indicates that there is not a clear trend for the Boston wind speed. The data looks mean stationary. If we pick a relatively small interval, it does not look variance stationary well.
+
+```{r}
+data$Year = 1:length(data$value)
+lm_fit = lm(value~Year+I(Year^2)+I(Year^3),data=data)
+yr = 1:length(data$value)
+Z = cbind(1,yr,yr^2,yr^3)
+beta = coef(lm_fit)
+prediction = Z%*%beta
+plot(value~Year,data=data,type="l",main = "Average wind speed",ylab="speed")
+lines(yr,prediction,col="red")
+```
+
+$~$
+
+We perform log transformation and first difference techniques to make data to be more stationary. The modified data is shown below, we can see that it looks more stationary.
+
+```{r}
+p = diff(log(data$value))
+plot(p,ty="l",main = "Data after modification",ylab="value")
+```
+
+
+$~$
+
+The plot below is the ACF for the data, we do this in order to find the autocorrelation between observations. By the plot below, we can see that the first lag is large and have negative relation with the lag 0. This suggests a AR2 model may be considerable choice.
+
+```{r}
+acf(p,lag.max = 40, main = "ACF for Number")
+```
+
+
+# Spectral Density
+
+We can use the Spectral density to find out the seasonality pattern of the dataset. We can use the formula $period = \frac{1}{frequency}$ to calulate period if we find significant peak.
+
+The plot below is the unsmoothed Spectral Density for it, we can see that the plot is noisy, thus it suggests that a smooth technique may be needed to perform here.
+
+```{r}
+usmoo = spectrum(p, main="Unsmoothed periodogram")
+```
+
+$~$
+
+We smooth the density three times and the result is shown below. If we move the blue crossbar along the density curve, we can see that none of the point seems to be significant. This suggests that this time series data does not contain clear seasonality patterns.
+
+```{r}
+smoo = spectrum(p, span=c(25,25,25), main="smoothed periodogram")
+```
+
+# ARMA Model
+
+Since we have find out that there is no clear seasonality patterns, we choose to model the data using ARMA (Autoregressive–moving-average) model.
+
+For ARMA(p,q) model (with parameter $\theta=\left(\phi_{1: p}, \psi_{1: q}, \mu, \sigma^{2}\right)$), we have:
+
+$$\phi(B) \left(Y_{n}-\mu\right)=\psi(B)  \epsilon_{n}$$
+
+where,
+
+$$\mu=\mathbb{E}\left[Y_{n}\right]$$
+
+$$\psi(x)=1+\psi_{1} x+\psi_{2} x^{2}+\cdots+\psi_{q} x^{q}$$
+
+$$\phi(x)=1-\phi_{1} x-\phi_{2} x^{2}-\cdots-\phi_{p} x^{p}$$
+
+$$\epsilon_{n} \sim \operatorname{iid} N\left[0, \sigma^{2}\right]$$
+$$B\text{ is a backward shift operator}$$
+
+## Model Fitting and Selection
+
+We choose the ARMA model using AIC. We try different sets of p and q values and we want to pick the model which provides the lowest AIC. The formula for AIC is: $A I C=-2 \times \ell(\theta)+2 D$. $D$, which represents the number of parameters, is used to penalize complex models. We do not want our model to be to complex. $\ell(\theta)$ here represents the likelihood. AIC help us measuring the models by balancing the likelihood and the size of the models.
+
+$~$
+
+The following table is the table for AIC with different p and q. We can see that ARMA(2,1) model gives the lowest AIC value. Thus, we choose ARMA(2,1) model.
+
+```{r}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+aic_table_1 = aic_table(p,4,4)
+require(knitr)
+kable(aic_table_1,digits=2)
+```
+
+$~$
+
+The table below is the summary table of the ARMA(2,1) model that we choose
+
+```{r}
+m = arima(p,order=c(2,0,1))
+m
+```
+
+By the table above, we have that the model is
+
+$$(1-0.0490B-0.0990B^2)\left(Y_{n}+0.0002\right)=(1-0.9917B)\epsilon_{n}$$
+the estimated $\sigma^2$ is 0.1186
+
+$~$
+
+Then, we check the roots:
+
+- AR roots:
+
+```{r}
+AR_roots = polyroot(c(1,-coef(m)[c("ar1","ar2")]))
+abs(AR_roots)
+```
+
+- MA roots:
+
+```{r}
+MA_roots = polyroot(c(1,coef(m)[c("ma1")]))
+abs(MA_roots)
+```
+
+All roots are just outside the unit circle. It indicates that we have a stationary causal fitted ARMA. Some roots are close to 1 which indicates some potential risk for invertibility. MA root is not similar with the AR roots, so we know that there should not be big problem with parameters redundancy.
+
+
+## Model Diagnostics
+
+It is necessary for us to check whether the model fits well or not. We do it by checking the iid normal assumption for the residuals. 
+
+By the qqplot below, we can see that most the points follow the straight line considerablely well. Thus, we know that the distribution is somewhat close to normal. There is no problem related with long tails.
+
+```{r}
+qqnorm(c(m$residuals))
+qqline(c(m$residuals))
+```
+
+$~$
+
+We can also use shapiro test to check the normallity. The null hypothesis of this test assume that the distribution is normal. By the results below, we can see that the p-value is not smaller that 0.05, so we cannot reject the normality assumption.
+
+```{r}
+shapiro.test(m$residuals)
+```
+
+$~$
+
+By the ACF plot, we can see that the observations seem to be uncorrelated. The small lag values are in between the blue dash lines.
+
+```{r}
+acf(m$residuals,main="ACF of residuals of ARMA model")
+```
+
+Thus, by the checking above, we see that the model seems to model the data well.
+
+
+# Conclusion
+
+- The average wind speed for Boston is around 11 mph. There is no obvious trend for the average wind speed in Boston for the past 20 years. The average wind speed do not fluctuate a lot when the year changes.
+
+- By using the spectral density plots, we can see that there is no seasonality pattern for the average wind speed in Boston.
+
+- The $ARMA(2,1)$ model $$(1-0.0490B-0.0990B^2)\left(Y_{n}+0.0002\right)=(1-0.9917B)\epsilon_{n}$$ can model the time series pattern of the average wind speed in Boston well after we do the log transformation and first difference on the original dataset. The model diagnostics perform well. The distribution of the residuals is close to iid normal.
+
+# Reference
+
+[1] The data is retrieved from NOAA (National Centers For Environmental Information): https://www.ncdc.noaa.gov/cdo-web/datasets/GHCND/stations/GHCND:USW00014739/detail
+
+[2] The course website of stats 531 winter 2020 (instructor: Edward L. Ionides): https://ionides.github.io/531w20/
+
+[3] R. Shumway and D. Stoffer “Time Series Analysis and its Applications” 4th edition. link: https://www.stat.pitt.edu/stoffer/tsa4/tsa4.pdf
+
+[4] The previous homeworks which I submitted on canvas. https://umich.instructure.com/courses/200
