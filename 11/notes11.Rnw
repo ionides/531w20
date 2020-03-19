@@ -8,6 +8,9 @@
 \newcommand\eqspace{\quad\quad\quad}
 \newcommand\eqskip{\vspace{2.5mm}}
 
+\newcommand\dist[2]{\mathrm{#1}\left(#2\right)}
+\newcommand\dlta{\Delta}
+
 \newcommand\myeq{\hspace{10mm}}
 
 % \newcommand\answer[2]{\textcolor{blue}{#2}} % to show answers
@@ -86,14 +89,14 @@ options(
 
 
 
-<<prelims,echo=F,cache=F>>
+<<prelims,echo=F,cache=F>>=
 set.seed(594709947L)
 library(ggplot2)
 theme_set(theme_bw())
 library(plyr)
 library(reshape2)
 library(foreach)
-library(doMC)
+#library(doMC)
 library(pomp)
 stopifnot(packageVersion("pomp")>="2.0")
 @
@@ -110,7 +113,7 @@ stopifnot(packageVersion("pomp")>="2.0")
 \begin{enumerate}
 
 
-\item Dynamic systems can often be represented in terms of _flows_ between _compartments_. We will develop the concept of a _compartment model_ for which we specify _rates_ for the flows between compartments.
+\item Dynamic systems can often be represented in terms of {\it flows} between {\it compartments}. We will develop the concept of a \myemph{compartment model} for which we specify {\it rates} for the flows between compartments.
 
 \item  We develop deterministic and stochastic interpretations of a compartment model.
 
@@ -120,8 +123,8 @@ stopifnot(packageVersion("pomp")>="2.0")
 
 \end{frame}
 
-\begin{frame}[fragil
-\frametitle{Compartment models
+\begin{frame}[fragile]
+\frametitle{Compartment models}
 
 \bi
 
@@ -148,11 +151,12 @@ is the movement of an infectious disease through the population.
 
 We will develop deterministic and stochastic representations of a susceptible-infected-recovered (SIR) system, a fundamental class of models for disease transmission dynamics. We will do this using notation which generalizes to more complex systems [[@breto09]](http://dept.stat.lsa.umich.edu/~ionides/pubs/breto09.pdf).
 
-<<sir-diagram,echo=FALSE,cache=FALSE,purl=FALSE}
+<<sir-diagram,echo=FALSE,cache=TRUE,purl=FALSE>>=
 require(DiagrammeR)
 DiagrammeR("graph LR; S(S) --> I; I(I) --> R(R);"
            ,height=200,width=500)
 @
+
 $S = \text{susceptible}$  
 $I = \text{infected and infectious}$  
 $R = \text{recovered and/or removed}$  
@@ -165,7 +169,7 @@ $R = \text{recovered and/or removed}$
 
 \item The rates may be either constant or varying. In particular, for a simple SIR model, the recovery rate $\mu_{IR}$ is a constant but the infection rate has the time-varying form
 $$\mu_{SI}(t)=\beta \, I(t),$$
-with $\beta$ being the _contact rate_. Now, for the simplest SIR model, ignoring demography, we set
+with $\beta$ being the \myemph{contact rate}. Now, for the simplest SIR model, ignoring demography, we set
 $$ \mu_{{\small{\bullet}}S}=\mu_{S{\small{\bullet}}}=\mu_{I{\small{\bullet}}}=\mu_{R{\small{\bullet}}}=0.$$
 
 \ei
@@ -176,7 +180,7 @@ $$ \mu_{{\small{\bullet}}S}=\mu_{S{\small{\bullet}}}=\mu_{I{\small{\bullet}}}=\m
 \bi
 \item To develop a systemtic notation, it turns out to be convenient to keep track of the flows between compartments as well as the number of individuals in each compartment. Let
 $$N_{SI}(t)$$
-count the number of individuals who have transitioned from $S$ to $I$ by time $t$. We say that $N_{SI}(t)$ is a _counting process_. A similarly constructed process
+count the number of individuals who have transitioned from $S$ to $I$ by time $t$. We say that $N_{SI}(t)$ is a \myemph{counting process}. A similarly constructed process
 $$N_{IR}(t)$$
 counts individuals transitioning from $I$ to $R$. To include demography, we could keep track of birth and death events by the counting processes $N_{{\small{\bullet}} S}(t)$, $N_{S{\small{\bullet}}}(t)$, $N_{I{\small{\bullet}}}(t)$, $N_{R{\small{\bullet}}}(t)$.
 
@@ -193,7 +197,7 @@ I(t)&=& I(0) + N_{SI}(t) - N_{IR}(t)
 R(t) &=& R(0) + N_{IR}(t)
 \end{array}$$
 
-\item These equations represent something like _conservation of mass_, or _what goes in must come out_. 
+\item These equations represent something like {\it conservation of mass}, or {\it what goes in must come out}. 
 
 
 \ei
@@ -220,10 +224,6 @@ $$ dN_{IR}/dt = \mu_{IR}\, I(t).$$
 
 \item Continuous-time Markov chains are the basic tool for building discrete population epidemic models.
 
-\item Recall that a _Markov chain_ is a discrete-valued stochastic process with the _Markov property_:  the future evolution of the process depends only on the current state.
-
-\item Surprisingly many models have this Markov property. If all important variables are included in the state of the system, then the Markov property appears automatically.
-
 \item The Markov property lets us specify a model by the transition probabilities on small intervals (together with the initial conditions). For the SIR model, we have
 
 $$\begin{array}{lcl}
@@ -236,7 +236,8 @@ $$\begin{array}{lcl}
 \prob\big[N_{IR}(t+\delta)\equals N_{IR}(t)\big] &=& 1-\mu_{IR}(t) \, I(t) \delta + o(\delta)
 \end{array}$$
 
-\item Here, we are using [little $o$ notation](https://en.wikipedia.org/wiki/Big_O_notation#Little-o_notation). We write 
+\item Here, we are using [little $o$ notation]
+We write 
 $$ h(\delta)=o(\delta)$$
 to mean 
 $$ \lim_{\delta\to 0} \frac{h(\delta)}{\delta} = 0.$$
@@ -255,10 +256,9 @@ is the same statement as
 $$ \frac{df}{dx} = g(x).$$
 
 \item What considerations might help you choose which of these notations to use?
+\ei
 
 \end{frame}
-
-\ei
 
 \begin{frame}[fragile]
 
@@ -269,7 +269,9 @@ Find the expected value of $N_{SI}(t+\delta)-N_{SI}(t)$ and $N_{IR}(t+\delta)-N_
 
 \bi
 
-\item A _simple_ counting process is one which cannot count more than one event at a time ([Wikipedia: Point_process](https://en.wikipedia.org/wiki/Point_process)). Thus, in a technical sense, the SIR Markov chain model we have written is simple. One may want to model the extra randomness resulting from multiple simultaneous events: someone sneezing in a bus; large gatherings at football matches; etc. This extra randomness may even be critical to match the variability in data. 
+\item A \myemph{simple counting process} is one which cannot count more than one event at a time.
+
+\item Technically, the SIR Markov chain model we have written is simple. One may want to model the extra randomness resulting from multiple simultaneous events: someone sneezing in a bus; large gatherings at football matches; etc. This extra randomness may even be critical to match the variability in data. 
 
 \item Later in the course, we may see situations where this extra randomness plays an important role. Setting up the model using counting processes, as we have done here, turns out to be useful for this.
 
@@ -307,7 +309,7 @@ This only defines $\tilde x(t)$ when $t$ is a multiple of $\delta$, but suppose 
 
 \frametitle{Euler's method versus other numerical methods}
 \bi
-\item [Mathematical analysis of Euler's method](https://en.wikipedia.org/wiki/Euler_method) says that, as long as the function $h(x)$ is not too exotic, then $x(t)$ is well approximated by $\tilde x(t)$  when the discretization time-step, $\delta$, is sufficiently small.
+\item Mathematical analysis of Euler's method says that, as long as the function $h(x)$ is not too exotic, then $x(t)$ is well approximated by $\tilde x(t)$  when the discretization time-step, $\delta$, is sufficiently small.
 
 \item Euler's method is not the only numerical scheme to solve ODEs. More advanced schemes have better convergence properties, meaning that the numerical approximation is closer to $x(t)$. However, there are 3 reasons we choose to lean heavily on Euler's method:
 
@@ -427,10 +429,14 @@ where $Z_1,Z_2,\dots$ is a sequence of independent standard normal random variab
 
 \bi
 
-\item A widely used, exact simulation method for continuous time Markov chains is [Gillspie's algorithm](https://en.wikipedia.org/wiki/Gillespie_algorithm
-). We do not put much emphasis on Gillespie's algorithm here. Why? When would you prefer an implementation of Gillespie's algorithm to an Euler solution?
+\item A widely used, exact simulation method for continuous time Markov chains is Gillspie's algorithm.
+%% (https://en.wikipedia.org/wiki/Gillespie_algorithm
+We do not put much emphasis on Gillespie's algorithm here. Why? When would you prefer an implementation of Gillespie's algorithm to an Euler solution?
 
-\item Numerically, Gillespie's algorithm is often approximated using so-called [tau-leaping](https://en.wikipedia.org/wiki/Tau-leaping) methods. These are closely related to Euler's approach. Is it reasonable to call a suitable Euler approach a tau-leaping method?
+\item Numerically, Gillespie's algorithm is often approximated using so-called
+tau-leaping
+%%(https://en.wikipedia.org/wiki/Tau-leaping)
+methods. These are closely related to Euler's approach. Is it reasonable to call a suitable Euler approach a tau-leaping method?
 
 \ei
 
@@ -448,7 +454,7 @@ head(bsflu)
 @
 The variable \code{B} refers to boys confined to bed and \code{C} to boys in convalescence.
 Let's restrict our attention for the moment to the \code{B} variable.
-<<flu-data2}
+<<flu-data2>>=
 bsflu <- subset(bsflu,select=c(day,B))
 ggplot(data=bsflu,aes(x=day,y=B))+geom_line()+geom_point()
 @
@@ -463,7 +469,7 @@ I, infected (and infectious) hosts;
 R, recovered and immune hosts. 
 The rate at which individuals move from S to I is the force of infection, $\lambda=\beta\,I/N$, while that at which individuals move into the R class is $\gamma$.
 
-<<sir-diagram,echo=FALSE,cache=FALSE}
+<<sir-diagram,echo=FALSE,cache=FALSE>>=
 @
 
 \end{frame}
@@ -567,7 +573,7 @@ dmeas <- Csnippet("lik = dbinom(B,H,rho,give_log);")
 rmeas <- Csnippet("B = rbinom(H,rho);")
 @
 and put these into our \code{pomp} object:
-<<add-meas-model}
+<<add-meas-model>>=
 sir <- pomp(sir,rmeasure=rmeas,dmeasure=dmeas,statenames="H",paramnames="rho")
 @
 
@@ -577,7 +583,7 @@ sir <- pomp(sir,rmeasure=rmeas,dmeasure=dmeas,statenames="H",paramnames="rho")
 A good first step is to perform some simulations to check whether things are working.
 To do so, we need to choose parameters.
 A little thought will get us some ballpark estimates.
-In the data, it looks like there were a total of \Sexpr{sum(bsflu$B)}\code{ infections, so the population size, $N$, must be somewhat in excess of this number.
+In the data, it looks like there were a total of \Sexpr{sum(bsflu$B)} \code{infections}, so the population size, $N$, must be somewhat in excess of this number.
 In fact, we can use the final-size equation
 $$R_0 = -\frac{\log{(1-f)}}{f},$$
 where $f=R(\infty)/N$ is the final size of the epidemic, together with the idea that $R_0$ must be, say, around 1.5, to estimate that $f\approx 0.6$, whence $N\approx 2600$.
@@ -586,8 +592,7 @@ If the infectious period is roughly 1 day, then $1/\gamma \approx 1~\text{da}$ a
 <<sir_sim>>=
 sims <- simulate(sir,params=c(Beta=1.5,gamma=1,rho=0.9,N=2600),
                  nsim=20,format="data.frame",include=TRUE)
-
-ggplot(sims,mapping=aes(x=time,y=B,group=sim,color=sim=="data"))+
+ggplot(sims,mapping=aes(x=day,y=B,group=.id,color=.id=="data"))+
   geom_line()+guides(color=FALSE)
 @
 
@@ -610,7 +615,7 @@ Fiddle with the parameters to see if you can't find parameters for which the dat
 Below is a diagram of the so-called SEIR model.
 This differs from the SIR model in that infected individuals must pass a period of latency before becoming infectious.
 
-<<seir-diagram,echo=FALSE,cache=FALSE>>=
+<<seir-diagram,echo=FALSE,cache=TRUE>>=
 require(DiagrammeR)
 DiagrammeR("graph LR; S(S) --> E; E(E) --> I; I(I) --> R(R);"
            ,height=200,width=600)
@@ -648,7 +653,7 @@ ggplot(data=melt(bsflu,id="day"),mapping=aes(x=day,y=value,color=variable))+
 \myquestion. Formulate a model with both confinement and convalescent stages.
 Implement it in \package{pomp} using a compartmental model like that diagrammed below.
 
-<<sirr-diagram,echo=FALSE,cache=FALSE>>=
+<<sirr-diagram,echo=FALSE,cache=TRUE>>=
 require(DiagrammeR)
 DiagrammeR("graph LR; S(S) --> I; I(I) --> R1(R1); R1 --> R2(R2);"
            ,height=200,width=600)
@@ -659,9 +664,6 @@ How many parameters can reasonably be fixed?  How many must be estimated?
 Obtain some ballpark estimates of the parameters and simulate to see if you can plausibly explain the data as a realization of this model.
 
 \end{frame}
-
-\begin{frame}[fragile]
-
 
 \begin{frame}[fragile]
 \frametitle{Acknowledgments and License}

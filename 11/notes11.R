@@ -22,9 +22,34 @@ options(
 
 
 
+## ----prelims,echo=F,cache=F----------------------------------------------
+set.seed(594709947L)
+library(ggplot2)
+theme_set(theme_bw())
+library(plyr)
+library(reshape2)
+library(foreach)
+#library(doMC)
+library(pomp)
+stopifnot(packageVersion("pomp")>="2.0")
+
+
+
+
 ## ----flu-data1-----------------------------------------------------------
 bsflu <- read.table("bsflu_data.txt")
 head(bsflu)
+
+
+## ----flu-data2-----------------------------------------------------------
+bsflu <- subset(bsflu,select=c(day,B))
+ggplot(data=bsflu,aes(x=day,y=B))+geom_line()+geom_point()
+
+
+## ----sir-diagram,echo=FALSE,cache=FALSE----------------------------------
+require(DiagrammeR)
+DiagrammeR("graph LR; S(S) --> I; I(I) --> R(R);"
+           ,height=200,width=500)
 
 
 
@@ -63,15 +88,18 @@ dmeas <- Csnippet("lik = dbinom(B,H,rho,give_log);")
 rmeas <- Csnippet("B = rbinom(H,rho);")
 
 
+## ----add-meas-model------------------------------------------------------
+sir <- pomp(sir,rmeasure=rmeas,dmeasure=dmeas,statenames="H",paramnames="rho")
+
+
 ## ----sir_sim-------------------------------------------------------------
 sims <- simulate(sir,params=c(Beta=1.5,gamma=1,rho=0.9,N=2600),
                  nsim=20,format="data.frame",include=TRUE)
-
-ggplot(sims,mapping=aes(x=time,y=B,group=sim,color=sim=="data"))+
+ggplot(sims,mapping=aes(x=day,y=B,group=.id,color=.id=="data"))+
   geom_line()+guides(color=FALSE)
 
 
-## ----seir-diagram,echo=FALSE,cache=FALSE---------------------------------
+## ----seir-diagram,echo=FALSE,cache=TRUE----------------------------------
 require(DiagrammeR)
 DiagrammeR("graph LR; S(S) --> E; E(E) --> I; I(I) --> R(R);"
            ,height=200,width=600)
@@ -83,7 +111,7 @@ ggplot(data=melt(bsflu,id="day"),mapping=aes(x=day,y=value,color=variable))+
   geom_line()+geom_point()
 
 
-## ----sirr-diagram,echo=FALSE,cache=FALSE---------------------------------
+## ----sirr-diagram,echo=FALSE,cache=TRUE----------------------------------
 require(DiagrammeR)
 DiagrammeR("graph LR; S(S) --> I; I(I) --> R1(R1); R1 --> R2(R2);"
            ,height=200,width=600)
