@@ -1,0 +1,254 @@
+---
+title: "midtermProject"
+date: "3/4/2020"
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    theme: flatly 
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\ar{\phi}
+\newcommand\ma{\psi}
+\newcommand\loglik{\ell}
+\newcommand\data[1]{#1^*}
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include = FALSE}
+library(data.table)
+library(ggplot2)
+library(knitr)
+```
+
+# Background & Dataset
+
+Ozone concentration is an important factor when considering the air quality. Ozone generally does no harm to human body, but can effectively kill microorganisms such as bacteria. However, ozone can be dangerous without proper handling. According to [OSHA (Occupational Safety and Health Administration)](https://www.ozonesolutions.com/knowledge-center/osha-and-ozone.html/), ozone levels should never exceed the following average: 0.10 ppm (parts per million) for 8 hours per day exposure. 
+
+Also, the guidelines for ozone in the workplace are
+
+* 0.2 ppm for no more than 2 hours exposure
+* 0.1 ppm for 8 hours per day exposure doing light work
+* 0.08 ppm for 8 hours per day exposure doing moderate work
+* 0.05 ppm for 8 hours per day exposure doing heavy work
+
+In this project, I'd like to invesigate how the ozone concentration varied in Ann Arbor during the last year. The dataset is from [EPA - United States Environmental Protection Agency](https://www.epa.gov/outdoor-air-quality-data). It contains the daily maximum 8 hours ozone concentration from 2019-1-1 to 2019-12-31. As you can see from the following table, the maximum value for the ozone concentration is 0.066 ppm, which is greater than the value in the guidelines for 8 hours per day exposure doing heavy work. It shows that it's necessary to conduct a time series analysis to fit the ozone concentration data in Ann Arbor.
+
+```{r summary, echo=FALSE}
+x <- read.table("ozone.csv", header=TRUE, sep=",")
+dat <- x[,c("Date","Daily.Max.8.hour.Ozone.Concentration")]
+dat <- as.data.table(dat)
+dat$Date <- as.Date(dat$Date, format='%m/%d/%Y')
+kable(summary(dat),format = "html", caption='Summary of the ozone concentration dataset')
+```
+
+# Objectives
+
+This project aims to answer or bring insights to the following questions:
+
+* What time series models will fit the 2019 ozone concentration time series best?
+  + Does the data has seasonal variation?
+  + Is there any visible trend?
+
+
+# Data Exploration
+
+First, let's plot the time series. From the plot, the mean of the data does not look stationary and the non-constant variance implies that the covariance is also not stationary. From the Feburary to June, the variance keeps increasing and then decreases a little bit from June to Sepetember. Therefore, a weekly stationary model is not appropriate for the this time series dataset.
+
+```{r read_data, echo=FALSE}
+ggplot(data = dat, aes(y = Daily.Max.8.hour.Ozone.Concentration, x = Date)) + geom_path() + labs(y = "Daily Max 8 hour Ozone Concentration", title = "Ozone Concentration of Ann Arbor in 2019")
+```
+
+## Seasonality Analysis
+
+In this section, the seasonality analysis will be conducted to see if the time series data has any seasonal variations.
+
+The smoothed periodogram shows that there is no obvious cycle in the time seires. Some local peaks occur at frequency 0.29 and 0.34. However, the distance from the peak to its base is very close to the 95\% confidence interval shown on the top right corner, thus it's not statistically signifanct that the cycles corresponding to the frequencies 0.34 and 0.29 can describe the data.
+```{r echo=FALSE}
+spec = spectrum(dat$Daily.Max.8.hour.Ozone.Concentration, spans=c(5,5), main="Smoothed periodogram", xlab="frequency (cycles per day)")
+```
+
+The spectrum estimated by fitting an AR(p) model with p selected by AIC also shows that no frequency stands out significantly, from which we can also conclude that there is no cycle in the Ann Arbor ozone concentration in 2019 time series.
+```{r echo=FALSE}
+spectrum(dat$Daily.Max.8.hour.Ozone.Concentration,method="ar", main="Spectrum estimated via AR model picked by AIC")
+```
+
+## Fitting an ARMA Model without trend
+
+A log transform is inappropriate to the data because the variance of the time series data seems to be repeating increasing and then decreasing. Also, a trend is still observable after the log transformation. 
+```{r echo=FALSE}
+ggplot(data = dat, aes(y = log(Daily.Max.8.hour.Ozone.Concentration), x = Date)) + geom_path() + labs(y = "Daily Max 8 hour Ozone Concentration", title = "Ozone Concentration of Ann Arbor in 2019")
+```
+
+For now, let's assume that there is no trend and start by ﬁtting a stationary ARMA(p, q) model. This hypothesis is not entirelty reasonable because it asserts that the ozone concentration does not significantly change in the last year.
+
+We seek to fit a stationary Gaussian ARMA(p,q) model with parameter vector $\theta=(\ar_{1:p},\ma_{1:q},\mu,\sigma^2)$ given by
+$$ \ar(B)(X_n-\mu) = \ma(B) \epsilon_n,$$
+where 
+
+$$
+\begin{eqnarray}
+\mu &=& \E[X_n]
+\\
+\ar(x)&=&1-\ar_1 x-\dots -\ar_px^p,
+\\ 
+\ma(x)&=&1+\ma_1 x+\dots +\ma_qx^q, 
+\\
+\epsilon_n&\sim&\mathrm{ iid }\, N[0,\sigma^2].
+\end{eqnarray}
+$$
+
+### AIC Table
+Among all the values for p and q, we need to pick one for our ARMA model. We plan to select the model with the lowest Akaike's Information criterion score. AIC was derived as an approach to minimizing prediction error. It is useful when viewed as a way to select a model with reasonable predictive skill from a range of possibilities.
+
+Akaike’s information criterion AIC is given by $$ AIC = -2 \times \loglik(\data{\theta}) + 2D$$ It penalizes the likelihood of each model by a measure of its complexity. Increasing the number of parameters leads to additional overﬁtting which can decrease predictive skill of the ﬁtted model.
+
+```{r aic_table, echo=FALSE, warning=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+ozone_aic_table <- aic_table(dat[,Daily.Max.8.hour.Ozone.Concentration],4,5)
+require(knitr)
+kable(ozone_aic_table,digits=2)
+```
+
+The AIC table shows that ARMA(2,3) has the lowest AIC value, which is -2541.84. The ARMA(2,1) model has the second lowest AIC value, which is -2541.41. However, the ARMA(2,1) model is simpler and we prefer to select model with less parameters. Therefore, I'm going to to use ARMA(2,1) to fit the data.
+
+The coefficients and log likelihood of the model are shown below. 
+
+```{r echo=FALSE}
+arma21 <- arima(dat[,Daily.Max.8.hour.Ozone.Concentration], order=c(2,0,1))
+arma21
+```
+
+```{r echo=FALSE}
+plot(seq(1,365), dat[,Daily.Max.8.hour.Ozone.Concentration], type='l', main="ARMA(2,1) model", col="blue", xlab="Index", ylab="Ozone Conc.")
+legend(0,130, c("original","fitted"), cex=0.8, col=c("blue","red"), pch=21:22, lty=1:2);
+lines(seq(1,365),dat[,Daily.Max.8.hour.Ozone.Concentration]-arma21$residuals, type="l", col='red', pch=22, lty=2)
+```
+
+From the plot above, we can swee that the model can capture the main features of the ozone concentration, but has the problem of under-estimating peaks.
+
+### Check AR and MA roots
+
+Then, we need to check the AR and MA roots and see if they can be cancelled and check invertibility 
+
+```{r}
+AR_roots <- polyroot(c(1,-coef(arma21)[c("ar1","ar2")])) 
+AR_roots
+```
+
+Both the AR and MA roots are outside unit circle, suggesting we have a stationary causal fitted model. The MA root and AR roots are not close to each other, which implies there is no parameter redundancy problem. One of the AR roots (1.007) is close to the unit circle, so the fitted model is close to non-invertibility. This could potentially cause numerical instability.
+
+### Diagnostics Analysis
+
+```{r echo=FALSE}
+par(mfrow=c(2,2))
+plot(resid(arma21), ylab=" ", main="Residuals") 
+plot(abs(arma21$residuals), ylab=" ", main="Absolute value of Residuals")
+acf(resid(arma21), main="ACF of residuals")
+qqnorm(arma21$residuals)
+qqline(arma21$residuals)
+```
+
+The residual plot shows no abnormal pattern; the mean fluctuates around 0 and the variance does not change very much. The ACF plot shows that there is no significant autocorrelation within 25 lags despite the fact that the ACF value exceeds the blue dashed line at lag 20. However, only 1 out of 25 lags shows some abnormal pattern which agrees with the definition of 95\% confidence interval. The QQ-plot shows that the residual partially satisfies the normality assumption made above $\epsilon_n \sim N[0,\sigma^2]$ though the left tail deviates from the normal distribution somehow.
+
+## Fitting an ARMA Model with trend
+
+Applying a diﬀerence operation to the data can make it look more stationary and therefore more appropriate for ARMA modeling. This transformation makes the model become ARIMA, which is integrated autoregressive moving average model. After this transformation, the plot below shows that a mean stationary model would be appropriate to the time series data.
+
+```{r sh_pm_diff_plot, echo=FALSE}
+#sh.pm<-log(sh.pm.raw)
+sh.pm = dat$Daily.Max.8.hour.Ozone.Concentration
+sh.pm.diff<-c(sh.pm,0)-c(0,sh.pm)
+sh.pm.diff<-sh.pm.diff[-c(1,length(sh.pm.diff))]
+sh.pm.diff<-ts(sh.pm.diff)
+summary(sh.pm.diff)
+plot(sh.pm.diff,xlab="Date",ylab="Daily Change of Ozone Concentration (ppm)",main="First Difference of Ozone Concentration")
+```
+
+### AIC Table
+
+We can then look at the AIC table to find appropriate values for p and q. The AIC table shows that ARIMA(1,1,1), ARIMA(2,1,1), ARIMA(1,1,2) and ARIMA(1,1,3) are good candidates.
+
+```{r aic_table2, echo=FALSE, warning=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+ozone.diff_aic_table <- aic_table(sh.pm.diff,4,5)
+require(knitr)
+kable(ozone.diff_aic_table,digits=2)
+```
+
+
+### Hypothesis Test
+
+To statistically judge whether a trend is appropriate to the model, we can use the null hypothesis that the model has no trend, which is ARMA(2,1) and compares it to the alternative hypothesis/model ARIMA(2,1,1).
+
+Let's fit the alternative model ARIMA(2,1,1).
+
+```{r echo=FALSE}
+arima211 <- arima(dat[,Daily.Max.8.hour.Ozone.Concentration], order=c(2,1,1))
+arima211
+```
+
+The difference of the log likelihood is 1275.70-1272.12=2.58 which is larger than the 1.92 cutoff for a test at 5\% size. Therefore, we can reject the null hypothesis, which means the ARIMA(2,1,1) model better fits the data.
+
+
+### AR and MA roots
+
+Then, we need to check the AR and MA roots and see if they can be cancelled and check invertibility.
+
+```{r}
+AR_roots2 <- polyroot(c(1,-coef(arima211)[c("ar1","ar2")])) 
+AR_roots2
+```
+Both the AR roots and MA root are outside the unit circle and are not close to each other, suggesting the non-invertibility and causality of the model.
+
+### Diagnostics Analysis
+
+```{r echo=FALSE}
+par(mfrow=c(2,2))
+plot(resid(arima211), ylab=" ", main="Residuals") 
+plot(abs(arima211$residuals), ylab=" ", main="Absolute value of Residuals")
+acf(resid(arima211), main="ACF of residuals")
+qqnorm(arima211$residuals)
+qqline(arima211$residuals)
+```
+
+The diagnostics plots for the ARIMA(2,1,1) model looks close to the ARMA(2,1), both showing no abnormal pattern.
+
+# Conclusion
+In this report, we sought to find out what time series models will best fit the 2019 ozone concentration time series. To summarize, the model ARIMA(2,1,1) is the most appropriate one. The spectrum plot shows that there is no seasonal variation in the time series data within the year 2019. By conducting hypothesis test, a model with trend proves to be statistically significant. 
+
+# Reference
+
+1. Ionides, E. (n.d.). Stats 531 (Winter 2020) ‘Analysis of Time Series’ Retrieved from http://ionides.github.io/531w20/
+
+2. OHSA and Ozone. Retrieved from https://www.ozonesolutions.com/knowledge-center/osha-and-ozone.html/
+
+3. Outdoor Air Quality Data. Retrieved from https://www.epa.gov/outdoor-air-quality-data/
+
+4. Previous year midterm project 531w18 - Project 24. Retrieved from https://ionides.github.io/531w18/midterm_project/project24/531_midterm_project.html
