@@ -1,0 +1,236 @@
+---
+title: "Stats 531 Midterm Project: Study of Heat Wave in United States"
+date: "3/2/2020"
+output: 
+  html_document:
+    toc: yes
+    theme: flatly
+---
+
+## Introduction
+
+Heat wave refers to a period of extremely hot weather and the term "extreme" here means that the temperature of a given area is above or highly above the historical averages for this area. This phenomenon can be considered as a kind of very serious natural diseater, because huge financial loss and a large amount of deaths are caused by heat wave in the history. "According to the Centers for Disease Control and Prevention, extreme heat now causes more deaths in U.S. cities than all other weather events combined." (From Alissa Walker{https://www.curbed.com/2018/7/6/17539904/heat-wave-extreme-heat-cities-deadly})
+
+So, it is necessary to have a better understanding of this extreme weather and warn the public to prepare in advance if the seriousness of the diseater increases.
+
+Here I will analyse the data of "the Annual Heat Wave Index in United States from 1895 to 2015" and derive a appropriate model to describe the seriousness of this natural diseater, which can be viewed as a prediction tool.
+
+Data is from the website:{https://www.epa.gov/climate-indicators/climate-change-indicators-high-and-low-temperatures}
+
+
+## Data Exploration 
+
+The summary and visualization of the data is presented below:
+```{r}
+# import data in the local file "heat.csv" from local folder
+heat <- read.csv("heat.csv")
+data = heat
+summary(data)
+```
+```{r,echo=FALSE}
+plot(Heat.Wave.Index~Year,data=data,type="l", main="Heat.Wave.Index vs Year")
+```
+
+
+
+From the summary we can see that there exist no missing values.
+
+According to the explanation presented in the website, if heat wave index is equal to $n$, it indicates that $\frac{n*100}{m}$ percent of the country experienced $m$ heat wave ($m$ usually is a postive natural number). So, it is reasonable to have 1.2550 as the maximum of heat wave index, which can be interpretated as the following: about 63 percent of the country experienced 2 heat waves during that period.
+
+From the plot of "Heat.Wave.Index vs Year", we can see that around year 1930-1936, we have some large heat wave indexes. In year 1936, we have the largest heat wave index, which is corresponding to the "1936 North American heat wave" (for more details, see{https://en.wikipedia.org/wiki/1936_North_American_heat_wave}). Although it seems this is an outliner, considering the relatively large size (over 100) of this data set, I decide to keep this data point.
+
+Gaussian ARMA model is a common model we can pick to fit time series data. According to class note(2018midterm), symmetry is a property of Gaussian ARMA model. However, the pattern from "Heat.Wave.Index vs Year" plot is not roughly symmetric since all the Heat.Wave.Index values are above zero. It is not suitable to directly apply Gaussian ARMA model to this data. 
+
+So, in order to use Gaussian ARMA model to describe the data, we need to do transformation on the data. 
+
+Gaussian ARMA model is defined in the Modeling section below.
+
+#### Data Transformation
+
+We do the log transformation on Heat.Wave.Index in the data set and all of the following analysis use the log-transformed data.
+
+```{r}
+# plot the "log(Heat.Wave.Index) vs Year" and "acf of log(Heat.Wave.Index)"
+z=log(data$Heat.Wave.Index)
+plot(z~data$Year, type="l", main="log(Heat.Wave.Index) vs Year")
+acf(z,main="acf of log(Heat.Wave.Index)")
+```
+
+
+After transformation, the plot of "log(Heat.Wave.Index) vs Year" looks more symmetric and more mean-stationary. We can use Gaussian ARMA model later.
+Moreover, it seems that ACF plot shows a rough oscillation pattern, which indicate AR(2) model may be a choice.
+We will use more effective model selection method to determine the model in the following section.
+
+## Modeling
+#### Fit ARMA models Under No Trend Assumption 
+The general form of a stationary Gaussian ARMA(p,q) model:
+
+$\phi(B)(Y_n-\mu) = \psi(B) \epsilon_n$, 
+
+where $\mu =\mathrm{E}[Y_n]$, 
+
+$\phi(x) = 1-\phi_1x-\dots -\phi_px^p$, 
+
+$\psi(x) = 1+\psi_1x+\dots +\psi_qx^q$, 
+
+$\epsilon_n \sim iid\, N[0,\sigma^2]$,
+
+$B$ is the backshift operator: $BY_n = Y_{n-1}$.
+
+Calculate AIC(Akaike's information criterion):
+We need to decide what p and q are by choosing the model with a low AIC score.
+```{r,echo = FALSE,warning=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1)) 
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    } 
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+aic_table <- aic_table(z,3,3) 
+
+```
+```{r, include=FALSE}
+require(knitr) 
+```
+```{r, echo=FALSE}
+kable(aic_table,digits=2)
+```
+
+ARMA(2,3), ARMA(1,0) and ARMA(0,1) have low AIC values.
+
+Now we fit the model with $arima$ function:
+```{r}
+a23 = arima(z,order=c(2,0,3))
+a23
+a10 = arima(z,order=c(1,0,0))
+a10
+a01= arima(z,order=c(0,0,1))
+a01
+```
+In the summary, values for ar1 and ar2 refer to $\phi_1$ and $\phi_2$ in corresponding models. Values for ma1, ma2, ma3 refer to $\psi_1$, $\psi_2$, $\psi_3$ in corresponding models. Intercept refers to $\mu$ in corresponding models.
+
+Check AR and MA roots:
+
+```{r,include =FALSE}
+a23$coef[1]
+a23$coef[2]
+a23$coef[3]
+a23$coef[4]
+a23$coef[5]
+a10$coef[1]
+a01$coef[1]
+```
+
+
+lengths of AR(first line) and MA(second line) roots for ARMA(2,3):
+```{r, echo=FALSE}
+AR_r23 = polyroot(c(1,-a23$coef[1],-a23$coef[2]))
+abs(AR_r23)
+MA_r23 = polyroot(c(1,a23$coef[3],a23$coef[4],a23$coef[5]))
+abs(MA_r23)
+```
+length of AR roots for ARMA(1,0):
+```{r,echo=FALSE}
+AR_r10 = polyroot(c(1,-a10$coef[1]))
+abs(AR_r10)
+```
+
+length of MA roots for ARMA(0,1):
+```{r,echo=FALSE}
+MA_r01 = polyroot(c(1,a01$coef[1]))
+abs(MA_r01)
+```
+For ARMA(2,3) model, we can see that all AR roots are on(/nearly on) the boundary of unit circle and two of MA roots are on(/nearly on) the boundary of unit circle, which indicate the non-causality and non-invertibilty of this model. We do not have nice properties from the causal model and non-invertibilty can cause numerical unstability for estimates. So, I deceide not to use this model.
+
+Both ARMA(1,0) model and ARMA(0,1) have roots outside unit circle. Since ARMA(1,0) has smaller AIC, I decide to pick ARMA(1,0).
+
+#### Check Trend
+Since what people most considered is whether the seriousness of heat wave (i.e. Heat Wave Index) increased from 1895 to 2015 and whether it will continue increasing, I decide to test if there exists a linear trend.
+Although plot "Heat.Wave.Index vs Year" and plot "log(Heat.Wave.Index) vs Year" seem to show there is no trend, we can check whether this hypothesis can be obtained or not in a more quantitative way.
+
+A ARMA(1,0) model with a linear trend is defined as following:
+
+$Y_n-\mu-\beta t_n = \gamma_n$,
+
+where $\gamma_n$ is ARMA(1,0) model.
+
+Null hypothesis is that there is no trend: $\beta = 0$,
+
+Alternative hypothesis is that there is a linear trend: $\beta\neq0$
+
+```{r}
+a10t <- arima(z, c(1,0,0),xreg = data$Year)
+a10t
+```
+```{r}
+#Use likelihood ratio test to determine to reject or not reject null hypothesis
+(a10t$loglik - a10$loglik)>2.92
+```
+So, we cannot reject null hypothesis. There is evidence from the data that there is no trend.
+
+#### Frequency Domain 
+To further modify our model, we can check whether the data can offer some information about periodic structure.
+```{r, echo=FALSE}
+spectrum(z, main="Unsmoothed Periodogram")
+```
+
+```{r}
+spectrum(z, spans=c(2,2), main="smoothed Periodogram")
+d = spectrum(z, spans=c(2,2), main="smoothed Periodogram")
+d$freq[which.max(d$spec)]
+```
+From the smoothed plot, we can see that when frequency is 0.016 cycle/year, we reach the highest peak. However, by using the confidence interval bar, I find that this peak is not that significant. Periodic pattern is not that clear.
+
+
+## Model Diagnostics/Residual Analysis
+Check the validity of this ARMA(1,0) model:
+```{r,echo=FALSE}
+plot(a10$resid, main="residual vs time")
+qqnorm(a10$resid, ylab="Residuals", main =" Normal Q-Q Plot for Residuals" )
+qqline(a10$resid)
+acf(a10$resid, main="ACF of ARMA(1,0)")
+
+```
+```{r,include=FALSE}
+library(forecast)
+fitted(a10)
+```
+
+
+```{r,echo=FALSE}
+plot(c(fitted(a10)),a10$resid, main="residuals vs fitted")
+abline(h=0)
+```
+
+
+All three plots show that the data fits our model assumption very well.
+The plot "residual vs time" has symmetric property and the "Normal QQ plot" show the points fit the line very well. These indicate that our errors are normally distributed.
+ACF plot shows we have uncorrelated errors and constant variance can be shown by the plot"residuals vs fitted", which shows that the points are relatively randomly distributed above and below zero.
+
+So the ARMA(1,0) model is valid for log-transformed data of heat wave indexes
+
+
+## Conclusion
+
+Based on the data of "the Annual Heat Wave Index in United States from 1895 to 2015", we find that we can use ARMA(1,0) to model and predict annual heat wave index/seriousness of heat wave in log-scale in US. 
+
+Although we have see some extreme cases in the data from 1895 to 2015, yet generally the indexes do not show any increasing trend. But, since we do not know the data after 2015 until now, we should make predictions with caution. 
+
+
+---------
+
+## Reference 
+1.Annual Heat Wave Index in United States data:
+{https://www.epa.gov/climate-indicators/climate-change-indicators-high-and-low-temperatures}
+
+2.Heat Wave From Wikipedia:
+{https://en.wikipedia.org/wiki/Heat_wave}
+
+3.531 lecture notes/previous midterm and previous midterm projects:
+{https://ionides.github.io/531w20/}
+{https://ionides.github.io/531w20/exam/w18/mt531w18sol.pdf}
