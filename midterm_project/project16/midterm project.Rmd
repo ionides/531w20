@@ -1,0 +1,248 @@
+---
+title: "Time Series Analysis for Log Returns of Nasdaq"
+output: 
+   html_document:
+    toc: yes
+    theme: flatly
+---
+## 1.Introduction
+
+The purpose of time series modeling for return is to explore the inherent autocorrelation of the data and make a judgment on the future return under the assumption that the characteristic can be repeated in the future. If we want to construct a trading signal based on this return prediction.For example, if the predicted return is positive then we buy; If the predicted return is negative then we sell. 
+
+## 2.background
+
+The nasdaq index is a barometer of changes in market value across industrial sectors. The nasdaq index is more comprehensive than the standard & poor's 500-stock index or the dow Jones industrial index (which includes just 30 prominent industrial and commercial companies, 20 transportation companies and 15 utilities). The nasdaq index includes more than 5,000 companies, more than any other single stock market.Therefore, I choose to analyze log returns of Nasdaq. 
+
+## 3.data analysis
+
+### 3.1 Explore the data
+
+I use the daily Nasdaq data from 2015-03-04 to 2020-03-04.which are captured from [Yahoo Finance](https://finance.yahoo.com/quote/%5EIXIC/history?period1=1425427200&period2=1583280000&interval=1d&filter=history&frequency=1d/"Yahoo Finance"). The dataset consists of 1259 observations and 7 variables which are Date, Open prices, High prices, Low prices, Close prices, Adjusted Close prices and Volume of Nasdaq. 
+
+First, we summary six important statistics index of the closed price as follows.
+```{r, echo=FALSE}
+Nasd= read.csv("Nasdaq.csv",header=TRUE)
+summary(Nasd$Adj.Close)
+
+```
+
+To get more information about the trend of adjusted Close prices, we plot the adjusted Close prices against time. The mean for the adjusted Close prices is shown by the red line. 
+
+```{r,echo=FALSE}
+Nasd$Date=as.Date(Nasd$Date)
+plot(Nasd$Adj.Close~Nasd$Date,type="l",main="Nasdaq index figure")
+abline(h=mean(Nasd$Adj.Close),col='red')
+```
+
+From the plot, we can find that stock prices have a general increasing trend over time, and there is a significant drop at the beginning of 2019 and the beginning of 2020.
+
+To detrend the data, I decide to analyse returns so that I can get a more stationary time series data. Besides, analysing returns have practical meaning since investors are always care more about returns.
+
+```{r,echo=FALSE}
+lreturn = diff(log(rev(Nasd$Adj.Close)))
+summary(lreturn)
+
+
+```
+
+From the output, it is obvious that the mean of log returns are almost 0 and the min and max are also close to zero.
+
+
+```{r,echo=FALSE}
+plot(lreturn~Nasd$Date[-1],type='l',main="Log Return of Nasdaq")
+abline(h=mean(lreturn),col='red')
+
+
+
+```
+
+we can see that the mean of log return is almost zero, but the volatilities are large, which shows significantly fluctuations.
+
+## 4. model selection
+
+### 4.1 check seasonal effect
+
+```{r,echo=FALSE}
+raw = spectrum(lreturn,main="Unsmoothed periodogram")
+smooth = spectrum(lreturn,spans=c(25,5,25),main="Smoothed periodogram",ylim=c(5e-5,2e-4))
+
+```
+
+In order to check whether there is seasonal effect, I plot the frequency domain of original data and smoothed data. we could see that there’s no significant cycle in a year, which means there’s no seasonal effect in this problem. Therefore, instead of using ARIMA model, we choose to use ARMA model.
+
+### 4.2 Fit ARMA Model
+
+From the plot of log return against time, we can see wide variation of the log return. The data fluctuate around mean which is close to zero. Therefore, it seems no trend for these data. So null hypothesis is that there is no trend for this model.Then I choose a stationary autoregressive-moving average (ARMA) model.
+
+I will start by fitting an ARMA(p,q) model of the form: $Y_n = \mu + \phi_1(Y_{n-1} - \mu) + \dots + \phi_p(Y_{n-p} - \mu) + \varepsilon_n + \psi_1\varepsilon_{n-1} + \dots + \psi_q\varepsilon_{n-q}$
+${\{\varepsilon_n}\}$ is a white noise process with distribution$\mathcal{N}(0,\sigma^2)$.$\phi_1, \dots, \phi_p$are the coefficients for the autoregressive part of the model, $\psi_1, \dots, \psi_q$are the coefficients for moving average part of the model, $\mu$ is the population mean, $\sigma^2$ is error variance.
+
+#### 4.2.1 AIC table
+```{r,echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+lreturn_aic_table <- aic_table(lreturn,4,4)
+require(knitr)
+kable(lreturn_aic_table,digits=2)
+
+
+```
+
+
+From the table, we can see that ARMA(4,4) ,ARMA(2,2) and ARMA(1,2) have the lowest, the second and third lowest AIC value. Firstly, ARIMA(4,4) is a large model, which is hard to explain and is more likely to have problems with parameter identifiability,invertibility, and numerical stability. Therefore, I will fistly consider ARMA(2,2) and ARMA(1,2) to analyze this dataset.
+
+#### 4.2.2 fit ARMA model
+```{r,echo=FALSE}
+arma22 = arima(lreturn,order=c(2,0,2))
+arma22
+arma12 = arima(lreturn,order=c(1,0,2))
+arma12
+
+
+```
+a. ARMA(2,2) model
+
+$X_{1:N}$ is defined by $(1-\phi_1 B-\phi_2 B^2)(X_n-\mu)=(1+\psi_1B+\psi_2B^2)\epsilon_n$
+
+Use the data we’ve got, I have the ARMA(2,2) model:
+
+$(1+0.5813B+0.8413B^2)(X_n+0.0004)=(1+0.5563B+0.7944B^2)\epsilon_n$
+
+where $\epsilon_n\sim\mathrm{ iid }\, N[0,1.09*10^{-4}]$.
+
+
+b. ARMA(1,2) model
+
+$X_{1:N}$ is defined by $(1-\phi_1 B)(X_n-\mu)=(1+\psi_1B+\psi_2B^2)\epsilon_n$
+
+Use the data we’ve got, I have the ARMA(1,2) model:
+
+$(1+0.8461B)(X_n+0.0004)=(1+0.8318B-0.0485B^2)\epsilon_n$
+
+where $\epsilon_n\sim\mathrm{ iid }\, N[0,1.09*10^{-4}]$
+
+
+#### 4.2.3 Testing ARMA(2,2) and ARMA(1,2) Model’s Root
+
+ARMA(2,2)
+
+```{r,echo=FALSE}
+AR_roots = polyroot(c(1,-coef(arma22)[c("ar1","ar2")]))
+AR_roots
+MA_roots = polyroot(c(1,-coef(arma22)[c("ma1","ma2")]))
+MA_roots
+
+
+```
+
+From the result, we can see that ARMA(2,2) model is not invertible because MA polynomial has a root which inside the unit circle. Therefore, we cannot use ARMA(2,2) as final model.
+
+
+ARMA(1,2)
+```{r,echo=FALSE}
+AR_roots = polyroot(c(1,-coef(arma12)[c("ar1")]))
+AR_roots
+MA_roots = polyroot(c(1,-coef(arma12)[c("ma1","ma2")]))
+MA_roots
+
+
+```
+
+ ARMA(1,2) model is causal and invertible because the AR and MA polynomial has all its roots outside the unit circle in the complex plane.So my final model is ARMA(1,2):
+
+$(1+0.8461B)(X_n+0.0004)=(1+0.8318B-0.0485B^2)\epsilon_n$
+
+where $\epsilon_n\sim\mathrm{ iid }\, N[0,1.09*10^{-4}]$
+
+
+## 5. Diagnostics
+
+### 5.1 Residuals
+
+```{r,echo=FALSE}
+plot(arma12$resid,ylab = "residuals",main = "Residuals for ARMA(1,2) Model")
+acf(arma12$resid,main = "ACF of residuals")
+
+```
+
+From the residual plot we can see the mean of residuals is almost zero. However, we can see that the variance seems like not a constant. So it's mean stationary but not variance stationary.
+
+From the acf plot, we can see it's almost the Gaussian White Noise Process. The values of ACF almost fall inside the dashed lines except lag 8 and lag 29. So we conclude that the autocorelation of residuals are zero.
+
+
+### 5.2 Testing for Normality
+
+```{r,echo=FALSE}
+qqnorm(arma12$resid)
+qqline(arma12$resid,probs = c(0.25,0.75))
+
+
+
+
+```
+
+From QQ-Plot, we can see that the distribution of residuals are not normally distributed and have heavy tail. And we can also see asymmetricy from the plot, the right tail is heavier.
+
+
+## 6. Modify the Model
+
+The heavy-tailed residual indicates that current log return of Nasdaq index could not only be explained by its historical data. To get a better model to estimate log return of Nasdaq index, we need add some important factors during our analysis.Since volume is an important factor in stock market, and it may affect the close price. Thus, I try to add this factor into our model.
+
+```{r,echo=FALSE}
+volume = log(rev(as.numeric(Nasd$Volume[-1])))
+arma12_v = arima(lreturn,order = c(1,0,2),xreg = volume)
+arma12_v
+
+```
+The result shows that the standard error of volume estimate is very small which means there’s a significant effect on log(volume) as expected. 
+
+Then we should also check roots of this model
+
+```{r,echo=FALSE}
+AR_roots <- polyroot(c(1,-coef(arma12_v)[c("ar1")]))
+AR_roots
+MA_roots <- polyroot(c(1,coef(arma12_v)[c("ma1","ma2")]))
+MA_roots
+
+
+```
+Fortunately, all the roots are outside the unit circle as we expected.
+
+Again, we do diagnostic test for residual.
+
+```{r,echo=FALSE}
+plot(arma12_v$resid,ylab = "residuals",main = "Residuals for ARMA(1,2) Model with volume parameter")
+acf(arma12_v$resid,main = "ACF of residuals with volume parameter")
+qqnorm(arma12_v$resid)
+qqline(arma12_v$resid,probs = c(0.25,0.75))
+
+
+```
+
+It seems that the heavy tail problem of residual is not relieved, but adding log(volume) does improve the model in many ways. 
+
+## 7.Conclusion
+
+a. I find ARMA(1,2) model fits log return of Nasdaq index time series. By adding a new parameter, log(volume), the model is improved. 
+
+b. From diagnostic analysis of residual, we find residuals are almost the Gaussian White Noise Process,but the Q-Q plot shows that the model deviates from the independent normal distribution residual assumption.
+
+8.Reference
+
+[1]previous midterm project "Time Series Analysis for Log Returns of S&P500"
+
+Here are some improvement of my work compared with previous project. First, I choose different stock index--Nasdaq index, which is more comprehensive than the standard & poor's 500-stock index. Second, I improved model by adding log(volume).
+
+[2]lecture notes
+
+
+
+
