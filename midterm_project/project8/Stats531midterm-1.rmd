@@ -1,0 +1,255 @@
+---
+title: "Analysis of the trend of Michigan Consumer Sentiment Index in the past and prediction in the future"
+date: "3/1/2020"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+csl: ecology.csl
+---
+
+## 1.Introduction
+
+Many people have heard about the concept of GDP(gross domestic product), which is a measurement of a country's productivity level. Also, there are many other indices which could represent the price level of a country, consumers' standard of living, etc. From these indices, Economists and Econometricians are able to analyze the trend of a country's Economy and Effectivity in the long run and do the do the prediction. Here, we are introducing a new index:  The Michigan Consumer Sentiment Index (MCSI).
+It is a monthly survey of the U.S. consumer confidence levels conducted by the University of Michigan. It is based on telephone surveys that gather information on consumer expectations regarding the overall economy. The base index is 100 and based on Year 1966.  The index, introduced in 1946 by George Katona at the university, is designed to capture the mood of American consumers with regard to their economic well-being and outlook. Whether the sentiment is optimistic, pessimistic or neutral, it signals general information about near-term consumer spending plans (Kenton, 2019).Each month a minimum of 500 phone interviews are conducted across the continental U.S. There are around 50 core questions that cover three broad areas of consumer sentiment: personal finances, business condition, and buying conditions (Kenton, 2019). Therefore, as a leading index, we can investigate the impact of the demand of market on the trend of Economic business cycle. 
+
+The dataset is downloaded from Federal Reserve Bank of St. Louis (FED) Economic Research website (University of Michigan, 2019). The data was collected each month from 1st January, 1978 to 1st January, 2020.
+
+## 2.Objectives
+
+The goal of this study is to perform a time-series analysis of the Michigan Consumer Sentiment Index (MCSI). To explore more information on how consumer sentiment changing over time, we will apply basic time-series models(such as basic ARMA model) and techniques(such as detrend) to the data. Then, we will check stationarity of monthly sentiment series by either root test or Dickey-Fuller test even we haven't covered yet. If our data indicates some trend effects, we should do ARIMA model to deal with the non-stationarity problem, at least we can try to solve it. Now, we could do model-selecting by AIC table and model-checking plots to assess different fitted models of the differenced series. Finally,we will further assess whether monthly consumer sentiment exhibits certain cyclical or periodic behavior so that we could add SARIMA model to adjust our seasonality change. The average length of the stochastic cycles will be obtained and hence, we could validate the model by comparing the predicted values to the actuals.
+
+
+## 3.Data Analysis
+
+### 3.1 Descriptive Statistics
+
+```{r, results='hide',message=FALSE,echo=FALSE}
+library("faraway")
+library(alr4)
+library(quantreg)
+library(MASS)
+library(nlme)
+library(fUnitRoots)
+library(forecast)
+```
+
+```{r, results='hide',message=FALSE,echo=FALSE}
+midtermda<-read.table("consumer.txt",header=T)
+head(midtermda)
+csent<-midtermda$VALUE
+```
+```{r}
+#Detrend series 
+chg<-diff(csent)
+schg<-diff(chg, 4)
+summary(csent)
+summary(schg)
+```
+Some descriptive statistics of both MCSI and monthly changed MCSI are shown at the above. The mean and median index for MCSI is 86 and 90 across the whole time period. But the mean of monthly detrended MSCI is surprisingly close to zero, we should take care of it later.
+
+Then we look at the histogram as well as the ts plots.
+
+```{r, results='hide',message=FALSE,echo=FALSE}
+par(mfcol=c(1,2))
+hist(csent)
+hist(schg)
+tdx<-midtermda[,1]+midtermda[,2]/12
+#times series plot
+par(mfcol=c(3,1))
+plot(tdx,csent,xlab='year',ylab='sentiment',type='l',main="UM Consumer Sentiment")
+plot(chg,ylab='monthly detrend sentiment',type='l',main="Monthly Detrend UM Consumer Sentiment")
+plot(schg,ylab='seasonally monthly detrend sentiment',type='l',main="Seasonally Monthly Detrend UM Consumer Sentiment")
+
+```
+
+Both histograms illustrate bell shapes, which is an indication of the normality assumption. To explore more information on how MCSI changing over time, we check the time series plot for MCSI. It is obvious that the unbounded time series plot exhibits some trend effects. After we apply the difference by $1^{st}$ order to our data, it looks that the trend effect goes away; The Seasonality monthly data(difference by $4^{th}$ order), shows that the weekly detrend data has the same pattern as monthly detrend data. 
+
+### 3.2 Check Stationarity 
+```{r, results='hide',message=FALSE,echo=FALSE}
+par(mfcol=c(1,3))
+acf(csent,main="Sample ACF of Monthly UM Consumer Sentiment")
+acf(chg,main="Sample ACF of Monthly Detrend UM Consumer Sentiment")
+acf(schg,main="Sample ACF of Weekly Detrend UM Consumer Sentiment")
+
+```
+
+Sample autocorrelation functions (ACF) plot is used to see how the given time series is correlated with itself. From the Sample ACF plots, we found there is a clear clue that there is a trend for monthly MCSI, which matches our previous plot. Be careful that on the first plot, ACF is decaying slowly. So the monthly data may be not in stationary. 
+Also, after we did the detrend, we could see from the middle plot that no clear auto correlation between each lag despite of some acf reaches the bounds. This is a good sign of stationarity, indicates that the differenced monthly data can be approximately treated as a stationary ARIMA model.
+However, in the last plot, we find that at lag 4, 8, 12... The acf correlation with lag 0 is out the bound so that we should notice the underlying correlation between weeks.
+
+
+### 3.3 Augumented Dickey Fuller test
+```{r,warning=FALSE}
+adfTest(csent,type="nc")
+adfTest(chg,type="nc")
+```
+
+In Econometrics, we usually use Augumented Dickey Fuller to test if we could reject the null hypothesis that a unit root is present in an autoregressive model, indicates a non-stationarity. From the result on testing the original data $\textit{csent}$, the p-value is very high and we fail to reject the NH and conclude that there is a unit root in the monthly sentiment series, implies the model in this data is not stationary.
+However, the result on the transformed data $\textit{chg}$ gives us enough evidence to reject the NH and it suggests us differenced data is more suitable in our model. 
+The result confirms the Sample ACF plots in 3.2.
+
+
+### 3.4 Select the ARIMA model.
+ARIMA(p,1,q) Model: $\phi(B)((1-B)Y_{n}-\mu)=\psi(B)\epsilon_{n}$, where $\epsilon_{n}$ follows a Guassian distribution with i.i.d variance (0, $\sigma^2$); $\phi(x)$and$\psi(x)$ are ARMA polynomials.
+Another Concept: Transformation to stationarity: $z_{n}=y_{n}-y_{n-1}$, where is the difference by $1^{st}$ order. 
+
+Noted that ARIMA(p,1,q) Model is almost like a special ARMA(p+1,q) Model with a unit root, due to the strong serial dependence identified from the sample ACFs, we consider the differenced data $\textit{chg}$: monthly MCSI after detrend instead of original data $\textit{csent}$. 
+
+$\textbf{Since we are using differenced data, there is no need to build ARIMA model and we could use ARMA model direclty to represent ARIMA model}$
+
+Thus, we would say ARMA model in convenience but actually it is an ARIMA model based on not transformed data.
+
+
+Check AIC table for different ARMA model based on $\textit{chg}$.
+```{r, results='hide',message=FALSE,echo=FALSE,warning=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+midchgtable <- aic_table(chg,5,5)
+require(knitr)
+```
+```{r}
+kable(midchgtable,digits=3)
+chgmod<-arima(chg,order=c(3,0,3),include.mean=F)
+chgmod
+chgmod2<-arima(chg,order=c(5,0,0),include.mean=F)
+chgmod2
+```
+From the AIC table, since AIC is a good measurement of goodness of fit(profile log-likelihood) within considering the model size. Usually the lower AIC may give a better model, so ARMA(3,3) which has a lowest AIC should be considered. Also, the $\textbf{ARMA(5,0)}$(a.k.a AR(5)) is also a potential candidates because AIC value of AR(5,0) drops dramatically coompared to AIC value of AR(4,0). We should keep in mind that AIC table should not be over interpreted, and it's always necessary to check our model and test the significance of the model in the further step.
+
+
+### 3.5 Check the significance of model.
+```{r}
+AR_roots<-polyroot(c(1,-coef(chgmod)[c("ar1","ar2","ar3")]))
+abs(AR_roots)
+MA_roots<-polyroot(c(1,-coef(chgmod)[c("ma1","ma2","ma3")]))
+abs(MA_roots)
+```
+
+From output of ARMA(3,3) model, the absolute value roots of the AR polynomial are 1.4, 1.0, 1.0. two of three are close the unit circle, suggests we may have a non-causality issue from this model. In addition, the absolute value roots of the MA are 0.91, 1.46, 0.91. It will also cause the non-invertibaility issue. ARMA(3,3) model is problematic in this case.
+
+```{r}
+AR_roots2<-polyroot(c(1,-coef(chgmod2)[c("ar1","ar2","ar3","ar4","ar5")]))
+abs(AR_roots2)
+```
+From output of ARMA(3,3) model, the absolute value roots of the AR polynomial are all around 1.5,1.6 which are outside the unit circle. Therefore, the stochastic business cycles exist in the change series of consumer sentiment. We could assume ARMA(5,0) model is more appropriate in the trend of MSCI analysis.
+
+Construct a 95% Confidence Interval and see if the ar roots from AMRA(5,0) is significant.
+```{r}
+confint(chgmod2)
+```
+From the confidence intervals, we see that $\phi_{2}$,$\phi_{3}$,$\phi_{5}$are significant coefficients for the model. However, since 0 is in the range of the confidence interval for $\phi_{1}$ and $\phi_{4}$, there is not enough evidence to conclude that those two parameters are significant in our model, Even though the interval are just beyond the 0 threshold.  (The inspiration of this part is from a previous midterm prject: Currency Exchange Rate between USD and JPY)
+
+### 3.6 Residual Analysis.
+```{r}
+#We use the R package(forecast)
+checkresiduals(chgmod2)
+```
+
+The first graph(Residual plot) shows that residuals oscillate over time, it can be observed that residuals deviated from zero, which is consistent with the pattern of gaussian white noise. 
+Then, looking at the second graph (ACF of the residuals), additional serial correlations are not shown since no lag shows suspicious correlations between lags.
+From the third plot, the histogram of residuals are in a good shape of normal distribution(mean=0), so that we have evidence to say our white noise {$\epsilon_{n}$} meets the Normality assumption with zero mean and constant variance (0, $\sigma^2$). 
+
+Box-Ljung test is not required in the class, but it is an alternative method to verify if the residuals are white noise, which does not contain serial dependence.
+```{r}
+#using the Box-Ljung test
+Box.test(chgmod2$residuals,lag=12,type='Ljung')
+```
+We set the lag=12 because we want to check if we could reject the null hypothesis that residuals have no auto correlation in the first 12 months. The very large p-value tells us that we can not reject the NH so that ARMA(5,0) model doesn't violate the residual assumptions.
+
+
+## 4.Spectrum Analysis and Periodic Interpretation
+```{r}
+#First, do the unsmoothed periodogram
+Spec0<-spectrum(chg, main = "Unsmoothed periodogram in pgram estimation")
+#Next, do the smoothed periodogram with span(3,6,3)
+Spec1<-spectrum(chg, spans=c(3,6,3), main = "Smoothed periodogram")
+a<-Spec1$freq[which.max(Spec1$spec)]
+1/a
+```
+
+We construct the spectrum density plot with unsmoothed before, despite it is an inconsistent estimator of the spectrum, we could still roughly find at the highest frequency: around 0.18, appears the dominant frequency which carries the highest spectrum.
+But we should focus on the smoothed sprectrum density plot and find the domiant frequency at smoothed one: the highest frequency is exactly 0.12, and it corresponds to the period to 8 months. Noticed that the second highest frequency is around 0.16, refers to a period of 6 months. Both periods indicate that the consumer confidence sentiment will behave as a cycle within 1 year, such as 8 months. 
+
+
+
+## 5.Forecasting
+
+```{r, results='hide',message=FALSE,echo=FALSE,warning=FALSE}
+source("fore.R")
+p2<-fore(chgmod2,chg,482,24)
+p3<-fore(chgmod2,chg,506,12)
+source("foreplot.R")
+par(mfcol=c(2,1))
+foreplot(p2,chg,482,450)
+foreplot(p3,chg,506,450)
+```
+
+$\textit{First plot is to test if our actual data fits the model.}$
+
+$\textit{Second plot is to use our model to predict the data over next 12 months.}$
+
+Here we use the $\textit{fore}$ function from the University of Chicago.
+From the first plot, most of the 24-month changed MCSI fall into the 95% interval forecasts for the 24-step ahead point at Jan. 2018 except one point around 499. This is a good fit for our actual data so that we can confidently produce good prediction outcomes of changed consumer sentiment from the fitted AMRA(5,0) model. 
+
+Then we predict 12-month ahead and 95% interval forecasts for the differenced series of consumer sentiment at the forecast origin Jan. 2020. As indicated in the second forecasting plot, we predict that consumer sentiment will continue to follow the mean trend in the next following months. If we observe very carefully, the trend is increasing very slowly, but in the whole part, we assume this kind of increase is negligible.
+
+
+## 6.Conclusion
+In this midterm prject, we discovered a little bit on the trend of MSCI over the past 40 years. Major work in our project is to transform the data(differenced data)and then fit an appropriate ARMA model, or we could directly call it ARIMA model. In the end, AR(5) model somehow works well because it doesn't violate the stationary assumption, causality and invertibility assumption and keep the property of gaussian white noise. Hence, we are confidence to use the AR(5)  model to find the history trend and do some basic forecasting in the futurn trend.
+
+From the Spectrum analysis, the data exhibits that the stochastic trend exists and there is a periodical cycle about roughly 6-8 months from the history. This data makes sense since FED usually adjusts more than one time interest rates during one year. For exmaple, higher interest rate is applied when Consumer sentiment is high, and imposing higher interest rate will offset this effect. So it's called tight monetary policy. We won't dig further in the reason why the past trend behaves like this. But we should be always connect our model to the real world intuition when doing the analysis.
+One interest point is that if we see the change of MCSI from 1978 to 2019, we can find in the 2008 financial crisis, MSCI falls into a trough signficantly. It is reasonable to assume that the financial crisis in 2008 has a significant effect on this extreme consumer pessimism. Moreover, from forecasting, we predict that consumer sentiment will continue to increase in 2020, but the rate of rising will slow down. The detected trend also consistent with the U.S. economic outlook from 2019 and Beyond. That is, according to the most recent forecast released at the Federal Open Market Committee meeting on September 18, 2019, the US GDP growth will slow to 2% in 2020 from 2.2% in 2019 (Amadeo, 2019). 
+
+One possible problem in this moded is that we dont't deal with the seasonal behavior via SARIMA model. But in the future, it's possibe for me to consider more about the seasonal change and how to remove this seasonality as well. 
+
+The last Chapter is to access another dataset and do a brief comparison in trend between MCSI and US price level(Laspeyres Index) over same period:1980 to 2010, so as to see if there are any similaries.
+
+  
+## 7.Further Exploration
+```{r}
+midtermda2<-read.table("price_level.txt",header=T) 
+combine<-read.table("consumer-price.txt",header=T) 
+chgmod3<-lm(combine$Pricelevel~combine$VALUE,midtermda2)
+summary(chgmod3)
+par(mfcol=c(2,1))
+plot(midtermda2$year,midtermda2$Pricelevel,xlab='year',ylab='Price level',type='l',main="US Price Level in the past years")
+plot(tdx[c(26:390)],csent[c(26:390)],xlab='year',ylab='sentiment',type='l',main="UM Consumer Sentiment")
+```
+
+We retrived price-level index data from FED, and combine the two data sets of price level and UMCSI together, and form a new dataset:consumer-price. The linear Regression shows that the correlation between Price Level and MCSI is statistically significant, and they are positively correlated. Therefore, we could briefly have an idea that Higer consumer Sentiment stimulates consumption, and may lead to higher price level, $\textbf{even the model only provides a basic intuition that can not justify any causal correlation.}$ Noticed that $R^2$ is only 26.6%, which indicates just a small proportion of variation can be explained by the simple correlation effect.
+
+Also, we find the two time series plots shows roughly similar pattern, especially both decrease in Year 2008 in this history. Therefore, in the futurn exploration, I will be interested in connecting two factors over the time history and try to dig out the true causality behind them.
+
+## 8.Reference
+
+1.Amadeo, K. (2020, Mar 1). What Will the Economy Do in 2019 and Beyond? Retrieved	from https://www.thebalance.com/us-economic-outlook-3305669.
+
+2.Box-Ljung test. Retrieved from https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/Box.test
+
+3.Dickey Fuller test. Retrieved from  https://en.wikipedia.org/wiki/Dickey%E2%80%93Fuller_test.
+
+4.Fore Function, University of Chicago. Retrieved from https://faculty.chicagobooth.edu/ruey.tsay/teaching/bs41202/sp2014/foreOne.R
+
+5.Kenton, W. (2020, Mar 1). Michigan Consumer Sentiment Index (MCSI). Retrieved from	https://www.investopedia.com/terms/m/mcsi.asp.
+
+6.Latex code. Retrieved from https://www.overleaf.com/learn/latex/Bold,_italics_and_underlining
+
+7.Midterm Project:Currency Exchange Rate between USD and JPY. Retrieved from https://ionides.github.io/531w18/midterm_project/project5/ProjectPaper.html 
+
+8.Price Level of Consumption for United States. (2020, Mar 2).Retrieved from https://fred.stlouisfed.org/series/PLOCONUSA622NUPN
+
+9.Tsay, R. S. (2016). Analysis of financial time series. New Delhi: Wiley India.University of	Michigan: Consumer Sentiment. (2020, Mar 1). Retrieved from	https://fred.stlouisfed.org/series/UMCSENT.
+
+
+
+
+
