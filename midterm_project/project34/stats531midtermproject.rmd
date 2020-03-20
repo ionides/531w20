@@ -1,0 +1,146 @@
+---
+title: "Stats 531 midterm project"
+
+date: "March 9"
+output:
+  html_document:
+    toc: yes
+    theme: flatly
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+
+-----------
+
+
+--------
+
+
+```{r  echo=FALSE}
+library(knitr)
+
+```
+In one of my previous homework, I studied the Ann Arbor January Low temperature time series. This made me curious about the Ann Arbor January High temperature time series. I wonder if there is another potential partern within the data of Ann Arbor January High temperature. Will it be similar with the case of Low temperature or will it be different?
+
+To start the exploration of Ann Arbor January High temperature time series, first, I load the data and check its general situation. The data I am going to explore includes the high temperature in January of each year from 1900 to 2019. Here is what the data looks like
+```{r  echo=FALSE}
+aaw.data <- read.table(file="http://ionides.github.io/531w20/01/ann_arbor_weather.csv",header=TRUE)
+#aaw.data
+plot(High~Year,data=aaw.data,type="l")
+aaw.high <-aaw.data$High
+aaw.high[56]<-(aaw.high[55]+aaw.high[57])/2
+```
+
+As it can be seen, the data for 1955 is missing. To deal with this problem, I decide to use the mean value of 1954 January high temperature and 1956 January high temperature value as the subsitituion of the 1955 January high temperature. After fixing this problem, the plot becomes as follow:
+
+```{r  echo=FALSE}
+
+plot(x=aaw.data$Year,y=aaw.high,type="l")
+```
+
+Since the data I need to consider is the high temperature only in January, there is no need to think about the seasonal fluctuation. Look at the data plot above, it seems that the data fluctuates up around 1950 and fluctuates down around 1978. However, this change in general trend is not clear enough So I assume that the data flucuates without any obvious trend. 
+I  try fitting the data with an ARMA model. The ARMA(p,q) model is shown below:
+$$ Y_n =\mu+\phi_1(Y_{n-1}-\mu) + \dots + \phi_p(Y_{n-p}-\mu) + \varepsilon_n + \psi_1\varepsilon_{n-1} + \dots + \psi_q\varepsilon_{n-q}$$
+where Y is high January temperature, $\varepsilon$ is a white noise process with distribution $(\mathcal{N},\sigma^2)$, and $\phi$, $\psi$, $\sigma^2$ are parameters. To find out the optimal (p,q), I will try different combinations of (p,q). I try the (p,q) combinations from (0,0) to (3,3). The criteria I first use to compare these models with different (p,q) is the Akaie information criteria(AIC) values. The lower the AIC values, the higher the prediction accuracy, which in other words, usually the better performance. Below is the AIC table I generate.
+```{r  echo=FALSE,warning=FALSE}
+generate.aic <- function(data, p_max, q_max){
+  aic.table <- matrix(NA, (p_max+1), (q_max+1))
+  for(p in 0:p_max){
+    for(q in 0:q_max){
+       aic.table[p+1, q+1] <- arima(data, order = c(p, 0, q))$aic
+    }
+  }
+  dimnames(aic.table) <- list(paste("<b> AR", 0:p_max, "</b>", sep = ""), paste("MA", 0:q_max, sep = ""))
+  aic.table
+}
+temp.aic <- generate.aic(aaw.high, 3, 3)
+kable(temp.aic, digits = 2)
+
+```
+
+From the AIC table, I can see that ARMA(0,2) has the least AIC value. ARMA(0,0), ARMA(0,1) and AMRA(1,0) are just a little bigger than ARMA(0,2) in terms of AIC value but they have less comlicated structure. So I select ARMA(0,2), ARMA(0,0),ARMA(1,0) and ARMA(0,1) for next step exploration. I fit these models to the data and check the parameters.
+
+```{r, echo = F}
+params.table <- function(data, R, orders){
+  table <- matrix(NA, R, 4)
+  for(r in 1:R){
+    arma.tmp <- arima(data, order = orders[[r]])
+    table[r, 1] <- round(arma.tmp$coef["intercept"],3)
+    table[r, 2] <- round(sqrt(arma.tmp$var.coef["intercept", "intercept"]),3)
+    table[r, 3] <- round(arma.tmp$coef["ar1"],3)
+if(is.na(table[r, 3])) table[r, 3] <- "/"
+    table[r, 4] <- round(arma.tmp$coef["ma1"],3)
+    if(is.na(table[r, 4])) table[r, 4] <- "/"
+}
+  dimnames(table) <- list(c("<b> ARMA(0, 0)", "<b> ARMA(0, 1)", "<b> ARMA(1, 0)", "<b> ARMA(0, 2)"), c("Intercept", "Standard Error", "AR Coefficient", "MA Coefficient"))
+  table
+}
+aaw.params <- params.table(aaw.high, R = 4, orders = list(c(0,0,0), c(0,0,1), c(1,0,0),c(0,0,2)))
+kable(aaw.params)
+
+```
+
+The standard errors are too large compared to the coefficients and thus ARMA(0,0) should be the best model for this dataset. ARMR(0,0) model can be written as:
+$$Y_n=\mu+\varepsilon_n$$
+
+where $\mu$ is a constant mean, since I have assumed that no trend exists in data. $\{\varepsilon_n\}$ is a Gaussian white noise process I have mentioned in the previous part. So now I have my null hypothesis:
+$$H_0:Y_n\sim I.I.d. \mathcal {N}(\mu,\sigma^2)$$
+
+So for the next step I am going to test for the normal assumption. I plot the QQplot below.It can be seen that the quantiles basically lie on a straight line. It is reasonable to make the normal assumpotion.
+```{r echo=FALSE}
+qqnorm(aaw.high)
+qqline(aaw.high)
+```
+
+Next I am going to fit AMRA(0,0) to the data and find out the estimates of parameters.
+```{r echo=FALSE}
+arma00 <- arima(aaw.high, order=c(0,0,0))
+arma00
+```
+
+The estimate of $\mu$, is 49.2758, with standard error of 0.7072. The estimate of $\sigma^2$ is 60.01. THe figures below show the histogram and the density plot of simulated $\mu_*$, the estimate of $\mu$, under the hypothesis
+$$H_0:Y_n\sim I.I.d. \mathcal {N}(49.2758,60.01)$$
+```{r, echo=FALSE}
+set.seed(1)
+J <- 1000
+params <- coef(arma00)
+intercept <- params["intercept"]
+sigma <- sqrt(arma00$sigma2)
+theta <- matrix(NA,nrow=J,ncol=length(params),dimnames=list(NULL,names(params)))
+for(j in 1:J){
+   y_j <- rnorm(length(aaw.high),sd=sigma)+intercept
+   theta[j,] <- coef(arima(y_j,order=c(0,0,0)))
+}
+par(mfrow=c(1,2))
+hist(theta[,"intercept"],freq=FALSE,main="", xlab="mu") 
+plot(density(theta[,"intercept"],bw=0.05),main="")
+```
+
+The confidence interval from Fisher information is
+$$[49.2758-1.96\times0.7027,49.2758+1.96\times0.7027]=[47.8985,50.6531]$$
+Thus, the result is pretty reasonable.
+
+For the model diagnostics, I check the residuals.
+```{r, echo=FALSE}
+plot(arma00$resid, ylab="residuals")
+
+```
+```{r, echo=FALSE}
+acf(arma00$resid,na.action=na.pass,main="residuals acf")
+
+```
+
+From the plots above, it can be seen that there is no obvious autocorrelation. However, some further analysis might be needed for some potential trends in the data.
+
+In conclusion, from my exploration, the ARMA(0,0) model, a Gaussian white noise process, appears to fit the data most. This implies that there is no obvious trend in the Ann Arbor January high temperature. More further and complex models and exploration will be necessary to find out if there is any deeper pattern here.
+
+
+
+Attribution: For this homework, my previous work helped me with this study. Also, I referred to R documentation for how to use R functions to calculate parameters. In addition, I looked at slides for doing analysis to explore the data and how to make the tables.
+
+Reference: [1]:Temperature data:http://ionides.github.io/531w20/01/ann_arbor_weather.csv
+
+-----------
