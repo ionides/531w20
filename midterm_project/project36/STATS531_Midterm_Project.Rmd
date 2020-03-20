@@ -1,0 +1,260 @@
+---
+title: "STATS 531 Midterm Project"
+date: "March 2020"
+output: 
+   html_document:
+    toc: yes
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE)
+```
+
+```{r}
+# Packages
+library(lubridate)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(grid)
+
+# set up the working path
+# setwd("D:/STATS 531/midterm project/")
+
+# Load data
+airpolution = read.csv("PRSA_data_2010.1.1-2014.12.31.csv")
+```
+
+```{r}
+# Romove NA and calculate the daily mean value for pm2.5 and temperature
+airpolution = airpolution[!is.na(airpolution$pm2.5),] %>%
+  group_by(year, month,day) %>%
+  summarise(pm2.5 = mean(pm2.5),
+            temp = mean(TEMP)) %>%
+  mutate(date = as.Date(paste(month,day,year,sep = "-"), format = "%m-%d-%Y")) 
+
+airpolution$diff_days = as.numeric(airpolution$date - min(airpolution$date)) 
+
+airpolution = airpolution %>%
+  ungroup() %>%
+  select(date, diff_days, pm2.5, temp)
+```
+
+
+## 1. Introduction
+
+The air pollution in Beijing is always a prevalent topic in China. Among all the measurements of air pollution, PM2.5 concentration is the most famous and effective. We download the "Beijing PM2.5 Dataset (2010 - 2014)" from UCI Machine Learning Resository[1] to study how the PM2.5 changed over time in Beijing.
+
+
+## 2. Explanatory Data Analysis
+
+### 2.1 Data Overview
+After removing the NA from the dataset and calculating the mean value of daily PM2.5 and temperature, we finally get a dataset with 1789 rows and 4 columns. Below is the summary table for our dataset:
+```{r}
+summary(airpolution)
+```
+
+As we can see from the summary table above, the dataset collected from Jan 2nd, 2010 to Dec 31, 2014 (five years). Also, PM2.5 shows a wide value range from 2.958 $ug/m^3$ to 552.479 $ug/m^3$, which indicates that we might need to do some transformation for our data. The variable "diff_days" means what the day difference between the observed days and Jan 2nd, 2010.
+
+
+Then, we draw a time plot for PM2.5 and in order to detect its trend, we also use the Local linear regression approach to smooth the plot.
+
+```{r}
+pm25_loess = loess(pm2.5 ~ diff_days, span = 0.4, data = airpolution)
+
+par(mfrow=c(1,2)) 
+airpolution %>% 
+  ungroup() %>%
+  mutate(local_reg = pm25_loess$fitted) %>%
+  ggplot(aes(x = date)) +
+  geom_line(aes(y = pm2.5)) + 
+  geom_line(aes(y = local_reg), color = "red") +
+  labs(title = "Estimating trend by Loess smoothing",
+       x = "Date", y = "PM2.5") +
+  theme(plot.title = element_text(hjust = 0.5, size = 17))
+```
+
+From the plot above, we can see that there is not an obvious increase or decrease trend for PM2.5 in Beijing from 2010 to 2014. Although it fluctuates a little bit, the mean looks stationarily around 100. However, the same as we found from the summary table, the range of PM2.5 is wide and data fluctuated a lot over this wide range, so we decide to apply a sqrt root transformation on the data.
+
+
+### 2.2 Data Transformation
+
+After doing the sqrt root transformation, we also draw a time plot based on the sqrt scale data. Similarly, the Local linear regression approach is used to assist us study the trend of the data.
+
+```{r}
+airpolution = airpolution %>% mutate(sqrt_pm2.5 = sqrt(pm2.5))
+
+sqrt_pm25_loess = loess(sqrt_pm2.5 ~ diff_days, span = 0.4, data = airpolution)
+
+par(mfrow=c(1,2)) 
+airpolution %>% 
+  ungroup() %>%
+  mutate(sqrt_local_reg = sqrt_pm25_loess$fitted) %>%
+  ggplot(aes(x = date)) +
+  geom_line(aes(y = sqrt_pm2.5)) + 
+  geom_line(aes(y = sqrt_local_reg), color = "red") +
+  labs(title = "Sqrt Transformation: Estimating trend by Loess smoothing",
+       x = "Date", y = "Sqrt(PM2.5)") +
+  theme(plot.title = element_text(hjust = 0.5, size = 17))
+```
+
+After the transformation, we can find that data is more concentrated and still looks mean stationary, even through there is still some large values in the dataset. Next, we look into the ACF plot of our data.
+
+```{r}
+acf(airpolution$sqrt_pm2.5, main="ACF of Sqrt(PM2.5)", lag.max = 40)
+```
+
+The sample ACF is within the dashed lines after lag 2, but there are some indications of decreasing like a damped oscillation, which might be an AR(1) or AR(2) property. Also, the rapid decrease of the sample ACF to values close to zero is consistent with mean stationarity but doesn't give much evidence for or against covariance stationarity.[2]
+
+
+### 2.3 Cycles Study based on Band Pass Filter
+
+When doing the time series analysis, we are interested in its frequency variation. As we known, high frequency variation might be regarded as noise and low frequency variation might be regarded as trend usually. Except these, the mid-range frequencies might be considered to correspond to the business cycle. In order to extract the business cycle, we can also use local linear regression approach to simulate the high frequency and low frequency variation and then remove them to explore the business cycle. 
+
+Now, refering to lecture note 8 "band pass filter" [3][4], we build a smoothing operation in the time domain to extract business cycles, and then look at its frequency response function as below:
+
+```{r}
+PM2.5 = airpolution$sqrt_pm2.5
+
+Trend = ts(loess(sqrt_pm2.5 ~ as.numeric(date), span = 0.4, data = airpolution)$fitted, 
+             start = 2010, frequency = 365)
+
+Noise = ts(PM2.5 - loess(sqrt_pm2.5 ~ as.numeric(date), span = 0.1, data = airpolution)$fitted, 
+             start = 2010, frequency = 365)
+
+Cycles = PM2.5 - Trend - Noise
+
+plot(ts.union(PM2.5, Trend, Noise, Cycles), type = "l", 
+     xlab = "Year", main = "Decomposition of PM2.5 as Trend + Noise + Cycles")
+```
+
+From the plot above, there might not be an obvious business cycle over years.
+
+
+### 2.4 Seasonality Study based on Spectrum Analysis
+
+There is not much expectation of the seasonality for PM2.5, since from the plot above, we didn't find any clear business cycles. However, in order to to verify this assumption, we choose to do spectrum analysis.
+
+```{r}
+par(mfrow=c(2,1),cex=0.8)
+spectrum(airpolution$sqrt_pm2.5, main="Unsmoothed Periodogram")
+spectrum_smooth1 = spectrum(airpolution$sqrt_pm2.5, spans = c(20, 30),
+                            main = "Smoothed Periodogram")
+```
+
+From the spectrum periodogram above, moving the crossbar to each point along the estimated spectrum, we can find that there is not a significant and dominant frequency in the plot, which indicates that our data might not have an obvious seasonal behavior. Then, we will only focus on ARMA model and will not consider SARIMA model.
+
+
+
+## 3. ARMA Model Construction
+
+Let $Y_{1:n}$ be the mean value of PM2.5 on each day from Jan 2 2010 to Dec 31 2014. According to the lecture note 5[5], we seek to fit a stationary Gaussian ARMA(p,q) model with parameter vector $\theta = (\phi_{1:p},\ \psi_{1:q},\ \mu,\ \sigma^2)$ given by
+$$\phi(B)(Y_n-\mu) = \psi(B)\epsilon_n$$
+where
+$$\mu = E[Y_n]$$
+$$\phi(x) = 1 - \phi_1 x - \cdots-\phi_p x^p$$
+$$\psi(x) = 1 - \psi_1 x - \cdots-\psi_q x^q$$
+$$\epsilon_n\sim iid\ N[0,\ \sigma^2].$$
+
+### 3.1 Model Selection
+In order to decide the values of p and q, we tabulate AIC values for a range of choices of p and q, where AIC is Akaike's information criterion: 
+$$AIC = -2\times \ell(\theta) + 2D$$
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+aic_table = function(data, P, Q){
+  table = matrix(NA, (P+1), (Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1, q+1] = arima(data, 
+                               order = c(p, 0, q),
+                               optim.control = list(maxit = 1000))$aic
+    }
+  }
+  dimnames(table) = list(paste("AR", 0:P, sep=""), 
+                         paste("MA", 0:Q, sep=""))
+  return(table)
+}
+
+AIC.table = aic_table(airpolution$sqrt_pm2.5, 4, 4)
+
+kable(AIC.table, digits = 2, align = "c")
+```
+
+From the AIC table above, we can see that ARMA(3,3) has the smallest AIC (9066.02). However, the AIC of ARMA(1,1) equals to 9066.32 which is very close to ARMA(3,3). Since the ARMA(1,1) model is much simpler than ARMA(3,3), we choose ARMA(1,1) as our model for analysis.
+
+```{r}
+ARMA11 = arima(airpolution$sqrt_pm2.5, order = c(1, 0, 1))
+```
+
+```{r echo=TRUE}
+arima(airpolution$sqrt_pm2.5, order = c(1, 0, 1))
+```
+
+From the results above, we know that ARMR(1,1) can be written as:
+$$Y_n = 9.2373+0.2999(Y_{n-1} - 9.2373)+\epsilon_n + 0.3312\epsilon_{n-1}$$
+Based on the assumption of Gaussian ARMA(1,1) model, we need to test if $\{\epsilon_n\}$ is a Gaussiance white noise process or not.
+
+
+### 3.2 Model Diagnostics
+
+Firstly, we will calculate the root of the AR polynomial and the MA polynomial to check the causality and invertibility of our model[6].
+
+```{r echo=TRUE}
+polyroot(c(1,-coef(ARMA11)[c("ar1")]))
+
+polyroot(c(1,-coef(ARMA11)[c("ma1")]))
+```
+
+As we can see, both the roots of AR and MA polynomial are outside the unit circle, suggesting we have a stationary causal and invertible fitted ARMA. Also, since AR root is not very close to MA root, there is no strong suggestion of parameters redundancy in the fitted model.
+
+Next, we look into the ACF for the residuals.
+
+```{r}
+acf(ARMA11$residuals, main="ACF of residuals")
+```
+
+Residuals ACF shows that the driving noise process is uncorrelated and has no trend. So, it doesn't conflict with our white noise assumption. Furthermore, we want to test the normality of our white noise process. We choose qqplot and Shapiro test for normality.
+
+```{r}
+qqnorm(ARMA11$residuals, pch = 1)
+qqline(ARMA11$residuals, col = "red", lwd = 1)
+```
+
+From qqplot above, we can find that the residuals of our model looks quite normal.
+
+```{r, echo=TRUE}
+shapiro.test(ARMA11$residuals)
+```
+
+Meanwhile, from the Shapiro test, p-value = 0.6019 > 0.05, which indicates that we fail to reject the null hypothesis, residuals follow a normal distribution.
+
+After diagnostics, we find that our model fits the data very well.
+
+
+## 4. Conclusion
+
+In this project, we study how the PM2.5 changed over time in Beijing. When we saw the raw data, there are some drastic fluctuations in the daily PM2.5. After taking the sqrt root transformation, we can find that the fluctuations turn moderate. Looking into the time plot of PM2.5, we can see that there is not a clear increasing or decreasing trend for PM2.5 in Beijing. Meanwhile, through the cycles study and seasonality study, we also found that there is not a clear cycle or seasonal behavior for PM2.5.
+
+Based on AIC criterion, we constructed a ARMA(1,1) model which captures the main features of the data. After doing the diagnostics, we can find that our model fits the data very well.
+
+$$Y_n = 9.2373+0.2999(Y_{n-1} - 9.2373)+\epsilon_n + 0.3312\epsilon_{n-1}$$
+
+Thus, we have found that a reasonable model for daily PM2.5 in Beijing is an ARMA(1,1) model after performing an sqrt root transform on the daily PM2.5 values.
+
+
+## 5. Reference
+
+[1] Data resource: https://archive.ics.uci.edu/ml/datasets/Beijing+PM2.5+Data
+
+[2] ACF Analysis: https://ionides.github.io/531w18/exam/w18/mt531w18sol.pdf
+
+[3] Band Pass Filter: https://ionides.github.io/531w16/midterm_project/project1/Stats_531_Midterm_Project.html
+
+[4] Band Pass Filter: https://ionides.github.io/531w20/08/notes08-annotated.pdf
+
+[5] ARMA Model: https://ionides.github.io/531w20/05/notes05.pdf
+
+[6] Causality and Invertibility: https://ionides.github.io/531w20/05/notes05-annotated.pdf
