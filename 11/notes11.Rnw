@@ -148,6 +148,8 @@ Compartments are groups of people; the flow is the movement of an infectious dis
 
 We will develop deterministic and stochastic representations of a susceptible-infected-recovered (SIR) system, a fundamental class of models for disease transmission dynamics. We will do this using notation which generalizes to more complex systems \citep{breto09}.
 
+
+%%%%% SIR diagram
   \begin{center}
     \resizebox{0.5\textwidth}{!}{
       \Large
@@ -527,7 +529,7 @@ The variable \code{B} refers to boys confined to bed and \code{C} to boys in con
 \begin{frame}[fragile]
 
 <<flu-data2,echo=F,out.width="8cm",fig.width=6>>=
-bsflu <- subset(bsflu,select=c(day,B))
+#bsflu <- subset(bsflu,select=c(day,B))
 ggplot(data=bsflu,aes(x=day,y=B))+geom_line()+geom_point()
 @
 
@@ -587,11 +589,14 @@ sir_rinit <- Csnippet("
 @
 We fold these \code{Csnippet}s, with the data, into a \code{pomp} object thus:
 <<rproc1-pomp,purl=FALSE>>=
-pomp(bsflu,time="day",t0=0,rprocess=euler(sir_step,delta.t=1/6),
+pomp(subset(bsflu,select=c(day,B)),
+     time="day",t0=0,rprocess=euler(sir_step,delta.t=1/6),
      rinit=sir_rinit,paramnames=c("N","Beta","gamma"),
      statenames=c("S","I","R")) -> sir
 @
-
+\bi
+\item Here, we specify the \code{pomp} object one piece at a time. Once pieces are debugged, you can specify them all at the same time.
+\ei
 \end{frame}
 
 \begin{frame}[fragile]
@@ -627,7 +632,8 @@ sir_rinit <- Csnippet("
 ")
 
 pomp(sir,rprocess=euler(sir_step,delta.t=1/6),rinit=sir_rinit,
-     paramnames=c("Beta","gamma","N"),statenames=c("S","I","R","H")) -> sir
+     paramnames=c("Beta","gamma","N"),
+     statenames=c("S","I","R","H")) -> sir
 @
 
 \end{frame}
@@ -692,42 +698,75 @@ Fiddle with the parameters to see if you can't find parameters for which the dat
 
 \begin{frame}[fragile]
 
-\frametitle{Extending the SIR model to include latency: The SEIR model}
+\frametitle{The SIR model to include latency: The SEIR model}
 
 Below is a diagram of the so-called SEIR model.
 This differs from the SIR model in that infected individuals must pass a period of latency before becoming infectious.
 
-<<seir-diagram,echo=FALSE,cache=TRUE>>=
-require(DiagrammeR)
-DiagrammeR("graph LR; S(S) --> E; E(E) --> I; I(I) --> R(R);"
-           ,height=200,width=600)
-@
+\vspace{-3mm}
+
+%%%%% SEIR diagram
+  \begin{center}
+    \resizebox{0.5\textwidth}{!}{
+      \Large
+      \setlength{\unitlength}{5pt}
+	\begin{picture}(60,20)(-21,-4)
+	  \thicklines
+	  \put(-16,0){\framebox(6,6){S}}
+	  \put(0,0){\framebox(6,6){E}}	  
+	  \put(16,0){\framebox(6,6){I}}
+	  \put(32,0){\framebox(6,6){R}}
+	  \put(-21,3){\vector(1,0){4}}
+	  \put(-21,0){$\mu^{}_{\bullet S}$}
+          \put(-10,3){\vector(1,0){10}}
+	  \put(-7,0){$\mu_{SE}^{}$}	 	  
+	  \put(6,3){\vector(1,0){10}}
+	  \put(9,0){$\mu_{EI}^{}$}
+	  \put(11,4){\vector(0,1){5}}
+	  \put(11.7,6){$\rho$}
+	  \put(11,11.5){\circle{5}}
+	  \put(9.8,10.6){{$C$}}
+	  \put(-13,-0.2){\vector(0,-1){4}}
+	  \put(-12,-3){$\mu^{}_{S\bullet}$}
+	  \put(3,-0.2){\vector(0,-1){4}}
+	  \put(4,-3){$\mu^{}_{E\bullet}$}
+	  \put(19,-0.2){\vector(0,-1){4}}
+	  \put(20,-3){$\mu^{}_{I\bullet}$}
+	  \put(22,3){\vector(1,0){10}}
+	  \put(26,0){$\mu_{IR}^{}$}
+	  \put(35,-0.2){\vector(0,-1){4}}
+	  \put(36,-3){$\mu_{R\bullet}^{}$}
+	\end{picture}
+    }
+  \end{center}
 
 \myquestion.
-Modify the codes above to construct a \code{pomp} object containing the flu data and an SEIR model.
-Perform simulations as above and adjust parameters to get a sense of whether improvement is possible by including a latent period.
+Modify the codes above to construct a \code{pomp} object containing the flu data and an SEIR model. As before, $\mu_{\bullet S}=\mu_{S\bullet}=\mu_{E\bullet}\mu_{I\bullet}\mu_{R\bullet}=0$ is appropriate here. Perform simulations as above and adjust parameters to get a sense of whether improvement is possible by including a latent period.
 
+\answer{\vspace{5mm}}{todo}
+
+\bi
+\item Focus on homework before attempting extended questions from the nodes. Initially, think about whether in principle you know how to proceed.
+\ei
 \end{frame}
 
 \begin{frame}[fragile]
 
 \frametitle{Rethinking the boarding-school flu data}
 
-In the preceding, we've been assuming that $B_t$ represents the number of boys \myemph{sent} to bed on day $t$.
-Actually, this isn't correct at all.
-As described in the report \citep{anonymous78}, $B_t$ represents the total number of boys \myemph{in} bed on day $t$.
-Since boys were potentially confined for more than one day, the data count each infection multiple times.
-On the other hand, we have information about the total number of boys at risk and the total number who were infected.
-In fact, we know from @anonymous78 that $N=763$ boys were at risk and $512$ boys in total spent between 3 and 7 days away from class (either in bed or convalescent).
-Moreover, there is information in the data on the number of boys, $C_t$, convalescent at day $t$.
+\bi
+\item In the preceding, we assumed that $B_t$ represents the number of boys \myemph{sent} to bed on day $t$.
+
+\item In fact, as described by \citet{anonymous78}, $B_t$ represents the total number of boys \myemph{in} bed on day $t$.
+\item
+Boys were confined for more than one day, so the data count each infection multiple times.
+\item 
+Additionally, we learn from \citet{anonymous78} that $N=763$ boys were at risk and $512$ boys in total spent between 3 and 7 days away from class (either in bed or convalescent).
+\item
+The data on the number of boys, $C_t$, convalescent at day $t$ therefore informs convalescent time.
+\item 
 Since $1540~\text{boy-da}/512~\text{boy} \approx 3~\text{da}$, we know that the average duration spent in bed was 3 days and, since $\sum_t\!C_t=\Sexpr{ sum(bsflu$C)}$, we can infer that the average time spent convalescing was $\Sexpr{ sum(bsflu$C)}~\text{boy-da}/512~\text{boy} \approx \Sexpr{ signif(sum(bsflu$C)/512,2)}~\text{da}$.
-
-<<bsflu-plot2>>=
-require(reshape2)
-ggplot(data=melt(bsflu,id="day"),mapping=aes(x=day,y=value,color=variable))+
-  geom_line()+geom_point()
-@
-
+\ei
 \end{frame}
 
 \begin{frame}[fragile]
@@ -735,12 +774,41 @@ ggplot(data=melt(bsflu,id="day"),mapping=aes(x=day,y=value,color=variable))+
 \myquestion. Formulate a model with both confinement and convalescent stages.
 Implement it in \package{pomp} using a compartmental model like that diagrammed below.
 
-<<sirr-diagram,echo=FALSE,cache=TRUE>>=
-require(DiagrammeR)
-DiagrammeR("graph LR; S(S) --> I; I(I) --> R1(R1); R1 --> R2(R2);"
-           ,height=200,width=600)
-@
-
+%%%%% SIR_1R_2 diagram
+  \begin{center}
+    \resizebox{0.5\textwidth}{!}{
+      \Large
+      \setlength{\unitlength}{5pt}
+	\begin{picture}(60,20)(-5,-4)
+	  \thicklines
+	  \put(0,0){\framebox(6,6){$S$}}
+	  \put(16,0){\framebox(6,6){$I$}}
+	  \put(32,0){\framebox(6,6){$R_1$}}
+	  \put(48,0){\framebox(6,6){$R_2$}}
+%	  \put(-5,3){\vector(1,0){4}}
+%	  \put(-5,0){$\mu^{}_{\bullet S}$}
+	  \put(6,3){\vector(1,0){10}}
+	  \put(9,0){$\mu_{SI}^{}$}
+%	  \put(11,4){\vector(0,1){5}}
+%	  \put(11.7,6){$\rho$}
+%	  \put(11,11.5){\circle{5}}
+%	  \put(9.8,10.6){{$C$}}
+%	  \put(3,-0.2){\vector(0,-1){4}}
+%	  \put(4,-3){$\mu^{}_{S\bullet}$}
+%	  \put(19,-0.2){\vector(0,-1){4}}
+%	  \put(20,-3){$\mu^{}_{I\bullet}$}
+	  \put(22,3){\vector(1,0){10}}
+	  \put(25,0){$\mu_{IR_1}^{}$}
+	  \put(38,3){\vector(1,0){10}}
+	  \put(40,0){$\mu_{R_1R_2}^{}$}
+%	  \put(35,-0.2){\vector(0,-1){4}}
+%	  \put(36,-3){$\mu_{R_1\bullet}^{}$}
+%	  \put(51,-0.2){\vector(0,-1){4}}
+%	  \put(52,-3){$\mu_{R_2\bullet}^{}$}
+	\end{picture}
+    }
+  \end{center}
+ 
 You will have to give some thought to just how to model the relationship between the data ($B$ and $C$) and the state variables.
 How many parameters can reasonably be fixed?  How many must be estimated?
 Obtain some ballpark estimates of the parameters and simulate to see if you can plausibly explain the data as a realization of this model.
