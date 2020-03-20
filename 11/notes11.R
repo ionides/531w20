@@ -1,4 +1,4 @@
-## ----setup,echo=F,results=F,cache=F--------------------------------------
+## ----setup,echo=F,results=F,cache=F-------------------------------------------
 myround<- function (x, digits = 1) {
   # taken from the broman package
   if (digits < 1) 
@@ -22,7 +22,7 @@ options(
 
 
 
-## ----prelims,echo=F,cache=F----------------------------------------------
+## ----prelims,echo=F,cache=F---------------------------------------------------
 set.seed(594709947L)
 library(ggplot2)
 theme_set(theme_bw())
@@ -34,22 +34,17 @@ library(pomp)
 stopifnot(packageVersion("pomp")>="2.0")
 
 
-
-
-## ----flu-data1-----------------------------------------------------------
+## ----flu-data1----------------------------------------------------------------
 bsflu <- read.table("bsflu_data.txt")
 head(bsflu)
 
 
-## ----flu-data2-----------------------------------------------------------
+## ----flu-data2----------------------------------------------------------------
 bsflu <- subset(bsflu,select=c(day,B))
 ggplot(data=bsflu,aes(x=day,y=B))+geom_line()+geom_point()
 
 
-## ----sir-diagram,echo=FALSE,cache=FALSE----------------------------------
-require(DiagrammeR)
-DiagrammeR("graph LR; S(S) --> I; I(I) --> R(R);"
-           ,height=200,width=500)
+## ----sir-diagram,echo=FALSE,cache=FALSE---------------------------------------
 
 
 
@@ -58,7 +53,7 @@ DiagrammeR("graph LR; S(S) --> I; I(I) --> R(R);"
 
 
 
-## ----rproc2--------------------------------------------------------------
+## ----rproc2-------------------------------------------------------------------
 sir_step <- Csnippet("
   double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt));
   double dN_IR = rbinom(I,1-exp(-gamma*dt));
@@ -75,43 +70,43 @@ sir_rinit <- Csnippet("
   H = 0;
 ")
 
-pomp(sir,rprocess=euler.sim(sir_step,delta.t=1/6),rinit=sir_rinit,
+pomp(sir,rprocess=euler(sir_step,delta.t=1/6),rinit=sir_rinit,
      paramnames=c("Beta","gamma","N"),statenames=c("S","I","R","H")) -> sir
 
 
-## ----zero1---------------------------------------------------------------
+## ----zero1--------------------------------------------------------------------
 pomp(sir,zeronames="H") -> sir
 
 
-## ----meas-model----------------------------------------------------------
+## ----meas-model---------------------------------------------------------------
 dmeas <- Csnippet("lik = dbinom(B,H,rho,give_log);")
 rmeas <- Csnippet("B = rbinom(H,rho);")
 
 
-## ----add-meas-model------------------------------------------------------
+## ----add-meas-model-----------------------------------------------------------
 sir <- pomp(sir,rmeasure=rmeas,dmeasure=dmeas,statenames="H",paramnames="rho")
 
 
-## ----sir_sim-------------------------------------------------------------
+## ----sir_sim------------------------------------------------------------------
 sims <- simulate(sir,params=c(Beta=1.5,gamma=1,rho=0.9,N=2600),
                  nsim=20,format="data.frame",include=TRUE)
 ggplot(sims,mapping=aes(x=day,y=B,group=.id,color=.id=="data"))+
   geom_line()+guides(color=FALSE)
 
 
-## ----seir-diagram,echo=FALSE,cache=TRUE----------------------------------
+## ----seir-diagram,echo=FALSE,cache=TRUE---------------------------------------
 require(DiagrammeR)
 DiagrammeR("graph LR; S(S) --> E; E(E) --> I; I(I) --> R(R);"
            ,height=200,width=600)
 
 
-## ----bsflu-plot2---------------------------------------------------------
+## ----bsflu-plot2--------------------------------------------------------------
 require(reshape2)
 ggplot(data=melt(bsflu,id="day"),mapping=aes(x=day,y=value,color=variable))+
   geom_line()+geom_point()
 
 
-## ----sirr-diagram,echo=FALSE,cache=TRUE----------------------------------
+## ----sirr-diagram,echo=FALSE,cache=TRUE---------------------------------------
 require(DiagrammeR)
 DiagrammeR("graph LR; S(S) --> I; I(I) --> R1(R1); R1 --> R2(R2);"
            ,height=200,width=600)

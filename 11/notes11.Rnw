@@ -1,6 +1,7 @@
 %\documentclass[handout]{beamer}
 \documentclass{beamer}
-
+\usepackage{natbib}
+\bibliographystyle{dcu}
 \input{../header.tex}
 \newcommand\CHAPTER{11}
 
@@ -130,16 +131,12 @@ stopifnot(packageVersion("pomp")>="2.0")
 
 \item A \myemph{compartment model} is a model associated with a \myemph{flow diagram} specifying how objects move between categories, called \myemph{compartments}.
 
-\item It is often useful to represent systems by \myemph{flow diagrams}. We will need equations to specify formally what the flow diagram means.
+\item We will need equations to specify formally what the flow diagram means.
 
-\item One major applications of compartment models is pharmacokinetics,
-%% (https://en.wikipedia.org/wiki/Pharmacokinetics), 
-the study of how pharmacological drugs enter the body, move between organs, metabolize, and leave. The compartments may be the organs; the flow is movement of the drug and its metabolites between organs.
+\item One major applications of compartment models is pharmacokinetics, the study of how pharmacological drugs enter the body, move between organs, metabolize, and leave. The compartments may be the organs; the flow is movement of the drug and its metabolites between organs.
 
 \item Another major application of compartment models is epidemiology.
-%% (https://en.wikipedia.org/wiki/Compartmental_models_in_epidemiology). 
-Compartments are groups of people; the flow
-is the movement of an infectious disease through the population.
+Compartments are groups of people; the flow is the movement of an infectious disease through the population.
 
 \ei
 
@@ -149,17 +146,45 @@ is the movement of an infectious disease through the population.
 
 \frametitle{Compartment models in epidemiology: the SIR model and its generalizations}
 
-We will develop deterministic and stochastic representations of a susceptible-infected-recovered (SIR) system, a fundamental class of models for disease transmission dynamics. We will do this using notation which generalizes to more complex systems [[@breto09]](http://dept.stat.lsa.umich.edu/~ionides/pubs/breto09.pdf).
+We will develop deterministic and stochastic representations of a susceptible-infected-recovered (SIR) system, a fundamental class of models for disease transmission dynamics. We will do this using notation which generalizes to more complex systems \citep{breto09}.
 
-<<sir-diagram,echo=FALSE,cache=TRUE,purl=FALSE>>=
-require(DiagrammeR)
-DiagrammeR("graph LR; S(S) --> I; I(I) --> R(R);"
-           ,height=200,width=500)
-@
+  \begin{center}
+    \resizebox{0.5\textwidth}{!}{
+      \Large
+      \setlength{\unitlength}{5pt}
+	\begin{picture}(44,20)(-5,-4)
+	  \thicklines
+	  \put(0,0){\framebox(6,6){S}}
+	  \put(16,0){\framebox(6,6){I}}
+	  \put(32,0){\framebox(6,6){R}}
+	  \put(-5,3){\vector(1,0){4}}
+	  \put(-5,0){$\mu^{}_{\bullet S}$}
+	  \put(6,3){\vector(1,0){10}}
+	  \put(9,0){$\mu_{SI}^{}$}
+	  \put(11,4){\vector(0,1){5}}
+	  \put(11.7,6){$\rho$}
+	  \put(11,11.5){\circle{5}}
+	  \put(9.8,10.6){{$C$}}
+	  \put(3,-0.2){\vector(0,-1){4}}
+	  \put(4,-3){$\mu^{}_{S\bullet}$}
+	  \put(19,-0.2){\vector(0,-1){4}}
+	  \put(20,-3){$\mu^{}_{I\bullet}$}
+	  \put(22,3){\vector(1,0){10}}
+	  \put(26,0){$\mu_{IR}^{}$}
+	  \put(35,-0.2){\vector(0,-1){4}}
+	  \put(36,-3){$\mu_{R\bullet}^{}$}
+	\end{picture}
+    }
+  \end{center}
+ 
+$S : \text{susceptible}$  \\
+$I : \text{infected and infectious}$  \\
+$R : \text{recovered and/or removed}$  \\
+$C : \text{cases}$
 
-$S = \text{susceptible}$  
-$I = \text{infected and infectious}$  
-$R = \text{recovered and/or removed}$  
+\end{frame}
+
+\begin{frame}[fragile]
 
 \bi
 
@@ -169,7 +194,7 @@ $R = \text{recovered and/or removed}$
 
 \item The rates may be either constant or varying. In particular, for a simple SIR model, the recovery rate $\mu_{IR}$ is a constant but the infection rate has the time-varying form
 $$\mu_{SI}(t)=\beta \, I(t),$$
-with $\beta$ being the \myemph{contact rate}. Now, for the simplest SIR model, ignoring demography, we set
+with $\beta$ being the \myemph{contact rate}. For the simplest SIR model, ignoring demography, we set
 $$ \mu_{{\small{\bullet}}S}=\mu_{S{\small{\bullet}}}=\mu_{I{\small{\bullet}}}=\mu_{R{\small{\bullet}}}=0.$$
 
 \ei
@@ -187,6 +212,16 @@ counts individuals transitioning from $I$ to $R$. To include demography, we coul
 \item For discrete population compartment models, the flow counting processes are non-decreasing and integer valued.
 
 \item For continuous population compartment models, the flow counting processes are non-decreasing and real valued.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Recovering compartment processes from counting proceeses}
+
+\bi
 
 \item The numbers of people in each compartment can be computed via these counting processes. Ignoring demography, we have:
 $$\begin{array}{lcl} 
@@ -236,27 +271,25 @@ $$\begin{array}{lcl}
 \prob\big[N_{IR}(t+\delta)\equals N_{IR}(t)\big] &=& 1-\mu_{IR}(t) \, I(t) \delta + o(\delta)
 \end{array}$$
 
-\item Here, we are using [little $o$ notation]
+\item Here, we are using \myemph{little o notation}
 We write 
-$$ h(\delta)=o(\delta)$$
+$ h(\delta)=o(\delta)$
 to mean 
-$$ \lim_{\delta\to 0} \frac{h(\delta)}{\delta} = 0.$$
+$ \lim_{\delta\to 0} \frac{h(\delta)}{\delta} = 0$.
 \ei
 \end{frame}
 
 \begin{frame}[fragile]
 
-\frametitle{Question: What is the link between little $o$ notation and the derivative?}
+\myquestion. What is the link between little $o$ notation and the derivative?
 
-\bi
-
-\item Explain why 
+Explain why 
 $$f(x+\delta)=f(x)+ \delta g(x) + o(\delta)$$ 
 is the same statement as
 $$ \frac{df}{dx} = g(x).$$
+What considerations might help you choose which of these notations to use?
 
-\item What considerations might help you choose which of these notations to use?
-\ei
+\answer{\vspace{50mm}}{todo}
 
 \end{frame}
 
@@ -265,7 +298,13 @@ $$ \frac{df}{dx} = g(x).$$
 \myquestion. From Markov chain to ODE.
 Find the expected value of $N_{SI}(t+\delta)-N_{SI}(t)$ and $N_{IR}(t+\delta)-N_{IR}(t)$ given the current state, $S(t)$, $I(t)$ and $R(t)$. Take the limit as $\delta\to 0$ and show that this gives the ODE model.
 
-\answer{\vspace{40mm}}{todo}
+\answer{\vspace{50mm}}{todo}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Simple counting processes}
 
 \bi
 
@@ -337,10 +376,17 @@ This only defines $\tilde x(t)$ when $t$ is a multiple of $\delta$, but suppose 
 
 \item If our model fitting, model investigation, and final conclusions are all based on our numerical solution  $\tilde x(t)$ (i.e., we are sticking entirely to simulation-based methods) then we are most immediately concerned with how well  $\tilde x(t)$ describes the system of interest.  $\tilde x(t)$ becomes more important than the original model, $x(t)$.
 
-\item When following this perspective, it is important that the scientists fully describe the numerical model $\tilde x(t)$. 
-The main advantage of the continuous-time model $x(t)$ is then that it gives a succinct way to describe how $\tilde x(t)$ was constructed.
+\ei
 
-\item All numerical methods are, ultimately, discretizations. Epidemiologically, setting $\delta$ to be a day, or an hour, can be quite different from setting $\delta$ to be two weeks or a month. For continuous-time modeling, we still require that $\delta$ is small compared to the timescale of the process being modeled, and the choice of $\delta$ does not play an explicit role in the interpretation of the model.
+\end{frame}
+\begin{frame}[fragile]
+
+\frametitle{Considerations for using numerical solutions as scientific models}
+\bi
+\item It is important that a scientist fully describe the numerical model $\tilde x(t)$. 
+Arguably, the main purpose of the original model $x(t)$ is to give a succinct description of how $\tilde x(t)$ was constructed.
+
+\item All numerical methods are, ultimately, discretizations. Epidemiologically, setting $\delta$ to be a day, or an hour, can be quite different from setting $\delta$ to be two weeks or a month. For continuous-time modeling, we still require that $\delta$ is small compared to the timescale of the process being modeled, so the choice of $\delta$ should not play an explicit role in the interpretation of the model.
 
 \item Putting more emphasis on the scientific role of the numerical solution itself reminds you that the numerical solution has to do more than approximate a target model in some asymptotic sense: the numerical solution should be a sensible model in its own right. 
 
@@ -551,7 +597,7 @@ sir_rinit <- Csnippet("
   H = 0;
 ")
 
-pomp(sir,rprocess=euler.sim(sir_step,delta.t=1/6),rinit=sir_rinit,
+pomp(sir,rprocess=euler(sir_step,delta.t=1/6),rinit=sir_rinit,
      paramnames=c("Beta","gamma","N"),statenames=c("S","I","R","H")) -> sir
 @
 
