@@ -1,0 +1,197 @@
+---
+title: "Time Series Analysis of Fire Alarm Emergency in Montgomery County, PA"
+output: 
+  html_document:
+    toc: yes
+    theme: flatly
+---
+# Introduction
+## Motivation
+Fire alarm can be triggered by lots of reason. As a student living in student apartment, I sometimes can hear fire alarm several time a day. Most of them are false alarm, and people who hear these alarms everyday get tired and stop evacuating from the building in time. This can be dangerous if real fire breaks out. So I want to explore and fit a time series model of fire alarm emergency.
+
+## Goals
+
+In this project, my goal is to explore the following questions:
+
+1. What time series model fits fire alarm daily data well? 
+
+2. Is there any significant seasonality or cycle?
+
+If we find a pattern of the fire alarms, we can be more prepared to the fire related emergency and prevent possible waste of public resource.
+
+# exploratory data analysis
+## data description and selection
+
+```{r,message = FALSE, echo = FALSE}
+library(dplyr)
+options(warn=-1)
+suppressPackageStartupMessages(library(dplyr))
+df=read.csv("911.csv")
+```
+
+The data we are using is 2016-2018 daily Emergency (911) Calls dataset from Kaggle, including Fire, Traffic, EMS for Montgomery County, PA. The raw data includes 141 different kinds of emergency and more than 400,000 data points. So we first need to select the cases that relates to our topic. In the following analysis, we only focus on the category "Fire: FIRE ALARM".
+
+After selecting the data we need, there are 23945 cases of fire alarms in total, and we aggregate the datapoints by date.
+
+```{r, echo = FALSE}
+value="Fire: FIRE ALARM"
+fire=df[grepl(value, df$title)==T,]
+fire=fire%>%mutate(date = as.Date(timeStamp))
+fire=fire[fire$date>=as.Date('2016-01-01'),]
+DF=fire%>%group_by(date)%>%summarize(count=n())
+```
+
+
+## data visualization
+First, we visualize the fire alarm time series data.
+
+```{r, echo = FALSE}
+plot(count~date,data=DF,type="l")
+abline(h=mean(DF$count), col="blue")
+```
+
+The blue line is the mean of all cases. The mean of our data is 22.78, which indicates that there are around 23 reported cases of fire alarm in average. 
+```{r}
+DF$date[which.max(DF$count)]
+max(DF$count)
+```
+On 2018-03-03, there were 91 cases of fire alarm in Montgomery County, which is the maximum of the data we are using. Other data points are mostly under 60.
+
+As we can see from this plot, there is no obvious violation of mean stationary. So it is possible to fit an AR model using the data.
+
+
+## ACF
+We can plot the autocorrelation function (ACF) of the dataset.
+```{r,echo=FALSE}
+acf(DF$count)
+```
+
+As we can see, almost all the autocorrelation is greater than 0. It shows weakly decreasing trend and no sign of sinusoidal pattern, so AR(1) might be a good fit to this time series.
+
+# Model fitting
+## ARMA table
+We assume our data can fit the model $ARMA(p,q)$, which has the form: 
+$$X_n=\mu+\phi_1 (X_{n-1}-\mu)+\dots+\phi_p (X_{n-p}-\mu)+\epsilon_{n}+\psi_1\epsilon_{n-1}+\dots+\psi_q\epsilon_{n-q}$$
+{$X_n$} is the time series data. $\mu$ is the mean of all emergency calls (the intercept in model description). {$\phi_p$} and {$\psi_q$} are coefficients to be determined. {$\epsilon_n$} is Gaussian white noise with variance $\sigma^2$.
+We need to choose the values of p and q. So we tabulate AIC values for a range of different choices of p and q. 
+
+```{r,echo=FALSE}
+suppressPackageStartupMessages(library(knitr))
+aic_table <- function(data,P,Q){
+table <- matrix(NA,(P+1),(Q+1))
+for(p in 0:P) {
+for(q in 0:Q) {
+table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+}
+}
+dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+table
+}
+huron_aic_table <- aic_table(DF$count,3,3)
+require(knitr)
+kable(huron_aic_table,digits=2)
+```
+
+In this table, we can see that the AIC of ARMA(1,2), 7139.36 is the least of all. The differences of AIC among ARMA(1,3), ARMA(2,2) and ARMA(1,2) are no larger than 2, so we need to consider all these three models and choose one from them.
+
+### ARMA(1,2)
+```{r}
+arma12=arima(DF$count,order=c(1,0,2))
+arma12
+ARMA_roots <- polyroot(c(1,-coef(arma12)[c("ar1","ma1","ma2")]))
+ARMA_roots
+```
+### ARMA(1,3)
+
+```{r}
+arma13=arima(DF$count,order=c(1,0,3))
+arma13
+ARMA_roots <- polyroot(c(1,-coef(arma13)[c("ar1","ma1","ma2","ma3")]))
+ARMA_roots
+```
+
+### ARMA(2,2)
+
+
+```{r}
+arma22=arima(DF$count,order=c(2,0,2))
+arma22
+ARMA_roots <- polyroot(c(1,-coef(arma22)[c("ar1","ar2","ma1","ma2")]))
+ARMA_roots
+```
+
+The roots of all models are outside the unit circle and all of the coefficients are less than 1, suggesting we have stationary invertible causal fitted ARMA.
+
+Since these three models do not have discriminative difference, we choose the simplest model $ARMA(1,2)$ to avoid computational inefficiency and risk of overfitting. 
+
+So our model equation is
+$$X_n=\mu+\phi_1 (X_{n-1}-\mu)+\psi_1\epsilon_{n-1}+\psi_2\epsilon_{n-2}$$
+With $\mu=22.7654, \phi_1=0.8718, \psi_1=-0.5586, \psi_2=-0.1316, \sigma^2=51.69$.
+
+## Seasonality
+
+To further improve the model, we try to fit a SARMA model. The possible numbers of period are 7 (as a week) and 30 (as a month).
+
+This is the model description of period = 7:
+```{r, echo = FALSE}
+seasonal<-arima(DF$count,order=c(1,0,2),seasonal=list(order=c(1,0,0),period=7))
+seasonal
+```
+This is the model description of period = 30:
+```{r, echo = FALSE}
+seasonal<-arima(DF$count,order=c(1,0,2),seasonal=list(order=c(1,0,0),period=30))
+seasonal
+```
+The ARMA(1,2) model without seasonality:
+```{r, echo = FALSE}
+arma12
+```
+
+
+We can see that the log likelihoods are improved by less than 1 in both SARMA. So there is no obvious seasonality in the fire alarm daily data.
+
+
+# Frequency Domain Analysis
+
+We plot the spectral density plot: 
+```{r, echo = FALSE}
+spectrum(DF$count, main = "Unsmoothed periodogram")
+h=spectrum(DF$count,spans=c(50,50), main="Smoothed periodogram")
+```
+```{r}
+s=h$freq[which.max(h$spec)]
+s
+1/s
+```
+The unit of periodogram frequency is cycles per day. The highest frequency is at 0.0009.  This maximum point is significant, which can be seen by sliding the confidence interval bar on the right.
+
+However, 0.0009 corresponds to a period of 1080 days. 1080 days is almost three years. We only have three-year data, which means we do not have enough data to discover the cycle. 
+
+
+# Model Diagnostics
+```{r}
+r<-arma12$residuals
+acf(r)
+qqnorm(r)
+qqline(r)
+```
+
+We can see the ACF plot is within the dashed lines, so we can say that the residuals are uncorrelated. But the Q-Q plot shows that the residual is not gaussian. It has a lone tail on the right. To have the residual act like normal, we can try log transformation.
+
+
+# Conclusion
+our model is ARMA(1,2)
+$$X_n=\mu+\phi_1 (X_{n-1}-\mu)+\psi_1\epsilon_{n-1}+\psi_2\epsilon_{n-2}$$
+{$\epsilon_n$} is Gaussian white noise with variance $\sigma^2$. $\mu=22.7654, \phi_1=0.8718, \psi_1=-0.5586, \psi_2=-0.1316, \sigma^2=51.69$.
+
+There is no obvious seasonality or cycle.
+
+This result suggests that the fire alarm emergency can happen anytime in the year. 
+
+# Discussion
+The residual is right-skewed, so we can try log transformation to the fire alarm data in the future. If we want to find a cycle, we will need to find more data. Ths data we are using is just data in one county. We may need dataset of more places to have a more general model. 
+
+# Reference
+data from: https://www.kaggle.com/mchirico/montcoalert
+
+notes and codes from: https://ionides.github.io/531w20/
