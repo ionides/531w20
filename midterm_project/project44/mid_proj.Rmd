@@ -1,0 +1,357 @@
+---
+title: "Midterm Project STATS 531, Winter 2020"
+date: "3/7/2020, Due at 3/9/2020"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+
+-----------
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+## What is Particulate Matter? What is PM2.5? 
+"Particulate matter (PM) is a term used to describe the mixture of solid particles and liquid droplets in the air.  It can be either human-made or naturally occurring. Some examples include dust, ash and sea-spray. Particulate matter (including soot) is emitted during the combustion of solid and liquid fuels, such as for power generation, domestic heating and in vehicle engines. Particulate matter varies in size (i.e. the diameter or width of the particle). PM2.5 means the mass per cubic metre of air of particles with a size (diameter) generally less than 2.5 micrometres (µm). PM2.5 is also known as fine particulate matter." (UK Department for Food and Rural Affairs) 
+
+## Health Effects of PM2.5
+"The biggest impact of particulate air pollution on public health is understood to be from long-term exposure to PM2.5, which increases the age-specific mortality risk, particularly from cardiovascular causes. Several plausible mechanisms for this effect on mortality have been proposed, although it is not yet clear which is the most important.  Exposure to high concentrations of PM (e.g. during short-term pollution episodes) can also exacerbate lung and heart conditions, significantly affecting quality of life, and increase deaths and hospital admissions. Children, the elderly and those with predisposed respiratory and cardiovascular disease, are known to be more susceptible to the health impacts from air pollution" (WHO)
+
+## Sources of PM2.5
+Human acticity caused PM2.5 pollution are known to be more important than natual sources, which only contribute little part of the total concentration. In some rural area, industrial emiission can also be the key pollution source of PM2.5,  as the usage of none smoke-free fuels and other domestic sources of smoke such as bonfires. In addition to the direct emissions of PM2.5 particles, it is also possible to form from the chemical reactions of sulphur dioxide and nitrogen oxides (toxic gases).
+
+## Dataset Descripction
+In this project, I am going to use the time series of the PM2.5 data of US Embassy in Beijing as the analysis object. This dataset is collected by Song Xi Chen from Guanghua School of Mannagement, Peking University. This hourly data set contains the PM2.5 data of US Embassy in Beijing. Meanwhile, meteorological data from Beijing Capital International Airport are also included. The dataset time period is between Jan 1st, 2010 to Dec 31st, 2014. Missing data are denoted as NA. 13 different air condition related attributes are included in this dataset, while in this project I am only going to focus on the PM2.5 value. There are 43824 instances in this dataset, with all of the PM2.5 value in integar. 
+
+## Project Goal
+The goal of this project is to properly analysis the property of this PM2.5 time series and find a reasonable time series model to fit the data. This could help people to have a better understanding on the trend of PM2.5. In this project report, I will first explore the data, then use two different methods to fit the data and perform multiple residual analysis on the results. In the conclusion, all findings regarding the data will be included.  
+
+# Analysis of Data
+
+## Data Inspection
+In this section, I will provide us a brief understanding of how is the data looks like. Also data preprocessing is done in this section.
+Load the data and plot the time domain series,
+
+```{r load_packages, include=FALSE}
+library(forecast)
+library(tseries)
+library(imputeTS)
+library(ggplot2)
+```
+```{r}
+tsdata <- read.csv("beijing_pm25.csv", header = TRUE)
+ts_pm25 <- tsdata$pm25[1:8760]
+No = tsdata$No[1:8760]
+ts_pm25 <- na_ma(ts_pm25[1:8760], k = 4, weighting = "exponential")
+plot(ts_pm25, type= "l", xlab = "Hours", ylab ="PM2.5",  main = "Hourly PM2.5 data in Beijing from Jan 1st, 2010 to Dec 31st, 2010.",)
+```
+
+To get a better understanding of the data, I decomposite the time series regarding different frequency. The first part is the original time series. The low frequency (ts_low) is the trend. The high frequency part (ts_hi) is the noise. The last part (ts_cycles) with the middle frequency is the main cycle. From the decomposition plot, it is hard to identify any obvious cycles. It only give us a nonparametric trend from a time series. Further analysis need to be performed.
+
+```{r, echo=FALSE}
+ts_low <- ts(loess(ts_pm25~No,span=0.3)$fitted)
+ts_hi <- ts(ts_pm25 - loess(ts_pm25~No,span=0.05)$fitted)
+ts_cycles <- ts_pm25 - ts_hi - ts_low
+plot(ts.union(ts_pm25, ts_low,ts_hi,ts_cycles),
+main="Decomposition of pm25 as trend + noise + cycles")
+```
+
+## Stationary Test
+Second, I test the stationary property of this time series, using the Augmented Dickey-Fuller test. An augmented Dickey–Fuller test (ADF) tests the null hypothesis that a unit root is present in a time series sample. The augmented Dickey–Fuller (ADF) statistic, used in the test, is a negative number. The more negative it is, the stronger the rejection of the hypothesis that there is a unit root at some level of confidence. (https://en.wikipedia.org/wiki/Augmented_Dickey%E2%80%93Fuller_test)
+
+```{r}
+adf.test(ts_pm25)
+```
+
+The Augmented Dickey-Fuller Test shows that the null hypothesis is rejected and the time series is stationary. However, besides the evidence from ADF test, the time series also exposes itself that all value are above 0, which is abnormal for a stationary time series. Following the first idea come up to my mind, I am going to analysis this time series on the log domain. To prevent infinite value in the log domain, 1 is added to the original series. The following is the value this time series on log domain. 
+
+```{r}
+ts_log <- log(ts_pm25 + 1, base = exp(1))
+plot(ts_log, type= "l", xlab = "Hours", ylab ="PM2.5",  main = "Hourly PM2.5 data in Beijing from Jan 1st, 2010 to Dec 31st, 2014.")
+```
+Even though I transform the data into log domain, the ADF test still reject the null hypothesis. The time series is stationary. 
+
+```{r}
+adf.test(ts_log)
+```
+
+
+## SARMA error model
+
+### Detrend
+
+To fit an SARMA model, the first thing need to do is to extract the trend and decide the seasonality before fitting the ARMA model.
+
+In order to decide the trend of the model, I tried different order of polynomial to test for fitting the time series.
+
+```{r}
+fitted = lm(ts_log~No)
+summary(fitted)
+fitted = lm(ts_log~poly(No,2,raw=TRUE))
+summary(fitted)
+fitted = lm(ts_log~poly(No,3,raw=TRUE))
+summary(fitted)
+
+#plot(diff(ts_log, differences = 10), type= "l", xlab = "Hours", ylab ="PM2.5",  main = "Hourly PM2.5 data in Beijing from Jan 1st, 2010 to Dec 31st, 2014.")
+#adf.test(diff(ts_log, differences = 10))
+```
+
+We can see the estimate parameter of the of degree 2 and degree 3 is significantly smaller than that of degree 1 and there is no strong evidence that the second/third order polynomials has significantly better performance. therefore degree 1 linear regression is enough for the trend. 
+The following is the result of dtrend process. This decision is also valid because this time series is stationary.
+
+```{r}
+fitted = lm(ts_log~No)
+summary(fitted)
+ts_log_without_trend <-  fitted$resid
+plot(ts_log, type= "l", xlab = "Hours", ylab ="PM2.5",  main = "Hourly PM2.5 data in Beijing from Jan 1st, 2010 to Dec 31st, 2014.")
+abline(fitted, col = 'red')
+plot(ts_log_without_trend,type= "l", xlab = "Hours", ylab ="PM2.5 resid",  main = "Hourly PM2.5 data without trend")
+```
+
+```{r}
+adf.test(ts_log_without_trend)
+```
+
+After taking out the general trend of the Beijing PM2.5 data, we can see the time series is still stationary.
+
+### Seasonality
+To find out the seasonal trend in this data, we need to exam the time series on the frequency domain.
+The following is the unsmoothed periodogram for the PM2.5 series with x axis unit of cycle per hour.
+```{r}
+spec_unsmooth = spectrum(ts_log_without_trend, main = "Unsmoothed periodogram", xlab = 'frequency (cycle per hour)')
+spec_unsmooth$freq[which.max(spec_unsmooth$spec)]
+```
+
+The following is the smoothed periodogram for the PM2.5 series with x axis unit of cycle per hour.
+```{r}
+spec = spectrum(ts_log_without_trend, spans=c(3,5,3), main = "Smoothed periodogram", xlab = 'frequency (cycle per hour)')
+#spec$freq[which.max(spec$spec)]
+abline(v=c(0.0416, 0.0832),lty="dotted",col="red")
+```
+
+
+From the frequency domain, we can see there are two dominate (local peaks) frequencies in this time series. One is at 0.0832 and the other is at 0.0416. All of their are multiples also are multiples of 0.0416. Here 0.0832 frequency represents a seasonality of 2 days (48 hours) and 0.0416 represents a daily seasonality (24 hours). Therefore, in the following ARMA model fitting, the primary daily seasonality will be included.
+
+### Desiding Seasonal Model
+Besides frequency domain analysis, PACF also help me decide the seasonality parameter (period).
+In time series analysis, the partial autocorrelation function (PACF) gives the partial correlation of a stationary time series with its own lagged values, regressed the values of the time series at all shorter lags. It contrasts with the autocorrelation function, which does not control for other lags. (wiki) From the pacf figure of the time series, we can see there is 
+autocorelation around lag (24 48) , which is outside the blue dashed line. Therefore I choose to use SARIMA(p,0,q)$\times$(1,0,0).
+
+```{r, echo = FALSE}
+pacf(ts_log_without_trend, lag.max = 100)
+```
+
+
+
+### Fitting ARMA model
+After extract the trend and the daily seasonality, we need to fit this time series with proper SARMA model. The following part use the AIC table to find the most proper. 
+
+
+```{r, echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      try(table[p+1,q+1] <- Arima(data,order=c(p,0,q), seasonal = list(order = c(1,0,0), period = 24))$aic)
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+templow_aic_table <- aic_table(ts_log_without_trend , 5, 5)
+require(knitr)
+kable(templow_aic_table,digits=2)
+```
+
+From the AIC table we can see, the ARMA(4,0),ARMA(4,1) and ARMA(5,0) have the lowest value of AIC . Then we are going to test these three parameter settings.
+
+```{r, echo=FALSE}
+ARMA40 <- Arima(ts_log_without_trend,order=c(4,0,0), seasonal = list(order = c(1,0,0), period = 24))
+ARMA40
+ARMA41 <- Arima(ts_log_without_trend,order=c(4,0,1), seasonal = list(order = c(1,0,0), period = 24))
+ARMA41
+ARMA50 <- Arima(ts_log_without_trend,order=c(5,0,0), seasonal = list(order = c(1,0,0), period = 24))
+ARMA50
+```
+
+Check the causality of the model
+
+AR Root for ARMA(4,0):
+```{r , echo=FALSE}
+polyroot(c(1,-coef(ARMA40)[c("ar1","ar2","ar3","ar4")]))
+```
+
+AR Root for ARMA(4,1):
+```{r , echo=FALSE}
+polyroot(c(1,-coef(ARMA41)[c("ar1","ar2","ar3","ar4")]))
+```
+
+AR Root for ARMA(5,0):
+```{r , echo=FALSE}
+polyroot(c(1,-coef(ARMA50)[c("ar1","ar2","ar3","ar4","ar5")]))
+```
+
+All AR root is outside the unit circle, which is causal. However, they have one root close to the unit circle, which implies the causality is not strong. 
+For the seasonal MA root of both model,
+
+Seasonal AR Root for ARMA(4,0):
+```{r , echo=FALSE}
+polyroot(c(1,-coef(ARMA40)[c("sar1")]))
+```
+
+Seasonal AR Root for ARMA(4,1):
+```{r , echo=FALSE}
+polyroot(c(1,-coef(ARMA41)[c("sar1")]))
+```
+
+Seasonal AR Root for ARMA(5,0):
+```{r , echo=FALSE}
+polyroot(c(1,-coef(ARMA50)[c("sar1")]))
+```
+
+Both MA root is outside the unit circle, which means both models are invertible.  
+
+### Residual Analysis
+
+The following is the Q-Q plot for the residuals. The Q-Q plot, or quantile-quantile plot, is a graphical tool to help us assess if a set of data plausibly came from some theoretical distribution. I use the normal Q-Q plot check if the residual follow the normal distribution. It is obvious that the distribution of residual follow the line on Q-Q plot, which means the residual follow the normal distribution. 
+
+Residual and Q-Q plot for SARMA(4,0)$\times$(1,0) model:
+
+```{r , echo=FALSE}
+res40 <-  ts_log_without_trend - fitted(ARMA40)
+plot(res40,col="red")
+qqnorm(res40, pch = 1, frame = FALSE)
+qqline(res40, col = "steelblue", lwd = 2)
+```
+
+Residual and Q-Q plot for SARMA(4,1)$\times$(1,0) model:
+```{r , echo=FALSE}
+res41 <-  ts_log_without_trend - fitted(ARMA41)
+plot(res41,col="red")
+qqnorm(res41, pch = 1, frame = FALSE)
+qqline(res41, col = "steelblue", lwd = 2)
+```
+
+Residual and Q-Q plot for SARMA(5,0)$\times$(1,0) model:
+```{r , echo=FALSE}
+res50 <-  ts_log_without_trend - fitted(ARMA50)
+plot(res50,col="red")
+qqnorm(res50, pch = 1, frame = FALSE)
+qqline(res50, col = "steelblue", lwd = 2)
+```
+
+Another evaluation of the residual is the acf function, which is in complete called autocorrelation function which gives us values of autocorrelation of any series with its lagged values
+ACF plot for SARMA(4,0)$\times$(1,0) model:
+
+```{r, echo = FALSE}
+acf(res40, lag.max = 40)
+```
+
+ACF plot for SARMA(4,1)$\times$(1,0) model:
+
+```{r, echo = FALSE}
+acf(res41, lag.max = 40)
+```
+
+ACF plot for SARMA(5,0)$\times$(1,0) model:
+
+```{r, echo = FALSE}
+acf(res50, lag.max = 40)
+```
+
+From the fitting results, we can see the ar5 parameter for ARMA(5,0) and ma1 parameter for ARMA(4,1) have zero in their confidence interval (1.96 standard error), while ARMA(4,0) model has no parameters within the 95% estimated confidence intervals. This property increases our confidence to choose SARMA(4,0)$\times$(1,0). Besides that, from the Q-Q plot, we can see, the residual of all three models approximatly follows the Gaussian distribution and the acf plots are all truancated at 1. Therefore, I decide to use the SARMA(4,0)$\times$(1,0) model as the SARMA error. 
+
+### Simulation
+With this model, the time series can be simulated. In the following simulation plot, the red line iindicates the time series generating by trend + SARMA(4,0)$\times$(1,0) error and the blue line indicates the original PM2.5 time.
+
+```{r, echo=FALSE}
+fitted <- ts_log - res40
+plot(exp(fitted)~No, type= "l", lwd=0.5, xlab = "Hours", ylab ="PM2.5",  main = "Simulation", col = 'red')
+lines(ts_pm25~No, type="l", lwd=0.5, col='blue')
+```
+
+
+
+
+
+## SARIMA model
+Different from SARMA model with trend, another way to fit this time series is SARIMA model, combining the integrated ARMA models with seasonality.
+
+Same as above, use the AIC table to find the optimal p,q value.
+
+```{r, echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      try(table[p+1,q+1] <- Arima(data,order=c(p,1,q), seasonal = list(order = c(1,1,0), period = 24))$aic)
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+templow_aic_table <- aic_table(ts_log_without_trend , 5, 5)
+require(knitr)
+kable(templow_aic_table,digits=2)
+```
+
+Fitting model:
+```{r, echo=FALSE}
+SARIMA414 <- arima(ts_log,order=c(4,1,4), seasonal = list(order = c(1,1,0), period = 24))
+SARIMA414
+```
+
+### Residual Analysis
+Similar to the above residual analysis section, the following is the the residual learning for SARIMA(4,1,4)$\times$(1,1,0).
+```{r, echo=FALSE}
+resSARIMA <-  ts_log - fitted(SARIMA414)
+plot(resSARIMA,col="red")
+qqnorm(resSARIMA, pch = 1, frame = FALSE)
+qqline(resSARIMA, col = "steelblue", lwd = 2)
+```
+
+Despite the strange tail, we still can see the residual approximately follow the Gaussian distrubution.
+```{r, echo = FALSE}
+acf(resSARIMA, lag.max = 20)
+```
+
+### Simulation
+With this model, the time series can be simulated. In the following simulation plot, the red line iindicates the time series generating by trend + SARIMA(4,1,0)$\times$(1,1,0) error and the blue line indicates the original PM2.5 time.
+
+```{r, echo=FALSE}
+fitted <- ts_log - resSARIMA
+plot(exp(fitted)~No, type= "l", lwd=0.5, xlab = "Hours", ylab ="PM2.5",  main = "Simulation", col = 'red')
+lines(ts_pm25~No, type="l", lwd=0.5, col='blue')
+```
+
+# Conclusion
+In the report, I analyze the Hourly Beijing PM2.5 time series in 2010. With a bunch of exploratory frequency analysis, models testing and residual analysis, five main conclusions can be stated:
+
+1. This times series can be properly fitted on the log domain. It have approximately linear trend respect to time. Simple linear regression with time and the first order difference (ARIMA) is sufficiently enough to detrend this time series.
+
+2. Both trend + SARMA error model and SARIMA model shows high precision in fitting the data on log scale. The residual is reasonably small for both SARIMA(4,1,4)$\times$(1,1,0) model and SARMA(4,0)$\times$(1,0) error with trend. However, all residuals only partially follow the Gaussian distribution with strange tail on Q-Q plots. It may implies that this time series require a more complex model to fit. For example, a multiple seasonal ARIMA model. 
+
+3. The dominant period of this times series 24 hours, which implies PM2.5 in Beijing has a strong daily pattern  
+
+4. Both SARMA errors model ( SARMA(4,0)$\times$(1,0) ) and SARIMA model ( SARIMA(4,1,4)$\times$(1,1,0) ) fit the time series very well, which capture the trend. However, from the simulation plot and the log likelyhood of the parameters. SARMA errors model is more accurate in fitting this time series data. SARIMA(4,1,4)$\times$(1,1,0) model seems to exaggerate local peaks of the time series, where SARMA errors model performs better
+
+5. Because the limitation of the computation resources, monthly seasonality and yearly seasonality is not considered properly. This could be the main source of the simulation error. 
+
+
+# Source
+[1] United Kindom Department for Food and Rural Affairs, https://laqm.defra.gov.uk/public-health/
+
+[2] World Health Organisation (WHO), Air Quality and Health Question and Answer, (https://www.who.int/phe/air_quality_q&a.pdf)
+
+[3] Song Xi Chen, csx'@'gsm.pku.edu.cn, Guanghua School of Management, Center for Statistical Science, Peking University, https://archive.ics.uci.edu/ml/datasets/Beijing+PM2.5+Data#.
+
+[4] Ionides, E. (n.d.). Stats 531 (Winter 2020) ‘Analysis of Time Series’ http://ionides.github.io/531w20/
+
+[5] Wiki, Partial autocorrelation function, https://en.wikipedia.org/wiki/Partial_autocorrelation_function
