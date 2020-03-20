@@ -1,0 +1,264 @@
+---
+title: "Investigation of President Trump's Approval Ratings"
+date: "3/9/2020"
+output: 
+  html_document:
+    toc: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(ggplot2)
+library(plyr)
+library(reshape2)
+require(knitr)
+```
+
+# 1. Introduction
+
+Currently, the United States is in the midst of the Democratic Primary season where voters will choose their preferred nominee to face incumbent Republican president Donald Trump. This primary cycle has been contentious and polarizing, with a heavy emphasis on the idea of "electability", which many attribute to the remarkable success of Joe Biden on Super Tuesday and the recent dropping out of once-front-runner [Elizabeth Warren](https://fivethirtyeight.com/features/did-sexism-and-fear-of-sexism-keep-warren-from-winning-the-nomination/). 
+
+One contributing factor to this question of electability is the national approval rating of Donald Trump. Drops in approval ratings coinciding with Democratic debates or other significant events during this primary season could be an indication that moderate republicans or independent voters may be leaning towards a Democratic vote in November, and could play a strategic role in swaying voter's choices in the upcoming primaries, including Michigan's on March 10th.
+
+# 2. Questions of interest
+
+In this analysis, we will attempt to answer the following questions:
+
+1. Can we fit an ARIMA-family time series model to model President Trump's approval rating?
+2. Is there evidence of strong cyclical patterns in Presidential approval ratings?
+3. Can our model be used to predict future Presidential approval ratings?
+
+# 3. Data
+
+Approval ratings data were obtained from [fivethirtyeight](https://projects.fivethirtyeight.com/trump-approval-ratings/), and contains daily estimates of national approval ratings beginning 3/11/2017 through 3/6/2020. Details of fivethirtyeight's estimation of national approval ratings are provided [here](https://fivethirtyeight.com/features/how-were-tracking-donald-trumps-approval-ratings/). These data provide approval estimates for both voters and the general public, but here we will focus on modeling approval among voters only. To learn our model we will truncate approval ratings for March 2020 and will use forecasting accuracy as a way to assess our final time series model.
+
+# 4. Data Exploration
+
+Here, we plot the approval ratings data both as the raw time series and the first-order differenced time series. We can see that the raw time series does not appear stationary, but rather shows an approximately cubic temporal trend. On the other hand. the first-order differencing transformation does indeed seem to make the data appear stationary. We will keep this in mind when making our model choices in the next section.
+
+```{r approval}
+trump = read.csv("approval_topline-1.csv",header=TRUE)
+trump$modeldate = as.Date(trump$modeldate, format='%m/%d/%Y')
+trump_voters = trump[trump$subgroup == 'Voters' & trump$modeldate < "2020-02-01",]
+trump_voters = trump_voters[order(trump_voters$modeldate),]
+
+ggplot(trump_voters, aes(x=modeldate, y=approve_estimate)) + geom_line(aes(color=subgroup), show.legend = FALSE) +   
+  theme_classic() + xlab('Date') + ylab('Approval (%)') + ggtitle('Trump Approval Ratings with US Voters')
+```
+
+
+
+```{r diff(approval)}
+df = data.frame(seq(length(diff(trump_voters$approve_estimate))), diff(trump_voters$approve_estimate))
+colnames(df) = c('Time', 'Diff.Approval')
+ggplot(df, aes(x=Time, y=Diff.Approval)) + geom_line() +   
+  theme_classic() + xlab('Timepoint') + ylab('Diff(Approval) (%)') + ggtitle('First Order Differenced Trump Approval Ratings with US Voters')
+```
+
+When observing the first-order difference time series of Approval Ratings, we notice there is quite a large variation right at the beginning of our time series, potentially indicating the first few days of Trump's administration were somewhat volatile in terms of public opinion. To avoid complications that may arise from this spuriously high variability, we will cut the first 5 timestamps off of our time series. This truncated approval ratings difference series now appears to have both stationary mean and variance, which is desirable in ARIMA modeling.
+
+```{r diff(approval)2}
+trump_voters = trump_voters[5:length(trump_voters$modeldate),]
+df = data.frame(seq(length(diff(trump_voters$approve_estimate))), diff(trump_voters$approve_estimate))
+colnames(df) = c('Time', 'Diff.Approval')
+ggplot(df, aes(x=Time, y=Diff.Approval)) + geom_line() +   
+  theme_classic() + xlab('Timepoint') + ylab('Diff(Approval) (%)') + ggtitle('First Order Differenced Trump Approval Ratings with US Voters (Truncated)')
+```
+
+Looking at the sample autocorrelation function (ACF) plots for the raw and differenced data, we see further evidence in support of utilizing the first-order differencing transformation, as the raw data are significantly autocorrelated at all lags <= 30 (and likely much further).
+```{r approval acf}
+par(mfrow=c(1,2))
+acf(trump_voters$approve_estimate,  main="ACF for Trump Approval")
+acf(diff(trump_voters$approve_estimate), main = 'ACF for Diff(Trump Approval)')
+```
+
+# 5. Model selection
+
+## Regression with ARIMA errors
+
+The trend in the unadjusted, raw approval ratings time series suggests a cubic temporal trend. We will first explore a 3-rd order polynomial regression with ARIMA errors to model our time series. We begin just by fitting a cubic OLS model to the data:
+
+```{r lm2, echo=FALSE}
+day = seq(length(trump_voters$approve_estimate))
+lm_fit = lm(approve_estimate~day+I(day^2)+ I(day^3), data=trump_voters)
+summary(lm_fit)
+
+Z = cbind(1, day, day^2, day^3)
+beta = coef(lm_fit)
+prediction = Z%*%beta
+df2 = data.frame(day, prediction)
+ggplot(trump_voters, aes(x=df2$day, y=approve_estimate)) +
+  geom_line(linetype='dotted') +
+  geom_line(data = df2, aes(x=day, y=prediction), color = "red")+
+  xlab('Day') + ylab('Approval (%)') + ggtitle('OLS - Trump Approval Ratings with US Voters') +
+  theme_classic()
+```
+ 
+Clearly, a 3-rd order polynomial captures the temporal trend in our data quite well. We will now compare AIC values of 3rd order polynomial regressions with ARIMA($p$,1,$q$) errors for values of $p$ and $q$ from 0 to 4. Based on AIC, we identify ARIMA(3,1,3) to best model the errors in our cubic regression model. However, when we look into this model we see that we run into convergence problems, and our $\beta$ coefficient is actually 0. Based on these results, we will move forward without the regression terms. 
+
+```{r selection, echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order = c(p, 1, q), xreg=(day^3), method='ML')$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+temp_aic_table <- aic_table(trump_voters$approve_estimate,4,4)
+
+kable(temp_aic_table,digits=2)
+```
+
+```{r}
+fit = arima(trump_voters$approve_estimate,order = c(3, 1, 3), xreg=day^3, method='ML')
+fit
+```
+
+
+## ARIMA(p,d,q) Models
+
+### Model Fitting
+
+Based on our above observation that transforming the data via first-order differencing enforces stationarity, we will test ARIMA($p$,1,$q$) models, where $p$ and $q$ range from 0 to 4. We will use AIC to determine the most appropriate model (the lower AIC the better). 
+
+
+```{r selection2, echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order = c(p, 1, q), method = 'ML')$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+temp_aic_table <- aic_table(trump_voters$approve_estimate,4,4)
+
+kable(temp_aic_table,digits=2)
+```
+
+Based on these results we would choose the ARIMA(3,1,3) model (AIC = 417.6). However, when we investigate the roots of the AR and MA polynomials, we should raise 3 concerns:
+
+1. One of the MA roots (0.71) does not fall outside the unit circle, indicating a non-invertible model. This is concerning because non-invertible models give numerically unstable estimates of residuals, and are therefore undesirable. 
+2. One of the AR roots (1.022) just barely falls outside the unit circle. This indicates that the model is on the cusp of being non-causal.
+3. The remaining AR and MA roots (1.596 and 1.522, respectively) are very close in magnitude, and therefore could indicate redundancy in the model.
+
+
+```{r}
+
+fit = arima(trump_voters$approve_estimate,order = c(3, 1, 3), method='ML')
+
+paste('Roots of the AR Poly:',round(polyroot(c(1,-coef(fit)[c('ar1', 'ar2', 'ar3')])),3))
+paste('Modulus of the AR Poly:',round(abs(polyroot(c(1,-coef(fit)[c('ar1', 'ar2', 'ar3')]))),3))
+
+paste('Roots of the MA Poly:',round(polyroot(c(1,-coef(fit)[c('ma1','ma2', 'ma3')])),3))
+paste('Modulus of the MA Poly:',round(abs(polyroot(c(1,-coef(fit)[c('ma1','ma2', 'ma3')]))),3))
+```
+
+By studing the AIC table, we do not see evidence of instability in the MLE calculcation (no increases > 2 by adding one parameter). However, the three concerns above indicate a more reduced model than the ARIMA(3,1,3) may be preferable. The next smaller model with the lowest AIC is the ARIMA(0,1,0 model), which is equivalent to a random walk model.
+
+We can validate this model choice using the output of the `auto.arima` function in the `forecast` package, which chooses the best model using AIC. This method also chooses the ARIMA(0,1,0) as the most appropriate model.
+
+```{r forecast,  message=FALSE}
+library(forecast)
+farima = auto.arima(trump_voters$approve_estimate, trace=TRUE)
+```
+
+The ARIMA(0,1,0) model is given by:
+$$ (1-B)(Y_n - \mu) =  \epsilon_n,$$
+where $\mu$ = 42.55, $B$ is the backshift operator, and $\epsilon_{1:n}$ are iid Gaussian white noise terms. This random walk model is essentially equivalent to AR(1) model in which the autoregressive coefficient is equal to 1.
+
+### Model Diagnostics
+
+The ACF of the residuals looks overall uncorrelated, with correlations at lags 8 and 20 just barely touching/passing the line of significance.The Q-Q plot indicates a significant deviation from normal residuals, which is an importan assumption of our ARIMA model. This may be expected here based on the study of the roots of the AR and MA terms above. Looking more closely at the residuals, we see the residual values are heavily clustered around 0. This is in accordance with the tiny $\sigma^2$ estimate of 0.085 from the fitted ARIMA(0,1,0) model, however it should make us concerned about overfitting. 
+```{r}
+fit = arima(trump_voters$approve_estimate,order = c(0, 1, 0), method='ML')
+
+trump_voters$fitted = fitted(fit)
+
+par(mfrow=c(1,2))
+acf(fit$residuals,main='ARIMA(0,1,0) Residual ACF')
+qqnorm(fit$residuals,main='ARIMA(0,1,0) Residual QQ-Plot',
+       ylab = 'Residual Sample Quantiles',
+       xlab = 'Standard Normal Quantiles')
+qqline(fit$residuals)
+
+```
+```{r}
+par(mfrow=c(1,2))
+plot(trump_voters$fitted,fit$residuals,pch=16,
+     main='ARIMA(0,1,0) Residual v. Fitted',
+     xlab = 'Fitted Values',
+     ylab = 'Residuals')
+hist(fit$residuals, breaks=30, main = 'Histogram of ARIMA(0,1,0) Residuals',
+     xlab="Residuals")
+```
+
+# 6. Response to Question 1
+
+Here, we plot the fitted values of the ARIMA(0,1,0) model over the original observed approval ratings data, along with a LOESS-smoothed estimation of trend. We see that the fitted values essentially overlay the original curve exactly. Knowing this is a random walk model with a very small $\sigma^2$ value, this is not surprising. The fact that the random walk was derived as our most appropriate model indicates that day-to-day fluctuations in approval rating for President Trump are essentially attributable to noise. 
+
+```{r}
+approval_loess = loess(trump_voters$approve_estimate ~ row.names(trump_voters),span=0.5)
+plot(approve_estimate ~ modeldate,trump_voters,type='l',col='blue',lwd=1,
+     main='Trump Approval Rating\n ARIMA(0,1,0) and Loess Smoothing',
+     xlab = 'Date',
+     ylab = 'Approval (%)',bty="n")
+lines(fitted ~ modeldate,trump_voters,type='l',lwd=2, lty=2)
+lines(trump_voters$modeldate,approval_loess$fitted,type='l',col='red',lwd=2)
+legend('topleft',
+       c('ARIMA(0,1,0) Fit','Loess Smoothing','Observed'),
+       col = c('black','red','blue'), lty = c(2, 1, 1) ,cex=0.8,lwd=c(2,1,1))
+```
+
+# 7. Response to Question 2
+Based on the following periodograms and their respective significance bars, there are no significant frequencies that would indicate strong cyclical trends in Presidential approval ratings. In the smoothed periodogram, we see some interesting spikes around frequencies of 0.1 and 0.25, which correspond to periods of roughly 10 and 4 days, respectively. These periods may be due to news cycles or perhaps the persistence of positive/negative feedback on current presidential events in social (media) circles. There is also a slight bump in the periodogram at frequency = 0.05 (period = 20 days), which matches up with the slightly significant correlations observed at lag=20 in the first order difference series.
+
+```{r}
+par(mfrow=c(2,1))
+#unsmoothed periodogram
+spectrum(trump_voters$approve_estimate,main='Unsmoothed Periodogram')
+#smoothed periodogram
+spec = spectrum(trump_voters$approve_estimate,spans=c(3,5,3),main='Smoothed Periodogram')
+```
+
+# 8. Response to Question 3
+
+Since our model is a random walk without drift, we know that it will not be very useful for forecasting, as random walk models predict the last known value for all $k$ future values, with increasingly wider 95% confidence intervals. Using the `forecast` function from the `forecast` package, we can confirm this is the exact behavior of our ARIMA(0,1,0) model (blue line = prediction, red line = ground truth).
+```{r}
+project = forecast(farima, h=6)
+project = data.frame(project)
+project$truth = trump$approve_estimate[trump$subgroup == 'Voters' & trump$modeldate >= "2020-03-01"]
+
+ggplot(data=project) + geom_line(aes(x=as.numeric(rownames(project)), y=Point.Forecast), color='blue') + 
+  geom_ribbon(aes(ymin=Lo.95, ymax=Hi.95, x=as.numeric(rownames(project)), fill = "band"), alpha = 0.3, show.legend = FALSE) + 
+  geom_line(aes(x=as.numeric(rownames(project)), y=truth), color='red') + xlab("Future Timepoints") + ylab('Forecasted Approval (%)') + 
+  ggtitle('Forecasted vs. True Approval Ratings for 3/1/2020 - 3/6/2020') + theme_classic()
+```
+
+# 9. Conclusions
+
+Our goal was to investigate three questions with regards to Trump's Presidential Approval Ratings time series, as laid out in Section (2). Our conclusions for these three questions are:
+
+1. An ARIMA(0,1,0) (a.k.a random walk without drift) model seems to be most suitable to model these data. We can interpret this as daily approval ratings are well predicted by those of the previous day - though these trends are clearly driven by other outside factors (i.e. policies being passed, stock market fluctuations, or (in Trump's case) a single tweet), however more data and more sophisticated models would be required to properly model this phenomenon in a way that could provide insights into the strongest driving factors.
+2. Using spectral decomposition of our time series, we found no significant evidence for cyclical patterns in Trump's approval ratings. It is worthy to note again here that the approval ratings used here are aggregated from several different pollsters by fivethirtyeight, and represent an estimate of average national approval among voters. If data were available to break down these approval ratings by demographics including age, race and party affiliation, this could uncover some underlying cyclical pattern that is unrecognizable with these data.
+3. Our ARIMA(0,1,0) model, by nature, is not useful for forecasting, as it will always predict the last known data point. By employing some of the more sophisticated methodologies desribed above, perhaps forecasting of Trump's approval rating would be possible. I believe this is would be most interesting to do for the deomographic of independent voters or "moderate" republicans, as Trump continues to swing strongly to the right these individuals may decide to swing left come Election Day in November. 
+
+
+
+# 10. Resources
+
+1. https://fivethirtyeight.com/features/did-sexism-and-fear-of-sexism-keep-warren-from-winning-the-nomination/
+2. https://projects.fivethirtyeight.com/trump-approval-ratings/
+3. https://fivethirtyeight.com/features/how-were-tracking-donald-trumps-approval-ratings/
+4. [2018 Midterm Project Examples](https://ionides.github.io/531w18/midterm_project/)
+5. [Course Notes](https://ionides.github.io/531w20/)
+6. https://datascienceplus.com/time-series-analysis-using-arima-model-in-r/
+7. https://people.duke.edu/~rnau/Notes_on_the_random_walk_model--Robert_Nau.pdf
