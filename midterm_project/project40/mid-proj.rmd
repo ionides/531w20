@@ -1,0 +1,356 @@
+---
+title: "Avacado prices in California"
+date: "2/21/2020"
+output: 
+  html_document:
+    theme: flatly
+    toc: yes
+---
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\R{\mathbb{R}}
+\newcommand\ar{\phi}
+\newcommand\ma{\psi}
+--------
+
+
+```{r include=FALSE}
+# run but not shown code
+options(warn=-1)  # disable the warnings
+library(knitr)
+library(ggplot2)
+library(ggfortify)
+theme_set(theme_bw())
+
+load("conv.RData")
+load("org.RData")
+
+df <- read.table(file="California.csv",sep = ",",header=TRUE)
+df[["Date"]] <- as.Date(df[["Date"]], "%Y-%m-%d")  # need to convert factor to date class
+```
+
+```{r echo=FALSE}
+# only show results code
+```
+
+
+## Introduction
+
+Avocado is known as a popular foods among millennials. It is rich in nutrition and can be found in many dishes. As a huge fan of avocado, I eat avocado toast and avocado salad a lot. However, I have never bought avocados from a market myself, nor do I have any sense of its prices. Some business articles point out that avocado is getting increasingly expensive, growing by up to $129\%$ in recent years [3]. Empirically speaking, the price of an item is closely related to its market demands annd sales. Therefore, in this project, we are going to analyze the following problems:
+
+- Does the price of avocado have an increasing trend in recent years?
+- What is the trend of the avocado sales?
+- Are there any evidence that the price of avocado is associated with its market sales?
+
+To be specific, we focus our problem on the avocado market in California. Our data is measured once a week, from year 2015 to 2018 [1].
+
+## Exploratory analysis
+
+There are two types of avocado on the market, namely conventional and organic. Typically, organic avocado is more expensive, but the difference between the two types may vary over time. First, we take a view of the average avocado price per piece from year 2015 to 2018, measured on a weekly basis:
+
+```{r fig.align='center', fig.width=7,fig.height=3, echo=FALSE}
+# only show results code
+ggplot(df, aes(x=Date)) + 
+  geom_line(aes(y=AveragePrice, col=type)) + 
+  labs(title="Time series plot of avocado price", 
+       subtitle="Year 2015 - 2018", 
+       y="Unit price $") + 
+  scale_color_manual(values=c("#2983bb", "#ff9900"))
+```
+
+We also compare the total volume of avocado sales of both types. Note that in the following chart the unit of y axis is "thousand pieces".
+
+```{r fig.align='center', fig.width=7,fig.height=3, echo=FALSE}
+# only show results code
+ggplot(conv, aes(x=Date, y=Total.Volume/1e4)) + 
+  geom_line(aes(color="#2983bb")) +
+  geom_line(data=org, aes(x=Date, y=Total.Volume/1e3, color="#ff9900")) +
+  xlab('Date') +
+  ylab('Conventional total Vol. [K pcs]')  +
+  scale_colour_manual(name = 'type', 
+                      values =c("#2983bb"="#2983bb","#ff9900"="#ff9900"), 
+                      labels = c('conventional','organic')) + 
+  scale_y_continuous(sec.axis = sec_axis(~./10, name = "Organic total Vol. [K pcs]"))
+```
+
+The two types of avocado show similar trends in sales, with the conventional type occupies much greater share in the market and contains more fierce fluctuation. For clarification, in the following sections we restrict our discussion to the sales of conventional type avocado.
+
+## Trend and periodogram of avocado price
+
+### An initial attempt
+
+The ACF plot of conventional avocado average price contains an apparent oscillation pattern, which is an evidence for MA(2) models.
+
+```{r fig.align='center', fig.width=7,fig.height=4, echo=FALSE}
+acf(conv$AveragePrice,main="ACF of ARMA(3,2) residuals", lag.max = 169)
+```
+
+We can also examine its AIC table for information of a proper ARMA model of the avocado price time series:
+
+```{r echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      try(table[p+1,q+1] <- arima(data,order=c(p,0,q),method = "ML")$aic)
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+temp_aic_table = aic_table(conv$AveragePrice,5,5) # 
+kable(temp_aic_table,digits=2)
+```
+
+According to the AIC table, ARMA(3, 2) model provides the smallest AIC value, which is consistent with our first impression from the ACF plot. Accordingly, we try fitting the data with an ARMA(3, 2) model:
+
+```{r,echo=FALSE}
+arma32 <- arima(conv$AveragePrice, order=c(3,0,2))
+print(arma32)
+```
+
+According to R output, our model is estimated as \[
+\Phi(B)(Y_n - \mu) = \Psi(B)\epsilon_n
+\]
+where \[
+\begin{aligned}
+\Phi(B) &=  1 + 0.95B - 0.75B^2 - 0.75B^3, \\
+\Psi(B) &= 1 + 1.98B + 1.00B^2, \\
+\mu &= 1.10,\\
+\sigma &\sim N(0, 0.01).
+\end{aligned}
+\]
+
+To evaluate the fitness of this model, we start by analyzing the ACF plot of residuals.
+
+```{r fig.align='center', fig.width=7,fig.height=4, echo=FALSE}
+acf(arma32$resid,main="ACF of ARMA(3,2) residuals", lag.max = 169)
+```
+
+From the ACF plot, it appears that the residuals are uncorrelated, since almost all lags are within the 5% level of chance variance (except at lag = 15). However, there seems to be a damped periodic pattern in the lags, which implies that there might be a trend in the original data. In addition, as we draw the scatter plot of residuals, we could infer that there is likelihood that the variance of residual is slightly increasing with time.
+
+```{r fig.align='center', fig.width=6,fig.height=4, echo=FALSE}
+ggplot() + 
+  geom_point(aes(x=conv$Date, y=c(arma32$residuals)), color="#5e7987") +
+  xlab('Date') +
+  ylab('Residuals')
+```
+
+We want to perform diagonostic analysis on the model to better evaluate its adequecy on our dataset. Check the roots of $\Phi(X)$:
+
+```{r}
+print(abs(polyroot(c(1,-coef(arma32)[c("ar1", "ar2", "ar3")]))))
+```
+
+All roots of the AR polynomial are ouotside the unit circle, which means our model is causal. However, checking the roots of $\Psi(X)$, 
+
+```{r}
+print(abs(polyroot(c(1,coef(arma32)[c("ma1", "ma2")]))))
+```
+
+we find the roots are very close to the unit circle, which means that our model is at the threshold of non-invertibility. This is undesirable for our analysis, because non-invertible models give numerically unstable estimates of residuals. Therefore, in the upcoming sections, we want to adjust our model to avoid this situation.
+
+### Seasonality and trend
+
+To analyze the trend and seasonality of avacado average price, we plot the spectrum density for the time series. The unit of frequency is cycles per week. 
+
+```{r fig.align='center', fig.width=7,fig.height=4, echo=FALSE}
+date <- conv$Date
+u1 <- conv$AveragePrice
+u1_ts <- ts(u1,start=2015,frequency=1)
+spec1 <- spectrum(u1_ts,spans=c(3, 5,3), plot=FALSE,
+                  main="Smoothed periodogram of average price")
+ggplot() + 
+  geom_line(aes(x=spec1$freq, y=spec1$spec), color="#74787a") + 
+  labs(title="Smoothed periodogram of average price", 
+       # subtitle="Year 2015 - 2018", 
+       x="frequency [cycles per week]",
+       y="spectrum") + 
+  scale_y_continuous(trans = 'log10') + 
+  geom_vline(xintercept = spec1$freq[41], colour="#2983bb", linetype=2) + geom_vline(xintercept = spec1$freq[3], colour="#2983bb", linetype=2)
+
+```
+
+There is a peak in the middle frequency, with the value
+
+```{r echo=FALSE}
+print(spec1$freq[41])
+```
+
+this stands for a cycle every $1 / 0.228 = 4.39$ weeks, which is approximately a month. As the power density at this peak is not very high, we can interpret that there is a weak monthly cycle in our time series.
+
+The highest peak corresponds to the frequency value
+
+```{r echo=FALSE}
+print(spec1$freq[3])
+```
+
+which is $1 / 0.0167 = 60$ weeks. 
+
+To examine the period and trend in the time series, we can decompose the time series as a combination of trend, noise and cycle:
+
+```{r fig.align='center', fig.width=7,fig.height=5, echo=FALSE}
+u1 <- conv$AveragePrice
+date <- seq(from=2015,length=length(u1),by=1/52)
+u1_ts <- ts(u1,start=2015,frequency=52)
+u_low <- ts(loess(u1~date,span=0.5)$fitted,start=2015,frequency=52)
+u_hi <- ts(u1 - loess(u1~date,span=0.1)$fitted,start=2015,frequency=52)
+u_cycles <- u1 - u_hi - u_low
+plot(ts.union(u1, u_low,u_hi,u_cycles),
+     main="Decomposition of average price as trend + noise + cycles")
+```
+
+From the decomposition, we could observe a yearly period in which the avacado price rise and fall. On the whole, the average price do increases from 2015 to late 2017, but starts to drop there after. At the same time, the variance of average price gets larger over time, which can be reflected from the high frequency components. In addition, the periodic pattern is getting more apparent. In earlier years, there are only small fluctuations around the mean value. In comparison, in recent years, the pattern of fluctuation grew larger in scale and gradually evolved a clear pattern, which has two ups and downs each year: a smaller one follows by a larger one.
+
+## Trend and periodogram of avocado sales volume
+
+We then move to analyze the avocado sales volume time series. An oscillated damping periodic pattern could als be captured in the conventional avocado sales volume time series, which is a clue for MA(2) models:
+
+```{r fig.align='center', fig.width=7,fig.height=4, echo=FALSE}
+acf(conv$Total.Volume,main="ACF of ARMA(3,2) residuals", lag.max = 169)
+```
+
+As we plot the spectrum density for this time series, we could detect a farmiliar pattern:
+
+```{r fig.align='center', fig.width=7,fig.height=4, echo=FALSE}
+u2 <- conv$Total.Volume
+u2_ts <- ts(u2,start=2015,frequency=1)
+spec2 <- spectrum(u2_ts,spans=c(3,5, 3), plot=FALSE,
+                  main="Smoothed periodogram of average price")
+ggplot() + 
+  geom_line(aes(x=spec2$freq, y=spec2$spec), color="#74787a") + 
+  labs(title="Smoothed periodogram of Total volume", 
+       # subtitle="Year 2015 - 2018", 
+       x="frequency [cycles per week]",
+       y="spectrum") + 
+  scale_y_continuous(trans = 'log10') + 
+  geom_vline(xintercept = spec2$freq[41], colour="#f1939c", linetype=2) + 
+  geom_vline(xintercept = spec2$freq[4], colour="#f1939c", linetype=2)
+```
+
+Recall the spectrum density plot for average price, we see that despite the magnitude of power, the pattern of the two spectrums are amazingly similar:
+
+```{r fig.align='center', fig.width=7,fig.height=4, echo=FALSE}
+ggplot() + 
+  geom_line(aes(x=spec2$freq, y=spec2$spec/1e13), color="#c04851") + 
+  labs(title="Spectrum comparison", 
+       subtitle="Total volume (red line) vs. Average price (blue line)", 
+       x="frequency [cycles per week]",
+       y="Average price") + 
+  # scale_y_continuous(trans = 'log10') + 
+  geom_vline(xintercept = spec2$freq[41], colour="#f1939c", linetype=2) + 
+  geom_vline(xintercept = spec2$freq[4], colour="#f1939c", linetype=2)  + 
+  geom_line(aes(x=spec1$freq, y=spec1$spec), color="#144a74") + 
+  # scale_y_continuous(trans = 'log10') + 
+  geom_vline(xintercept = spec1$freq[41], colour="#2983bb", linetype=3) + 
+  geom_vline(xintercept = spec1$freq[3], colour="#2983bb", linetype=3) + 
+  scale_y_continuous(trans = 'log10', 
+                     sec.axis = sec_axis(~.*1e13, name = "Total volume"))
+```
+
+In comparison, the spectrum of the total volume series is smoother. A major difference between the two series, however, is the frequency at which the spectrum achieves the maximum power. For the total volume series, the peak is attained at requency
+
+```{r}
+spec2$freq[4]
+```
+
+which indicates a cycle of $1/0.0222 = 45$ weeks.
+
+Since the pattern of the two spectrum density plots are largely similar to each other, we want to examine the correlation between the two time series. According to Law of demand [4][5] in economics, we know that price change affects the demand of a product. Therefore, we fit a regression between the two variables with an ARMA model.
+
+### Regression
+It is a common practice to apply log transform to time series in economic problems [6], therefore we apply it to our dataset before applying to a regression on ARIMA and examining its AIC table:
+
+```{r echo=FALSE}
+aic_reg_table <- function(P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      try(table[p+1,q+1] <- arima(x=log(conv$Total.Volume), 
+                                  order=c(p,0,q),
+                                  xreg=log(conv$AveragePrice))$aic)
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+temp = aic_reg_table(5,5)
+kable(temp,digits=2)
+```
+
+The AIC table suggests that a ARMA(3,1) model has the lowest AIC value, which is slightly lower than the AIC value for ARMA(1,1). However, a simpler model is prefered. Therefore, we select an ARMA(1,1) model for our data, and plot the ACF for residuals:
+
+```{r echo=FALSE}
+arma11 <- arima(x=log(conv$Total.Volume), 
+                order=c(0,1,1),
+                xreg=log(conv$AveragePrice))
+```
+
+```{r fig.align='center', fig.width=7,fig.height=4, echo=FALSE}
+acf1 <- acf(arma11$residuals,main="ACF of ARMA(1,1) residuals", lag.max = 169)
+```
+
+It is noticeable that lag=53 has a significantly large value,
+
+```{r}
+acf1$acf[53]
+```
+
+which indicates that 53-1=52 weeks is a cycle. This is approximately one year, which is of actual meaning. Taking this into account, we can modify our model to account for the seasonal pattern by introducing a seasonal operator:
+
+```{r,echo=FALSE}
+sarma11 <- arima(x=log(conv$Total.Volume), 
+                 order=c(1,0,1),
+                 seasonal=list(order=c(1,0,0),period=52), 
+                 xreg=log(conv$AveragePrice))
+sarma11
+```
+
+This give us the following model in specific: \[
+\log Y_n = 15.6696 - 1.1083\log z_n + \epsilon_n, \\
+\]
+where $Y_n$ is the total volume of avocado sales, $z_n$ is the average price, and $\epsilon_n$ is assumed to be an ARMA(1,1) model satisfying
+\[
+(1-0.9483B)(1-0.3899B^{52})\epsilon_n = (1-0.444B)\omega_n,
+\]
+and $\{\omega_n\}$ is a Gaussian white noise, $\omega_n\sim N[0, 0.0054]$. As before, we want to examine the adequacy of this model. The roots of characteristic polynomials are
+
+```{r}
+coeff <- c(1, -0.9483, rep(0, 50), -0.3899, 0.3697)
+print(abs(polyroot(coeff)))
+print(abs(polyroot(c(1, -0.444))))
+```
+
+all roots are safely outside the unit circle, which means that our model for $\{\epsilon_n\}$ is stationary, causal and invertible.
+
+```{r fig.align='center', fig.width=7,fig.height=4, echo=FALSE}
+acf2 <- acf(sarma11$residuals,main="ACF of SARMA(1,1) residuals", lag.max = 169)
+# ggplot() + 
+#  geom_point(aes(x=conv$Date, y=c(sarma11$residuals)), color="#5e7987") +
+#  xlab('Date') +
+#  ylab('Residuals')
+```
+
+From the ACF plot, all residual lags are within the range of chance variance, indicating that $\{\epsilon_n\}$ is uncorrelated. The negative linear relation between the avacado price and sales volume verifies that avacado market demand respond negatively to the variation of its market price, which is consistent with the law of demand as well.
+
+## Discussion and conclusion
+
+In this project, we explored the trend and periodity of avocado price and sales volume time series and also analyzed their association. We extracted monthly and annual patterns from the spectrum density analysis, and also determined the trend of price variation from the spetrum decomposition, which is not constantly increasing but shows a decreasing trend in recent years. In addition, we applied a regression on the price and sales volume time series and discovered a negative correlation between the two time series, which is consistent with our empirical knowledge.
+
+However, we could see that after many transformation，even though the error terms are uncorrelated, there still exists an oscillated damping periodic pattern in the residual lags. The reason behind the persistence of this damping characteristic remains to be solved in future.
+
+## Reference
+
+1. Data source: original source on https://hassavocadoboard.com/, directly downloaded from https://www.kaggle.com/neuromusic/avocado-prices, then pre-processed with Python.
+2. https://www.refinery29.com/en-us/2019/07/238137/avocado-prices-rise-demand
+3. *Avocado prices have boomed in the last decade — here's why they are so expensive*, https://www.businessinsider.com/why-avocados-are-so-expensive-2019-10
+4. *The relationship between demand and price.* UKEssays.com. 11 2018. All Answers Ltd. 02 2020. https://www.ukessays.com/essays/economics/the-relationship-between-demand-and-price-economics-essay.php?vref=1.
+5. *Law of demand*, https://www.investopedia.com/terms/l/lawofdemand.asp.
+6. *When to log transform a time series before fitting an ARIMA model*. https://stats.stackexchange.com/questions/6330/when-to-log-transform-a-time-series-before-fitting-an-arima-model
+
+
+
