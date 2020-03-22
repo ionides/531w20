@@ -1,0 +1,124 @@
+---
+title: "STATS 531 Winter 2020 <br>Midterm projects"
+output:
+  html_document:
+      theme: flatly
+      toc: yes
+csl: ecology.csl
+---
+
+---------
+
+* Projects are posted anonymously below. Source code and data are available from [https://github.com/ionides/531w20/midterm_project](https://github.com/ionides/531w20/tree/master/midterm_project).
+
+* I will contact everyone to give you the opportunity to have your name attached to your project, if you like, after the course is over and the class grades are assigned.
+
+-----------
+
+----------
+
+1. [Seasonal sugar? A study of monthly sugar production in U.S. from 1972 to 2020](https://ionides.github.io/531w20/midterm_project/project1/Midterm-Project.html)
+
+2. [Analysis on PM2.5 concentration during spring in Xuhui District, Shanghai, China](https://ionides.github.io/531w20/midterm_project/project2/Midterm-Project.html)
+
+3. [A Study on Accumulated Cyclone Energy of North Atlantic Hurricane](https://ionides.github.io/531w20/midterm_project/project3/project.html)
+
+4. [Russell 2000 Index data](https://ionides.github.io/531w20/midterm_project/project4/Midterm-project.html)
+
+5. [Consumer sentiment Analysis](https://ionides.github.io/531w20/midterm_project/project5/531-midterm-project.html)
+
+6. [Analysis of Pneumonia-related Deaths in Michigan](https://ionides.github.io/531w20/midterm_project/project6/midterm_project.html)
+
+7. [A Study on US Bond Yield Spread and Unemployment Rate](https://ionides.github.io/531w20/midterm_project/project7/midProject.html)
+
+8. [Trend of Michigan Consumer sentiment index](https://ionides.github.io/531w20/midterm_project/project8/Stats531midterm-1.html)
+
+9. [Ozone COncentration Analysis](https://ionides.github.io/531w20/midterm_project/project9/midtermProject.html)
+
+10. [Trend Analysis of import trade values between Japan and USA](https://ionides.github.io/531w20/midterm_project/project10/midterm-project.html)
+
+11. [Time Series Analysis of PM 2.5 in Beijing](https://ionides.github.io/531w20/midterm_project/project11/midterm-project.html)
+
+12. [Association between the Unemployment Rate and the Inflation](https://ionides.github.io/531w20/midterm_project/project12/stats-531-midterm-project-1.html)
+
+13. [ Wind speed pattern of Boston](https://ionides.github.io/531w20/midterm_project/project13/531_midterm_project.html)
+
+14. [Study of Heat Wave in United States](https://ionides.github.io/531w20/midterm_project/project14/mid.html)
+
+15. [Weekly Butter Prices from 2012 to 2017](https://ionides.github.io/531w20/midterm_project/project15/Midterm_Project.html)
+
+16. [Analysis for Log Returns of Nasdaq](https://ionides.github.io/531w20/midterm_project/project16/midterm-project.html)
+
+17. [Monthly changes in retail sales in the United States over the last fifteen years](https://ionides.github.io/531w20/midterm_project/project17/STATS531MidProject.html)
+
+18. [Application of ARMA methods to photometry of variable stars](https://ionides.github.io/531w20/midterm_project/project18/project.html)
+
+19. [fMRI time-series analysis and Primary Motor Area detection](https://ionides.github.io/531w20/midterm_project/project19/midterm_report.html)
+
+20. [Time Series Analysis on population of USA](https://ionides.github.io/531w20/midterm_project/project20/STATS531midtermproject.html)
+
+21. [Time Series Analysis of value of real estate in the U.S](https://ionides.github.io/531w20/midterm_project/project21/mid_project.html)
+
+22. [The Houston Astros Cheated, But Did it Help?](https://ionides.github.io/531w20/midterm_project/project22/midterm.html)
+
+23. [Time Series Analysis of Fire Alarm Emergency in Montgomery County, PA](https://ionides.github.io/531w20/midterm_project/project23/Midterm-Project.html)
+
+24. [Federal Reserve Bank of St.Louis](https://ionides.github.io/531w20/midterm_project/project24/STATS531_midterm_proj.html)
+
+25. [Association between Unemployment Rate and CPI of Alcoholic Beverages](https://ionides.github.io/531w20/midterm_project/project25/mide_project.html)
+
+26. [Flu effects](https://ionides.github.io/531w20/midterm_project/project26/midterm-project.html)
+
+27. [Time Series Analysis of NO2 Concentration in Dongcheng District, Beijing](https://ionides.github.io/531w20/midterm_project/project27/midterm_proj.html)
+
+28. [Wheat price data](https://ionides.github.io/531w20/midterm_project/project28/midProject.html)
+
+29. [A study on coronavirus based on a former virus outbreak](https://ionides.github.io/531w20/midterm_project/project29/midterm_project.html)
+
+30. [Gold Spot Price and Investment Analysis](https://ionides.github.io/531w20/midterm_project/project30/MidTerm.html)
+
+31. [Impact Analysis of COVID-19 on the US Tourism Demand](https://ionides.github.io/531w20/midterm_project/project31/midterm_project_info.html)
+
+32. [Are Time Series Models Adaptive to Sudden Swings in Annual Premiums for Smoker and Non-smoker Class Policyholders?](https://ionides.github.io/531w20/midterm_project/project32/531mtproj.html)
+
+33. [Modelling the Inflation Rate in the Euro Area](https://ionides.github.io/531w20/midterm_project/project33/midterm.html)
+
+34. [Ann Arbor January High temperature time series](https://ionides.github.io/531w20/midterm_project/project34/stats531midtermproject.html)
+
+35. [U.S. candy production](https://ionides.github.io/531w20/midterm_project/project35/531Midterm_project.html)
+
+36. [Beijing PM2.5 Dataset](https://ionides.github.io/531w20/midterm_project/project36/STATS531_Midterm_Project.html)
+
+37. [Monthly Air Passengers(1949 - 1960) Time Series Analysis and Modelling](https://ionides.github.io/531w20/midterm_project/project37/Midterm_project.html)
+
+38. [DJIA 30 Stock Time Series](https://ionides.github.io/531w20/midterm_project/project38/stats531midproejct.html)
+
+39. [Time Series Analysis of US industrial production: electric and gas utilities](https://ionides.github.io/531w20/midterm_project/project39/Midterm_project.html)
+
+40. [Avocado market in California](https://ionides.github.io/531w20/midterm_project/project40/mid-proj.html)
+
+41. [Analysis of Dengue](https://ionides.github.io/531w20/midterm_project/project41/STATS-531-1.html)
+
+42. [Adélie Penguin Population Arrival from 1991 to 2018](https://ionides.github.io/531w20/midterm_project/project42/mid_project_stats531.html)
+
+43. [Assessing South Korean Measures to Halt Coronavirus Spread](https://ionides.github.io/531w20/midterm_project/project43/Midterm_Project1.html)
+
+44. [Beijing PM2.5 Dataset](https://ionides.github.io/531w20/midterm_project/project44/mid_proj.html)
+
+45. [Investigation of President Trump’s Approval Ratings](https://ionides.github.io/531w20/midterm_project/project45/midterm_project_Trump-1.html)
+
+46. [Time Series Analysis on Mothly Crime Numbers in Seattle from 2008 to 2018](https://ionides.github.io/531w20/midterm_project/project46/MT2.html)
+
+47. [Estimating Value-at-Risk and Expected Shortfall](https://ionides.github.io/531w20/midterm_project/project46/midterm_project.html)
+
+48. [Study of household electricity consumption data](https://ionides.github.io/531w20/midterm_project/project46/pro.html)
+
+49. [Toronto Temperature Time Series Exploration](https://ionides.github.io/531w20/midterm_project/project46/midtermproject_out.html)
+
+50. [Monthly sunspot dataset](https://ionides.github.io/531w20/midterm_project/project46/Mid_pro.html)
+
+51. [Time Series Analysis of Exchange Rate of Euro-USD with respect to Brexit](https://ionides.github.io/531w20/midterm_project/project46/midterm_stats531.html)
+
+----------
+
+-----------
