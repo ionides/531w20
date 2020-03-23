@@ -1,0 +1,342 @@
+---
+title: "Monthly changes in retail sales in the United States over the last fifteen years"
+date: "2/10/2020"
+output: 
+   html_document:
+    toc: yes
+    theme: flatly
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+library(tidyverse)
+library(lubridate)
+library(gridExtra)
+library("doParallel")
+library(sarima)
+```
+
+```{r import data}
+data <- read_csv("RSXFSN.csv")
+names(data)[names(data) == "RSXFSN"] <- 'Retail sales'
+# Change the unit to billion dollars
+data$`Retail sales`=data$`Retail sales`/1000
+data_ad <- read_csv("RSXFS.csv")
+names(data_ad)[names(data_ad) == "RSXFS"] <- 'Retail sales'
+# Change the unit to billion dollars
+data_ad$`Retail sales`=data_ad$`Retail sales`/1000
+
+```
+
+
+# 1 Introduction
+Retail sales tell how much demand exists for consumer goods. The retail sales can reflect the economic environment of a country in a certain period which are a critical indicator of a country's economy. For example, consumer spending makes up almost 70% of total U.S. economic output.[1] Retail sales can play a predictive role in a country's economy. The Census Bureau divides retail sales into 13 categories. The retail sales datasets investigated in this report exclude the food services. Two dataset were  used in this report. One is the retail sales(excluding food services) raw data, the other is retail sales(excluding food services) seasonally adjusted data. Both of these two dataset contain 337 retail sales data from 1992-01-01 to 2020-01-01 which were released by Advance Monthly Sales for Retail and Food Services from U.S. Census Bureau. In this report, I will compare the difference between these two datasets and analyze some basic time series features on the seasonally adjusted dataset, including exploratory data analysis and SARMA modeling to see how the retail sales changes with time.
+
+Units:  Billions of Dollars.
+
+# 2 Exploratory Data Analysis
+These two charts show retail sales without seasonal adjustments and seasonally adjusted, respectively. The blue curves are smoothed from the loess method. As we can see, there is an increasing trend with time in each plot and a seasonal variation in the left one.
+```{r EDA}
+p1 <- data %>% ggplot(aes(x = DATE, y = `Retail sales`)) + geom_line() + geom_smooth() + ylab("Retail sales (billon dollars)") + ylim(c(100,550)) + ggtitle("Raw retail sales") + theme_bw() 
+p2 <- data_ad %>% ggplot(aes(x = DATE,y = `Retail sales`))+ geom_line() + geom_smooth()+ ylab("Retail sales (billon dollars)") + ylim(c(100,550)) + ggtitle("Seasonally adjusted retail sales ") + theme_bw()
+grid.arrange(p1, p2, ncol = 2)
+```
+
+To better compare the difference between the raw retail sales and seasonally adjusted retail sales, I performed the spectrum analysis. 
+```{r spectrum}
+ts1 <- ts(data$`Retail sales`,start = 1992, frequency = 12)
+ts2 <- ts(data_ad$`Retail sales`,start = 1992, frequency = 12)
+spectrum(ts.union(ts1,ts2), spans = c(3,5,3), main = "Raw retail sales(Black) and seasonally adjusted retail sales(Red)")
+
+
+
+
+```
+
+The x-axis units are cycles per year. As shown by the spectrum frequncy plot, the seasonally adjusted retail sales removes most of the signal at seasonal frequencies. 
+
+The ratio of the periodograms of the smoothed and unsmoothed time series is called the transfer function or frequency response function of the smoother.[2] 
+The frequency response plot shows that at least two order of magnitude is removed from the raw data at the seasonal frequencies.
+
+```{r}
+s <- spectrum(ts.union(ts1,ts2),plot=FALSE)
+data.frame(x=s$freq,y=s$spec[,2]/s$spec[,1]) %>% ggplot(aes(x=x,y=y)) + geom_line() + scale_y_log10() + theme_bw() + ylab("Intensity ratio") + xlab("Frequency(cycles per year)") + geom_hline(yintercept = 1e+00,lty="dashed",col = "red")  + ggtitle("Frequency response (Horizontal red lines at 1)") + geom_vline(xintercept = c(1,2,3,4,5,6), lty="dashed", col = "blue")
+```
+
+As we can see from the spectrum plots, the raw retail sales data contains information of various frequencies, which makes it hard to examine the particular aspects of interest. I decompose the retail sales into three parts, low frequency trend, high frequency noise and middle frequency long-term cycles.
+
+```{r frequency decomposition for raw data}
+raw <- data$`Retail sales`
+low <- ts(loess(`Retail sales`~as.numeric(DATE),data,span=0.5)$fitted, start=1992,frequency=12)
+hi <- ts(data$`Retail sales` - loess(data$`Retail sales`~as.numeric(data$DATE),span=0.1)$fitted, start=1992,frequency=12)
+cycles <- raw - hi - low 
+
+plot(ts.union(raw, low,hi,cycles),
+  main="Decomposition of retail sales as trend + noise + cycles")
+increase_rate = (low[337]-low[1])/(2020-1992)
+plot(hi[1:25],type = "l", main = "High frequency noise of a two-year span")
+
+```
+
+From the frequency decomposition plot, the low frequency plot provides a non-paramatric estimate of the trend from 1992 to 2020. The average increasing rate of retail sales is `r increase_rate` billion dollars per year. The high frequency plot shows the most noisy part in the retail sales, part of which is driven by the seasonal changes. As I zoom into this high frequency plot to a time span of two years, it shows more clearly that there is a high retail sales peak at December. For the first half of the year, there is another spike around May or June. This similar pattern repeatedly occurs over years. The seasonal change is shown to have a period of one year. The middle frequency plot in the bottom tells us about possible long-term cycles in the retail sales if any. From 2004 to 2008, the retail sales maintain a good growth rate. But from the second quarter of 2008, retail sales begin to decline, and it is not until the third quarter of 2009 that retail sales begin to recover. We know that the stock market crash of 2008 happened on Sep 29, 2008. The decline in retail sales partly reflects the economic downturn. 
+
+# 3 SARMA modeling of the retail sales changes.
+High frequency components in the data don't interest me so much. There are always low and high season sales throughout the year, which don't change much over different year. As we can see from this first part of the report, the seansonly adjusted retail sales removed these conponents. So I would be more interested to fit model on the seasonaly adjusted retail sales data. 
+
+The exploratory data analysis above also indicates a non-constant mean function and a seasonal period of 12 on the retail sales data. A SARMA model with period equal to 12 might be a proper candidate here.
+
+Before fitting the SARMA model, I detrend the data first.
+
+## 3.1 Detrending data
+I fit a linear model to the trend $X_n = \beta_1 t_n + \beta_0$
+```{r}
+lmod <- lm(`Retail sales` ~ DATE, data_ad)
+summary(lmod)
+```
+```{r}
+new <- data.frame(Time = data_ad$DATE, Retail_sales = data_ad$`Retail sales`, Fitted = lmod$fitted.values) 
+new %>% ggplot() + 
+  geom_line(aes(Time,Retail_sales)) + 
+  geom_line(aes(Time,Fitted),col = "blue") + 
+  theme_bw() + 
+#  scale_x_continuous(breaks=12*c(1:29)-11, labels = c(1992:2020)) +
+  ggtitle("Retail sales (seasonally adjusted)")
+new$detrend <- lmod$residuals  
+```
+
+The linear fit looks pretty good except for the severe economic crisis around 2008.
+
+## 3.2 SARMA model 
+The general form of $SARMA(p,q) \times (P,Q)_{12}$ model[3] is 
+$$\phi(B)\Phi(B^{12}) (Y_n-\mu) = \psi(B)\Psi(B^{12}) \epsilon_n$$
+where $\{\epsilon_n\}$ is a white noise process and
+
+\newcommand\ar{\phi}
+\newcommand\ma{\psi}
+\newcommand\AR{\Phi}
+\newcommand\MA{\Psi}
+
+
+$$\mu = E[Y_n]$$
+
+$$\phi(x)=1-\phi_1 x-\dots -\phi_px^p,$$
+$$ \psi(x)=1+\psi_1 x+\dots +\psi_qx^q,$$ 
+$$\Phi(x)=1-\Phi_1 x-\dots -\Phi_Px^P,$$
+$$\Psi(x)=1+\Psi_1 x+\dots +\Psi_Qx^Q.$$
+In order to pick up the orders p and q, I calculate the AIC's for SARMA(p,q)$\times(1,0)_{12}$.
+```{r}
+aic_table <- function(data,P,Q,s,a){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <-  arima(data, order=c(p,0,q), seasonal=list(order=c(s,0,a),period=12))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+```
+
+### 3.2.1 SARMA(p,q)$\times(1,0)_{12}$  model
+From this AIC table, I pick up p = 3, q = 2 and fit a SARMA(3,2)$\times(1,0)_{12}$ model.
+```{r}
+table1<-aic_table(new$detrend,5,5,1,0) 
+require(knitr) 
+kable(table1,digits=2)
+```
+
+Here are the ACF of the residuals and the output. From the AIC plot, we can see that there is significant autocorrelation at lag 24, which should be assigned to the seasonality part.
+
+```{r}
+sarima <- arima(new$detrend, order=c(3,0,2), seasonal=list(order=c(1,0,0),period=12))
+new$sarima_fit <- new$detrend - sarima$residuals
+#new %>% ggplot() + geom_line(aes(Time,detrend)) + geom_line(aes(Time,sarima_fit),col = "red") + theme_bw() +ggtitle("Retail sales (seasonally adjusted) Simulation") 
+acf(sarima$residuals, main = "Residuals of the SAMRA(3,2)*(1,0)_12")
+sarima
+```
+
+
+
+
+### 3.2.2 SARMA(p,q)$\times (1,1)_{12}$  model
+In order to deal with the residual autocorrelation, I decide to try the SARMA(p,q)$\times (1,1)_{12}$ model. Again, I used the  AIC values to pick up the model. The AIC table favors p = 3 and q = 2.
+```{r}
+
+table2<-aic_table(new$detrend,3,3,1,1) 
+kable(table2,digits=2)
+```
+
+
+I plot the ACF. There is a significant reduction in the residual autocorrelation at lag = 24.
+
+```{r}
+sarima1 <- arima(new$detrend, order=c(3,0,2), seasonal=list(order=c(1,0,1),period=12))
+new$sarima1_fit <- new$detrend - sarima1$residuals
+#new %>% ggplot() + geom_line(aes(Time,detrend)) + geom_line(aes(Time,sarima1_fit),col = "red") + theme_bw() +ggtitle("Retail sales (seasonally adjusted) Simulation") 
+acf(sarima1$residuals, main = "Residuals of the SAMRA(3,2)*(1,1)_12")
+sarima1
+```
+From the model output, I notice that the standard errors for these parameters are all very big, especially for the intercept. Let's take a look at the qqplot to see whether we can see any violation of the model assumption.
+```{r}
+par(mfrow=c(1,2))
+qqnorm(sarima1$residuals)
+qqline(sarima1$residuals, probs = c(0.05,0.95))
+plot(sarima1$residuals,type = "p", ylab = "Residual", main = "Residual Plot")
+abline(a=0,b=0,col="red")
+```
+
+The qqplot shows that about 5% of the points deviate from the line at two ends. But the main body follow a good normal distribution. From the residual plot, we can see there are a few influential points at position 200 and a very high outlier at position 120. The residual plot also shows evidence of heteroscedasticity. Based on the residual plot, I decide to make a log transformation and then fit the SARMA model again.
+
+## 3.3 SARMA(p,q)$\times (1,1)_{12}$  model on the log transformed data
+As the growth rate of retail sales is always expected to be stable, I assume the trend doesn't change through the log transformation. So I use the linear model fitted above and transform it to logarithmic coordinate.
+The retail sales and trend in the log scale are present in the plot. Then I fit a SARMA model to the different between these two curves.
+```{r transformation of the response}
+new_log =  data.frame(Time = data_ad$DATE, Retail_sales = data_ad$`Retail sales`, logRetal_sales = log(data_ad$`Retail sales`))
+new_log$Fitted = log(new$Fitted)
+new_log$detrend = new_log$logRetal_sales - new_log$Fitted
+
+new_log %>% ggplot() + 
+  geom_line(aes(Time,logRetal_sales)) + 
+  geom_line(aes(Time,Fitted),col = "blue") + 
+  theme_bw() + 
+#  scale_x_continuous(breaks=12*c(1:29)-11, labels = c(1992:2020)) +
+  ggtitle("Log retail sales (seasonally adjusted)") +
+  ylab("Log(Retail sales)")
+```
+
+```{r, include=FALSE}
+aic_table(new_log$detrend,3,3,1,0) 
+sarima2 <- arima(new_log$detrend, order=c(2,0,2), seasonal=list(order=c(1,0,0),period=12))
+new_log$sarima2_fit <- new_log$detrend - sarima2$residuals
+new_log %>% ggplot() + 
+  geom_line(aes(Time,detrend)) + 
+  geom_line(aes(Time,sarima2_fit),col = "red") + 
+  theme_bw() +
+  ggtitle("Retail sales (seasonally adjusted) Simulation") 
+acf(sarima2$residuals)
+sarima2
+```
+### 3.3.1 SARMA(p,q)$\times(1,1)_{12}$ model on the log transformed detrend retail sales
+From the AIC table, I pick up the $SARMA(2,2) \times(1,1)_{12}$.
+```{r}
+table3<-aic_table(new_log$detrend,3,3,1,1)
+kable(table3,digits=2)
+sarima3 <- arima(new_log$detrend, order=c(2,0,2), seasonal=list(order=c(1,0,1),period=12))
+new_log$sarima3_fit <- new_log$detrend - sarima3$residuals
+sarima3
+```
+Comparing the results of this $SARMA(2,2) \times(1,1)_{12}$ fitted on the transformed data with the previous $SARMA(3,2) \times(1,1)_{12}$ fitted on the original, we can see that the standard errors of these parameters get smaller, which is very promising.
+
+The ACF doesn't show significant autocorrelation among residuals.
+```{r}
+acf(sarima3$residuals, main = "Residuals of the SAMRA(2,2)*(1,1)_12")
+```
+
+The red curve is from our model $SARMA(2,2) \times(1,1)_{12}$, which is very comparable to the original data.
+```{r}
+new_log %>% ggplot() + 
+  geom_line(aes(Time,detrend)) + 
+  geom_line(aes(Time,sarima3_fit),col = "red") + 
+  theme_bw() +
+  ggtitle("Retail sales (seasonally adjusted) Simulation") 
+```
+
+```{r}
+par(mfrow = c(1,2))
+qqnorm(sarima3$residuals)
+qqline(sarima3$residuals,probs = c(0.05,0.95))
+plot(sarima3$residuals,type = "p",ylab = "Residual", main = "Residual Plot")
+abline(a=0,b=0,col="red")
+```
+
+These two diagnostic plots don't show strong evidence against the normal iid assumption on $\epsilon_n$. It seems that the transformation does deal with the problem of the heteroscedasticity.
+
+In order to check the nurmerical stability of the model, I calculated the roots of the AR, MA, SAR and SMA polynomials respectively.
+```{r}
+AR_roots <- polyroot(c(1,-coef(sarima3)[c("ar1","ar2")])) 
+AR_roots
+MA_roots <- polyroot(c(1,coef(sarima3)[c("ma1","ma2")])) 
+MA_roots
+SAR_roots <- polyroot(c(1,-coef(sarima3)[c("sar1")])) 
+SAR_roots
+SMA_roots <- polyroot(c(1,coef(sarima3)[c("sma1")]))
+SMA_roots
+```
+
+It seems that all the roots of the AR(SAR) polynomial and the MA(SMA) polynomials are outside the unit circle, this $SARMA(2,2) \times (1,1)$ is an invertible and causal process.
+The two AR polynomial roots are very close to the unit circle. Let's do a simulation study.
+
+
+
+
+
+
+
+
+```{r,include=FALSE}
+sarima4 <- arima(new_log$detrend, order=c(2,1,2), seasonal=list(order=c(1,0,1),period=12))
+sarima4
+acf(sarima4$residuals)
+qqnorm(sarima4$residuals)
+qqline(sarima4$residuals)
+```
+
+## 3.3 Simulation
+As we can see from the SARMA model output, the two AR polynomial roots are very close to the unit circle. I need to consider the stability of numerical solutions.
+So I simulated 1000 time series, using the parameters from the the output $SARMA(2,2) \times(1,1)_{12}$ and plot the histgram of each parameter.
+```{r}
+registerDoParallel()
+set.seed(20200303)
+J <- 1000
+params <- coef(sarima3)
+ar <- params[grep("^ar",names(params))]
+ma <- params[grep("^ma",names(params))] 
+sar <- params[grep("^sar",names(params))] 
+sma <- params[grep("^sma",names(params))] 
+intercept <- params["intercept"]
+sigma <- sqrt(sarima3$sigma2)
+theta <- matrix(NA,nrow=J,ncol=length(params),dimnames=list(NULL,names(params))) 
+t1 <- system.time(
+  sarma_sim <- foreach(j= 1:J) %dopar% {
+  Y_j <- sim_sarima(n = 337, model = list(sma = sma, ma = ma, sar = sar, ar = ar,  sigma2 = sigma^2)) + intercept
+  
+  try(coef(arima(Y_j, order=c(2,0,2), seasonal=list(order=c(1,0,1),period=12))) )
+}
+)
+
+```
+
+```{r}
+par(mfrow = c(3,2))
+ar1 <- unlist(lapply(sarma_sim,function(x) if(!inherits(x,"try-error"))x["ar1"] else NULL ))
+hist(ar1,breaks=50)
+ar2 <- unlist(lapply(sarma_sim,function(x) if(!inherits(x,"try-error"))x["ar2"] else NULL ))
+hist(ar2,breaks=50)
+ma1 <- unlist(lapply(sarma_sim,function(x) if(!inherits(x,"try-error"))x["ma1"] else NULL ))
+hist(ma1,breaks=50)
+ma2 <- unlist(lapply(sarma_sim,function(x) if(!inherits(x,"try-error"))x["ma2"] else NULL ))
+hist(ma2,breaks=50)
+sar1 <- unlist(lapply(sarma_sim,function(x) if(!inherits(x,"try-error"))x["sar1"] else NULL ))
+hist(sar1,breaks=50)
+sma1 <- unlist(lapply(sarma_sim,function(x) if(!inherits(x,"try-error"))x["sma1"] else NULL ))
+hist(sma1,breaks=50)
+```
+
+As we can see from these histgrams, the results are very comparable to the parameters from the arima R function.
+
+# 4 Conclusion
+In this study, I compared the retail sales datasets from the U.S. Census Bureau. I found that the seasonally adjusted retail sales data were simply raw retail sales data with the components at the seasonal frequencies removed by around two order of magnitude.
+The $SARMA(2,2) \times(1,1)_{12}$ model fits pretty well on the log transformed data. The simulation study doesn't reveal significant numerical problem on the R output. Overall, retail sales growth over the past 15 years is steady. The average increasing rate of retail sales is 11.45 billion dollars per year. Retail sales also fell as a result of the 2008 financial crisis. But in the next two years the retail sales got back to its original level of growth.  
+
+# 5 Reference:
+[1] https://www.thebalance.com/what-is-retail-sales-3305722
+
+[2] Lecture 8 The transfer (or frequency response) function
+
+[3] Chapter 6. Extending the ARMA model: Seasonality and trend
+
+U.S. Census Bureau, Advance Retail Sales: Retail (Excluding Food Services) [RSXFSN], retrieved from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/RSXFSN, February 29, 2020.

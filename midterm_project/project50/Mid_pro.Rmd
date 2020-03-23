@@ -1,0 +1,225 @@
+---
+title: "531 Midterm Project"
+date: "2020/3/4"
+output: 
+  html_document:
+    theme: flatly
+    TOC: TRUE
+---
+
+# Introduction
+The dataset here is the monthly sunspot dataset which describes a avaerage monthly count of the number of observed sunspots for just over 230 years[1]. The sources of the dataset is credited to Adrews & Herzberg (1985). The units are a count and there are 2820 observations in total. The unit for time sale is in month and the value is the average number of observed sunspots of each day for that month.[2] 
+
+Since the data contains over 1000 time points, I am going to mainly focused on the last 408 time points which is from Jan-1950 to Dec-1983. Here, I want to fit an appropriate model to perform some forecast work. We also have the real data from 1983 to now and we can compare to see the results
+
+
+# Exploratory Analysis
+```{r echo=FALSE}
+# read in the data
+suns = read.csv('sunspot.csv', header = T)
+sun = suns[2413:2820, ]
+val = sun[, 2]
+summary(val)
+```
+
+This is the basic summary of the average number of sunspot in month. We can see the data is spreaded out from minimum 0.2 to maximum 253.8. 
+
+```{r echo=FALSE}
+# draw time series plot
+plot.ts(sun$Sunspots, main = 'Time Series of Sunspots')
+```
+
+From this time series, we can clearly see there are some seasonality for the data. The tread here seems stationary but need further examination to make sure. 
+
+
+```{r echo=FALSE}
+# draw periodgram 
+estimated = spectrum(val, spans = c(3, 5, 3), main = 'Smoothed Periodogram')
+abline(v=estimated$freq[which.max(estimated$spec)], lty="dotted")
+```
+
+This is the smoothed periodogram for the data, we can see there is a large peak at frequency about 0.007, which corresponds to a cycle of 142 months which is about 11 years. According to wekipedia page about sunspot, it says "number varies according to the approximately 11-year solar cycle", which is consistent to this frequency.[3] Although there are other peaks at larger frequency, they are much smaller than the large one. 
+
+
+# Model Selection
+## ARMA Model
+First under the assumption that there is no trend, let fits a simple gaussian ARMA(p, q) model to check fitness. The model is 
+$$
+\phi(B)(Y_n-\mu) = \psi(B)\epsilon_n
+$$
+where
+$$
+\begin{align}
+\mu &= \mathbb{E}[Y_n] \\ 
+\phi(x) &= 1-\phi_1 x-\cdots-\phi_p x^p \\
+\psi(x)&= 1+\psi_1x + \cdots +\psi_qx^q \\
+\epsilon_n &\sim \text{i.i.d. } N[0, \sigma^2]
+\end{align}
+$$
+
+Then, by using the AIC value to find the proper value for p and q where minimize
+$$
+AIC = -2 *l(\theta) + 2D
+$$
+where $l(\theta)$ is the log likelihood and $D$ is the number of parameters 
+
+Here is the table of some AIC values for different p and q
+```{r echo=FALSE}
+# [5]
+aic_table = function(da, P, Q){
+  table = matrix(NA, (P + 1), (Q + 1))
+  for (p in 0:P){
+    for (q in 0:Q){
+      table[p+1, q+1] = arima(da, order = c(p, 0, q))$aic
+    }
+  }
+  dimnames(table) = list(paste('AR', 0:P, sep = ''), paste('MA', 0:Q, sep = ''))
+  table
+}
+sun_table = aic_table(sun$Sunspots, 4, 5)
+sun_table
+```
+We can see that ARMA(3, 3) is the model with lowest AIC value. 
+
+Then try fit it and make some disgnose plot
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(forecast)
+(m_33 = Arima(sun$Sunspots, order = c(3, 0, 3)))
+```
+Here is the coefficients of the model and their standard errors
+
+```{r echo=FALSE}
+plot.ts(sun$Sunspots, main = 'ARMA(3, 3)', col = 'blue')
+sun_fit = fitted(m_33)
+lines(sun_fit, col = 'red', lty = 2)
+legend(-10, 263, legend = c('original', 'fitted'), lty = 1:2, col = c('blue', 'red'), cex = 0.8)
+```
+
+From the graph of fitted and original graph, we can see overall, the model fits the data well, but it tends to under estimate the peaks. The following are disgnostics plot
+
+```{r echo=FALSE}
+par(mfrow = c(2, 2))
+plot(m_33$residuals, main = 'Residuals')
+plot(abs(m_33$residuals), main = 'Absolute value of residuals')
+acf(m_33$residuals, main = 'ACF')
+qqnorm(sun$Sunspots)
+qqline(sun$Sunspots, col = 'red', lwd = 2)
+```
+
+From these plots, we can see the residuals are fairly random, residuals seems to have a zero mean and constant variance. The ACF plot shows no corralation for different lags. The normal approximately holds despite a little skewed to the left. 
+
+
+
+## SARIMA Model
+According to the notes, a general $SARIMA(p, d, q) * (P, D, Q)_{k}$ is 
+$$
+\phi(B)\Phi(B^{k})((1-B)^d(1-B^{12})^D(Y_n-\mu))=\psi(B)\Psi(B^{k})\epsilon_n
+$$
+where $\{\epsilon_n\}$ is a gaussian white noise process and 
+$$
+\begin{align}
+\mu &= \mathbb{E}[Y_n] \\ 
+\phi(x) &= 1-\phi_1 x-\cdots-\phi_p x^p \\
+\psi(x)&= 1+\psi_1x + \cdots +\psi_qx^q \\
+\Phi (x) &= 1-\Phi_1x-\cdots-\Phi_Px^P \\
+\Psi(x) &= 1+\Psi_1x+\cdots+\Psi_Qx^Q
+\end{align}
+$$
+From the periodogram which suggests the dominant frequency to be 0.007, thus, we would try to use the 142 month as the cycle. Here we use difference at one lag since applying a difference operation to the data can make it look more stationary. We also choose the p and q by constructing the AIC table
+
+```{r echo=FALSE}
+aic_table_sa = function(da, P, Q){
+  table = matrix(NA, (P + 1), (Q + 1))
+  for (p in 0:P){
+    for (q in 0:Q){
+      table[p+1, q+1] = arima(da, order = c(p, 0, q), seasonal=list(order=c(0, 1, 0), period = 142))$aic
+    }
+  }
+  dimnames(table) = list(paste('AR', 0:P, sep = ''), paste('MA', 0:Q, sep = ''))
+  table
+}
+sun_table = aic_table_sa(sun$Sunspots, 4, 5)
+sun_table
+```
+From the table, we can see the (p, q) = (2, 2) gives us the lowest AIC value. Then, we would fit this model and examine its wellness of fit
+
+Here are the coefficients and standard error for the model
+```{r echo=FALSE}
+(sm_22 = Arima(sun$Sunspots, order = c(2, 0, 2), seasonal = list(order=c(0, 1, 0), period = 142)))
+```
+
+We can also draw the fitted vs original line here
+```{r echo=FALSE}
+plot.ts(sun$Sunspots, main = 'SARIMA', col = 'blue')
+sun_fit = fitted(sm_22)
+lines(sun_fit, col = 'red', lty = 2)
+legend(-10, 263, legend = c('original', 'fitted'), lty = 1:2, col = c('blue', 'red'), cex = 0.8)
+```
+
+From the graph, we can see that the fitted line fit the graph pretty good at the start, then it starts to deviate a lot from the original one, it overestimate the peaks. This may suggest the problem of overfitting of the model. 
+
+
+Then, we draw the diagostic plots for this model
+```{r echo=FALSE}
+par(mfrow = c(2, 2))
+plot(sm_22$residuals, main = 'Residuals')
+plot(abs(sm_22$residuals), main = 'Absolute value of residuals')
+acf(sm_22$residuals, main = 'ACF')
+qqnorm(sun$Sunspots)
+qqline(sun$Sunspots, col = 'red', lwd = 2)
+```
+
+From the graphs, we can see that the ACF and Normal QQ-plot looks very similar to those to ARMA(3, 3), however, the residuals have some zeors at earlier time and have relatively large residuals at later time, which suggest the problem of overfitting. 
+
+
+# Comparing to real data
+Here, I would use the ARMA(3, 3) to do the prediction since the SARIMA model is sufferring from overfitting. Here I only use the first 400 points after 1983. 
+```{r include=FALSE}
+real_all = read.csv('SN_m_tot_V2.0.csv', header = FALSE)
+colnames(real_all) = c('Year', 'Month', 'Time', 'Number', 'ERR1', 'ERR2', 'ERR3')
+
+rowi = which(real_all$Year == 1984 & real_all$Month == 1)
+rowj = rowi + 400
+real = real_all[c(rowi:rowj), 'Number']
+```
+
+Draw the graph of prediction vs real
+
+```{r echo=FALSE}
+plot.ts(real, main = 'Predction vs. Real', col = 'blue')
+sun_fit = predict(m_33, 400)
+lines(as.numeric(sun_fit$pred), col = 'red', lty = 2)
+legend(320, 290, legend = c('Real', 'Predict'), lty = 1:2, col = c('blue', 'red'), cex = 0.8)
+
+```
+
+From the graph, we can see that the prediction indeed capture the upadn down trend, but it always underestimate the peaks. 
+
+# conclusion
+In this project, we analyse the monthly sunspot count from 1950 to 1983. After some analysis, we choose the model to be ARMA(3, 3), which fits the data pretty close. When doing prediction, the model tends to underestimate the peaks, but overall, it captures the trend relatively well. To further imporve the model, we can try different SARIMA model or incorporate more data points when fitting the model since here I only used 409 points to fit the model. 
+
+# Reference
+[1] https://machinelearningmastery.com/time-series-datasets-for-machine-learning/
+
+[2] http://www.sidc.be/silso/datafiles
+
+[3] https://en.wikipedia.org/wiki/Sunspot
+
+[4] https://ionides.github.io/531w18/midterm_project/project3/MidtermPr
+oj.html
+
+[5] https://ionides.github.io/531w20/notes
+
+
+
+
+
+
+
+
+
+
+
+
+
+

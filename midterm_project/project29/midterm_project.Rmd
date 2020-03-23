@@ -1,0 +1,335 @@
+---
+title: 'Midterm project: A study on coronavirus based on a former virus outbreak'
+date: "3/9/2020"
+output:
+  html_document:
+    toc: yes
+    theme: flatly
+---
+
+# Introduction  
+
+## General Overview  
+  From the beginning of January in 2020, several patients have been diagnosed as pneumonia in Hubei, China. Until January the 7th, people found out they actually got infected by a novel virus called COVID-19. By the time of January the 22ed, 2020, COVID-19 outbreak have become an epidemic event in China. And by March, it has evolved into a world-wide pandemic event. COVID-19 is also known as SARS-CoV-2, it belongs to the same family as SARS-CoV, which caused the 2003 SARS outbreak in China. These two viruses have very similar biological characteristics and infectious features. For example, they cause similar symptoms and have very similar spreading patterns, mortality rate and transmission rate. Another similarity of these two viruses is that they all started from China, and the Chinese government used similar strategies in disease control. Then due to these similarities, it is reasonable to study the pattern of SARS, how it started evolved and ended, and apply the knowledge on this novel COVID-19 virus outbreak.$^{[3],[4]}$  
+  
+  In this report, I seek to find a way to locate the stage of this COVID-19 outbreak we are at now to a specific time in the previous SARS outbreak. And then predict the end of this virus outbreak, assuming COVID-19 and SARS have similar epidemic patterns. This COVID-19 outbreak has already made great damage on economics and medical systems all around the world, therefore knowing an approximate end date is of great interest.  
+  
+  I first modeled the SARS outbreak with ARMA model with trend, to see whether ARMA model is a good fit to these epidemic data or not. And then I fitted many parts of SARS data to COVID-19 data, and found the part of SARS data, which has the best associate with COVID-19 data, using a Linear Regression with ARMA errors model. Then I used loess smoother to remove the noise and cycles from the data. Based on only the large patterns, I did the match again, and found something inconsistent with the result from Linear regression with ARMA errors model.  
+  
+## Data Introduction and preprocessing  
+
+```{r, echo=FALSE}
+options(warn = -1)
+suppressMessages(library(tidyverse))
+data_cov=read.csv("covid_19_data.csv")
+data_sars=read.csv("Sars.csv")
+
+sum=data_cov%>%group_by(ObservationDate)%>%summarise_at(vars(c("Confirmed","Deaths","Recovered")),funs(sum(.)))
+daily_cov=sum$Confirmed[-1]-sum$Confirmed[-nrow(sum)]
+daily_sars=data_sars$cumulative.number[-1]-data_sars$cumulative.number[-nrow(data_sars)]
+```
+
+  I used the number of new diagnosed patients around the world each day as the time series data.  
+
+  The cumulative diagnosed patient data for COVID-19 came originally from Johns Hopkins University, and I downloaded from Kaggle$^{[1]}$. This dataset consists data from 22ed Jan to 7th Mar, 2020. It is well organized, and only need to convert from cumulative patient to new patients each day.  
+  
+  The cumulative diagnosed patient data for SARS came from World Health Organization$^{[2]}$, from 17th Mar to 11th July, 2003. This dataset has missing data for Sunday and sometimes for Saturday as well, I filled the missing values with the average of their closest neighbors. This dataset sometimes have wrong data, for example, number of cumulative patient decreasing with time, I also corrected errors like these. And then transformed the data from cumulative to new patients each day.  
+  
+## Descriptive Analysis  
+
+  Followings are the descriptive statistics for SARS and COVID-19 data after preprocessing:  
+  
+```{r,echo=FALSE}
+cat("summary statistic for SARS:\n")
+summary(daily_sars)
+cat("summary statistic for COVID-19:\n")
+summary(daily_cov)
+```
+
+  Followings are the plots for SARS and COVID-19 time series data:  
+  
+```{r,echo=FALSE}
+plot(daily_sars,ty="l",main = "plot for SARS time series",ylab = "Number of new patient",xlab = "days since Mar. 17th")
+plot(daily_cov,ty="l", main = "plot for COVID-19 time series",ylab = "Number of new patient",xlab = "days since Feb. 22ed")
+```
+
+  For the plot of SARS data, after around 80 days rarely did anyone get diagnosed with the disease, so in this study I will focus only on the data before 80 days. This data has two peaks one peak is around 10 days and the other one is around 40 days.  
+  
+  Based on the plot of COVID-19 data, there is one peak before 30 days, and a tendency to increase afterwards.  
+  
+  And we can see that the first peak for both of the virus outbreak are really extreme. The possible explanation is that, in the beginning the virus is really strong and the infection rate is high during this period. Or in the beginning the diagnostic method is poor and have a really low sensitivity, by the time the diagnostic method is improved many real patients will be found simultaneously. Based on this year’s situation the second explanation is more reasonable, in 13th Feb. the standard for COVID-19 diagnosis is changed in China, and this led to an increase of around 15000 new patients.$^{[5]}$ This is consistent with the COVID-19 data, the largest peak indeed happened around 13th Feb. As a result, in the following model fitting, this phenomenon will cause some of the model assumptions being not hold. But this is more of a problem of the data rather than the model.  
+  
+  Followings are the sample Autocorrelation Function for SARS and COVID-19 data:  
+```{r,echo=FALSE}
+acf(daily_sars[1:80],main="sample AutoCorrelation Function for SARS")
+acf(daily_cov,main="sample AutoCorrelation Function for COVID-19")
+```
+  Based on the sample Autocorrelation Function and the plot, the data is obviously not mean stationary, mean is quadratic with t. But besides several extreme points, caused by data collection as discussed above, these two data look like variance stationary and an ARMA model with trend should be feasible for the data. And in the following section I will further look into the feasibility of ARMA model with trend on these data.  
+  
+# ARMA model  
+
+Firstly, I constructed a series of ARMA models on the SARS data, to see whether ARMA models are feasible for these epidemic data or not.  
+
+## Model Construction  
+
+  Based on the analysis from the previous chapter, besides several extreme point (four extreme points), other points look pretty variance stationary. Then an ARMA model with quadratic trend should be feasible for the data.
+  ARMA(p,q) models with trend:  
+  $$Y_n=\mu_n+\eta_n$$  
+  Where:  
+  $$\mu_n=\sum_{k=1}^{K}Z_{n,k}\beta_k$$  
+  $$K=2$$
+  $$Z_{n,1}\ is\ number\ of\ days\ after\ Mar.\ 17th,\ Z_{n,2}=Z_{n,1}^2,\ \beta_1\ \beta_2\ are\ the\ corresponding\ coefficient$$
+    
+  $$\eta_{1:n}\ is\ stationary,\ causal,\ invertible\ ARMA(p,q)\ process\ defined\ as\ followings:$$  
+  $$\eta_n = \phi_1\eta_{n-1}+\phi_2\eta_{n-2}+\dots+\phi_p\eta_{n-p} + \epsilon_n +\psi_1 \epsilon_{n-1} +\dots+\psi_q\epsilon_{n-q}$$  
+  For the sake of simplicity I assume $\epsilon_{1:n}$ is gaussian white noise process. And I will check this assumption in model diagnostic section.  
+  
+## Model Selection  
+
+  After Constructing the framework of the model, in the following step I will use the Akaike Information Criterion(AIC) to select the best performing model.  
+  AIC is defined as followings:
+  $$AIC=-2\ell(\hat{\theta})+2D$$  
+  $$D\ is\ the\ dimension\ of\ unknown\ parameter$$  
+  Note that AIC is not a decisive criterion, but works as a suggestion.
+  
+```{r, echo=FALSE}
+day=1:80
+x=cbind(day,day^2)
+P=3
+Q=3
+table <- matrix(NA,(P+1),(Q+1))
+for(p in 0:P) {
+  for(q in 0:Q) {
+    table[p+1,q+1] <- arima(daily_sars[1:80],order=c(p,0,q),method = "ML",xreg = x)$aic
+  }
+}
+dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+cat("AIC for signal plus noise model:")
+suppressMessages(require(knitr))
+kable(table,digits=2)
+```
+
+  The result suggests that an Linear Regression with ARMA(0,0) error model is the best under AIC, which is the ordinary Linear regression model. Since this is the simplest model and have the smallest AIC value, then I will choose this model.
+  following is the model detail:  
+  
+```{r}
+arima(daily_sars[1:80],order=c(0,0,0),method = "ML",xreg = x)
+```
+
+## Model diagnostics  
+
+```{r,echo=FALSE}
+day=1:80
+plot(day,resid(arima(daily_sars[1:80],order=c(0,0,0),method = "ML",xreg = x)),type = 'l',xlab = "Year",ylab = "Residual",main = "residual plot")
+acf(resid(arima(daily_sars[1:80],order=c(0,0,0),method = "ML",xreg = x)), main="residual ACF")
+```  
+
+  Based on the above residual plot and ACF, the residuals are with mean zero, and besides the several extreme points, other points are pretty variance stationary. Then most part of the data is consistent with the assumption that errors are white noise. And For those data points, which don't follow the white noise assumption, is a problem of the data collection rather than a problem of the model, as discussed in the first section.  
+  
+```{r,echo=FALSE}
+qqnorm(resid(arima(daily_sars[1:80],order=c(0,0,0),method = "ML",xreg = x)), main="residual quantile-quantile plot")
+qqline(resid(arima(daily_sars[1:80],order=c(0,0,0),method = "ML",xreg = x)), main="residual quantile-quantile plot")
+```  
+
+  The quantile- quantile plot showed similar results: besides the several extreme points, other points lies quite neatly on the line. This means most part of the data is consistent with the assumption that the error follows gaussian distribution.  
+  
+  In conclusion, most part of the data is concordant with the assumption that error follows gaussian white noise distribution. And the problem from data collection indeed undermines both of the model assumption that errors are white noise and follows gaussian distribution. Even though the model assumption is violated by these four extreme points, but since it's a problem of the data collection rather than a problem of the model, ARMA model should still be feasible to carry out the following analysis.  
+  
+# Linear Regression with ARMA errors model  
+
+  Because it is impossible to identify an epidemic process right from its beginning, so the start point of the SARS and COVID-19 data might not be at the same stage. Therefore, for meaningfully comparing these two time series, we need to adjust them to the same stage. In this section, I divided the SARS data into 36 continuously overlapping segments and fitted each with a Linear Regression with ARMA error model using COVID-19 data as covariate. And because of the model fitted above, we know the best performance model should be around p=0 and q=0. Then in this section I choose to fit models with p=0 q=0, p=0 q=1,p=1 q=0,p=1 q=1.
+  
+## Model Construction  
+The Model Construction is mostly the same as the model Construction above.
+Linear regression with ARMA error model:  
+  $$Y_n=\mu_n+\eta_n$$  
+  Where:  
+  $$\mu_n=\sum_{k=1}^{K}Z_{n,k}\beta_k$$  
+  $$K=1$$
+  $$Z_{n,1}\ is\ COVID-19\ data,\ \beta_1\ is\ the\ corresponding\ coefficient$$
+    
+  $$\eta_{1:n}\ is\ stationary,\ causal,\ invertible\ ARMA(p,q)\ process\ defined\ as\ followings:$$  
+  $$\eta_n = \phi_1\eta_{n-1}+\phi_2\eta_{n-2}+\dots+\phi_p\eta_{n-p} + \epsilon_n +\psi_1 \epsilon_{n-1} +\dots+\psi_q\epsilon_{n-q}$$  
+  For the sake of simplicity I assume $\epsilon_{1:n}$ is gaussian white noise process. And I will check this assumption in model diagnostic section.  
+  
+## Model Selection  
+
+```{r,echo=FALSE}
+cat("AIC for each model")
+L=36
+table1=rep(0,36)
+for( l in 1:L){
+  table1[l]=arima(daily_sars[l:(l+44)],order = c(0,0,0), xreg = daily_cov,method = "ML")$aic
+}
+table2=rep(0,36)
+for( l in 1:L){
+  table2[l]=arima(daily_sars[l:(l+44)],order = c(0,0,1), xreg = daily_cov,method = "ML")$aic
+}
+table3=rep(0,36)
+for( l in 1:L){
+  table3[l]=arima(daily_sars[l:(l+44)],order = c(1,0,0), xreg = daily_cov,method = "ML")$aic
+}
+table4=rep(0,36)
+for( l in 1:L){
+  table4[l]=arima(daily_sars[l:(l+44)],order = c(1,0,1), xreg = daily_cov,method = "ML")$aic
+}
+table=rbind(table1,table2,table3,table4)
+a=table[,1:10]
+dimnames(a) <- list(c("ARMA(0,0) error","ARMA(0,1) error","ARMA(1,0) error","ARMA(1,1) error"),c("1","2","3","4","5","6","7","8","9","10"))
+require(knitr)
+kable(a,digits=2)
+a=table[,11:20]
+dimnames(a) <- list(c("ARMA(0,0) error","ARMA(0,1) error","ARMA(1,0) error","ARMA(1,1) error"),as.character(11:20))
+require(knitr)
+kable(a,digits=2)
+a=table[,21:30]
+dimnames(a) <- list(c("ARMA(0,0) error","ARMA(0,1) error","ARMA(1,0) error","ARMA(1,1) error"),as.character(21:30))
+require(knitr)
+kable(a,digits=2)
+a=table[,31:36]
+dimnames(a) <- list(c("ARMA(0,0) error","ARMA(0,1) error","ARMA(1,0) error","ARMA(1,1) error"),as.character(31:36))
+require(knitr)
+kable(a,digits=2)
+```  
+
+  Based on the above AIC table, the lowest AIC belongs to Linear Regression with ARMA(1,1) error fitted at 22 days of SARS data. So under AIC criteria the best association between SARS data and COVID-19 data are SARS data from 22 days to 66 days.
+  
+```{r,echo=FALSE}
+cat("sigma2 for each model")
+L=36
+table1=rep(0,36)
+for( l in 1:L){
+  table1[l]=arima(daily_sars[l:(l+44)],order = c(0,0,0), xreg = daily_cov,method = "ML")$sigma2
+}
+table2=rep(0,36)
+for( l in 1:L){
+  table2[l]=arima(daily_sars[l:(l+44)],order = c(0,0,1), xreg = daily_cov,method = "ML")$sigma2
+}
+table3=rep(0,36)
+for( l in 1:L){
+  table3[l]=arima(daily_sars[l:(l+44)],order = c(1,0,0), xreg = daily_cov,method = "ML")$sigma2
+}
+table4=rep(0,36)
+for( l in 1:L){
+  table4[l]=arima(daily_sars[l:(l+44)],order = c(1,0,1), xreg = daily_cov,method = "ML")$sigma2
+}
+table=rbind(table1,table2,table3,table4)
+a=table[,1:10]
+dimnames(a) <- list(c("ARMA(0,0) error","ARMA(0,1) error","ARMA(1,0) error","ARMA(1,1) error"),c("1","2","3","4","5","6","7","8","9","10"))
+require(knitr)
+kable(a,digits=2)
+a=table[,11:20]
+dimnames(a) <- list(c("ARMA(0,0) error","ARMA(0,1) error","ARMA(1,0) error","ARMA(1,1) error"),as.character(11:20))
+require(knitr)
+kable(a,digits=2)
+a=table[,21:30]
+dimnames(a) <- list(c("ARMA(0,0) error","ARMA(0,1) error","ARMA(1,0) error","ARMA(1,1) error"),as.character(21:30))
+require(knitr)
+kable(a,digits=2)
+a=table[,31:36]
+dimnames(a) <- list(c("ARMA(0,0) error","ARMA(0,1) error","ARMA(1,0) error","ARMA(1,1) error"),as.character(31:36))
+require(knitr)
+kable(a,digits=2)
+```  
+
+  The $\sigma^2$ table showed the same result, that the best model is Linear Regression with ARMA(1,1) error fitted at 22 days of SARS data.  
+  
+  In conclusion, since two criteria both points to the same best performance model, and these two criteria is outstandingly better for this model than the others. As a result, I will choose this p=q=1 model and test the association between COVID-19 data and SARS data from 22 days to 66 days.  
+  
+```{r,echo=FALSE}
+arima(daily_sars[22:66],order = c(1,0,1), xreg = daily_cov,method = "ML")
+```  
+
+## Hypothesis test for association  
+
+  $$H_0: \beta_{cov}=0, H_a:\beta_{cov}\neq0$$
+  Construct T statistic:
+  $$T=\frac{\hat{\beta_1}-0}{SE}\sim N(0,1)$$  
+  $$Reject\ null\ hypothesis\ if\ T>1.96\ $$
+  $$T=\frac{0.0187-0}{0.0033}=5.6667>1.96$$  
+  Statistical conclusion: reject null. This means we have enough evidence to show that $\beta_1\neq0$, the association between COVID-19 and SARS from 22 days to 66 days are significantly associated.  
+  
+## Model diagnostics  
+
+```{r,echo=FALSE}
+day=1:45
+plot(day,resid(arima(daily_sars[22:66],order=c(1,0,1),xreg = daily_cov,method = "ML")),type = 'l',xlab = "Year",ylab = "Residual",main = "residual plot")
+acf(resid(arima(daily_sars[22:66],order=c(1,0,1),xreg = daily_cov,method = "ML")), main="residual ACF")
+qqnorm(resid(arima(daily_sars[22:66],order=c(1,0,1),xreg = daily_cov,method = "ML")), main="residual quantile-quantile plot")
+qqline(resid(arima(daily_sars[22:66],order=c(1,0,1),xreg = daily_cov,method = "ML")), main="residual quantile-quantile plot")
+
+```
+
+  Based on the above plots, we can see except for 2 extreme points, the residuals are following a gaussian white noise distribution. This is consistent with original assumption.
+  In conclusion, the best fit for COVID-19 data are from 22 days to 66 days in SARS data, as shown below:  
+  
+```{r, echo=FALSE}
+plot(daily_sars[1:80]/max(daily_sars[1:80]),col="red",type = "l",ylim = c(0,1),xlab = "days",ylab = "patients proportion",main="Best fit in SARS for COVID-19")
+lines(1:45+22,daily_cov/max(daily_cov))
+legend(0,1,c("SARS","COV"), lty = c(1, 1),  bty = "n",col = c("red","black"))
+```  
+
+  We can see that the COVID-19 data is mapped to the second peak of SARS data
+  
+# Spectrum analysis  
+  Now I want to do the matching of COVID-19 and SARS again with the noise removed.  
+  
+```{r,echo=FALSE}
+s_sars=spectrum(daily_sars[1:80],main="Raw power spectrum for SARS")
+s_cov=spectrum(daily_cov,main="Raw power spectrum for COVID-19")
+```
+
+  The above spectrum showed that the dominant frequencies for both COVID-19 and SARS are very low frequencies, then I used loess smoother to only extract the low frequencies from the data.
+```{r,echo=FALSE}
+day=1:80
+u_low_sars = ts(loess(daily_sars[1:80]~day,span=0.5)$fitted,start=1,frequency = 1)
+plot(ts.union(daily_sars[1:80], u_low_sars),main="low frequency component of the SARS data by loess smoother")
+
+day=1:45
+u_low_cov = ts(loess(daily_cov~day,span=0.5)$fitted,start=1,frequency = 1)
+plot(ts.union(daily_cov, u_low_cov),main="low frequency component of the COVID-19 data by loess smoother")
+```  
+
+  First check the loess smoother indeed extracted the low frequency components:  
+  
+```{r,echo=FALSE}
+
+s_low_sars=spectrum(u_low_sars,main = "SARS spectrum ratio",plot=F)
+
+s_low_cov=spectrum(u_low_cov,main = "COVID-19 spectrum ratio",plot=F)
+
+plot(s_sars$freq,s_low_sars$spec/s_sars$spec,type="l",log="y",
+     ylab="spectrum ratio", xlab="frequency", xlim=c(0,0.5),
+     main="SARS spectrum ratio (dashed line at 1.0)")
+abline(h=1,lty="dashed",col="red")
+
+plot(s_cov$freq,s_low_cov$spec/s_cov$spec,type="l",log="y",
+     ylab="spectrum ratio", xlab="frequency", xlim=c(0,0.5),
+     main="COVID-19 spectrum ratio (dashed line at 1.0)")
+abline(h=1,lty="dashed",col="red")
+```
+
+  For the above plot, frequencies beyond 0.1 cycles per day have spectrum ratio smaller than 0.1, and only frequencies smaller than 0.1 cycles per day have spectrum ratio larger than 0.1, then as a result, loess smoother indeed only captured the low frequency component of the data.  
+```{r,echo=FALSE}
+plot(u_low_sars/max(u_low_sars),col="red",type = "l",ylim = c(0,1),xlab = "days",ylab = "patients proportion",main="Best fit in SARS for COVID-19")
+lines(1:45-5,u_low_cov/max(u_low_cov))
+legend(60,1,c("SARS","COV"), lty = c(1, 1),  bty = "n",col = c("red","black"))
+```
+  Then based on the low frequency plot, it is obvious that the SARS data have two peaks and COVID-19 data have one peak and have a tendency to increase at the end. So based on this observation, COVID-19 data should be mapped to the first peak of SARS data, but this result is not consistent with the result from section 2. The reason behind the inconsistency should still be a problem of the diagnostic standard, because the late diagnostic tends to make a taller and skinnier peak than the true peak. Then It is less likely to map COVID-19 to this very skewed peak under the exact fitting method. But once we deleted the noises and only left with the larger trend, it is easier to see the true pattern of both of the data, and can make a better conclusion.  
+  
+# Conclusion  
+
+  Based on the analysis above, the COVID-19 data should be mapped to the first peak of SARS data. And Mar. 7th, 2020 should correspond to around 40 days of SARS data. So if the general assumption, which is the epidemic pattern between SARS and COVID-19 are similar, is true. Then in the following 3 to 5 days we will experience an increase of infection diagnostics, after that it will decrease to zero and end in about 40 days, around the middle of April.
+  
+# References  
+[1]. COVID-19 data from kaggle website. (https://towardsdatascience.com/why-quality-sense-checks-are-so-important-in-data-science-7ef80da760c3)  
+[2]. SARS data from WHO website. (https://www.who.int/csr/sars/country/en/)  
+[3]. General knowledge about COVID-19 from wikipedia. (https://en.wikipedia.org/wiki/Coronavirus)  
+[4]. General knowledge about SARS outbreak from wikipedia. (https://en.wikipedia.org/wiki/Severe_acute_respiratory_syndrome)  
+[5]. Feb. 12 situation from New York post (https://nypost.com/2020/02/12/coronavirus-242-deaths-and-nearly-15000-cases-reported-in-one-day-in-china/)  
+[6]. Annotated lecture notes from Stats531.  
+
+
+
+
+

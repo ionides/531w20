@@ -1,0 +1,189 @@
+---
+title: "Toronto Temperature Time Series Exploration"
+date: "February 27, 2020"
+output: 
+  html_document:
+    theme: flatly
+    highlight: tango
+    includes:
+      #before_body: TCIU_header.html
+    toc: true
+    number_sections: true
+    toc_depth: 5
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Background
+Since global warming is spreading, issues about weather change alway go into puclic concern. To explore the climate change related topic, trend of tmeperature change is a good indicator. So I use the monthly temperature date of Toronto with time spand from 1937 to 2013, to see if I can find something useful. 
+
+The dataset is acquired from https://www.kaggle.com/rainbowgirl/climate-data-toronto-19372018, Kaggle puclic usage available dataset resource.
+
+# Data Description
+
+## Load Data
+
+Firstly we read the data and do some pre-description on the columns we are interested in. Here is one thing we need to justify that this data set includes a time span from 1937 to 2018, however from 1937-2013 the data points were written monthly; after 2013, the observations are written daily. Concerned about this, I decided to use the first 908 rows as the obervations, which means this porject is based on monthly data of Toronto weather, from 1937-2013.
+
+```{r}
+x<-read.csv("Toronto_temp_data.csv")
+x<-x[1:908,]
+tp<-x$Mean.Temp[1:908]
+head(tp,20)
+```
+
+Some key points of the mean temperature of Toronto look like:
+
+```{r}
+summary(tp)
+```
+
+## Frequency domain analysis
+
+Plots of data in both time and frequency domain are shown:
+```{r}
+tp[which(is.na(tp))]<-mean(tp,na.rm=TRUE)
+plot(tp~x$Time,type="l",ylab = "Temperature", main="Toronto Temperature")
+spectrum(tp,spans=c(20,20,20))
+sm<-spectrum(tp,spans=c(20,20,20))
+sm$freq[which.max(sm$spec)]
+```
+
+from the plot, the observations are stable with evenly oscillation around its local mean. So we treat the data as mean stationary.
+
+We could not tell any trend form the time domain plot, though we can find some frequency conclusion from the periodogram. The spectrum reaches a peak around frequency=0.083 cycle/month, which means a equivalent circle 12.04 months. Whilely, the confidence interval indicated by the blue vertical bar on the right side is very small compared to the peak spectrum, so 0.083 cycle/month is reliable.
+
+To further examine the period conclusion, we draw the autocorrelation function plot below:
+
+```{r}
+acf(tp, main="Temperature")
+```
+
+From the ACF plot of temperature, lag 12 is significant. It is consistent with the dominant frequency conclution from spectrum analysis that the circle is about 12.04 years. It is also compatible with our intuition that the temperature would show a yearly period (12 months) pattern.
+
+## Decomposition of Trend
+
+To see the trend and cycle of the temperature, we do the decomposition by Loess:
+
+```{r}
+x_low<-ts(loess(tp~x$Time,span=0.5)$fitted,frequency = 12)
+x_hi<-ts(tp - loess(tp~x$Time,span=0.1)$fitted,frequency = 12)
+x_cycle<- tp - x_low - x_hi
+plot(ts.union(tp,x_low,x_hi,x_cycle),main='Decomposition of Toronto Temp. as trend + noise + cycles',xlab='years since 1937-Nov-1')
+```
+
+We model the data of Toronto Temperature as a combination of three processes:
+Low-frequency component represents the overall trend of the data;
+High-frequency component represents the noise;
+Mid-frequency component represents the business cycle irrespective of long-term trend and short-term random noise.
+
+From the decomposition, we find an increasing long term trend in the first 20 years and an increasing trend pattern after 40 years; The fluctuation is becoming more violent since around 1987. It means the temperature of Toronto is experiencing an increase during 1937-1957, and latter an decreasing pattern during 1957-1977; later on, the temperature keeps increasing. Since the data only inludes 
+
+All of those suggest a seasonal SARMA model with seasonal period of 12 months could be a good fit to the data.
+
+# Fit SARMA Model
+
+From the trend frequency analysis above, I plan to use $SARIMA(p,1,q)*(P,I,Q)_{12}$ model.
+
+To find the proper model, we firstly to find the proper $p$ and $q$ by AIC result.
+
+The stationary Gaussian ARMA(p,q) model with parameter vector $\theta=(\phi_{1:p},\psi_{1:q},\mu,\sigma^2)$ given by:
+
+$$
+\begin{aligned}
+\phi(B)&(Y_n-\mu)=\psi(B)\epsilon_n \\
+\phi(B)&=1-\phi_1B-...-\phi_pB^p,\\
+\psi(B)&=1+\psi_1B+...+\psi_qB^q,\\
+\epsilon_n&\sim iid N(0,\sigma^2)
+\end{aligned}
+$$
+
+We tabulate the AIC values:
+```{r}
+aic_table<-function(data,P,Q){
+  table<-matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] <-arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table)<-list(paste("AR",0:P,sep=" "),paste("MA",0:Q,sep=" "))
+  table
+}
+temp_aic<-aic_table(tp,3,5)
+require(knitr)
+kable(temp_aic,digits=2)
+```
+
+ARIMA(2,0,4), ARIMA(3,0,3) are all good to fit. However, we do not expect to choose AIC value at edge. So ARIMA(2,0,4) is our choice.
+
+```{r}
+arma24<-arima(tp,order = c(2,0,4))
+arma24
+```
+
+```{r}
+ar_roots<-polyroot(c(1,-coef(arma24)[c("ar1","ar2")]))
+ma_roots<-polyroot(c(1,-coef(arma24)[c("ma1","ma2","ma3","ma4")]))
+ar_roots
+ma_roots
+```
+
+Some of the roots for model ARIMA(2,0,4) are inside the unit circle, so the model could be unstable. However, it is not avoidable to pick ARIMA(2,0,4) since we do not have other choices. Thus we stick with ARIMA(2,0,4) as the immediate choice.
+
+Then we take seasonal part into account. As we know, too high rank parameter vector could cause overfitting and large deviation, so we only care about $SARIMA(2,0,4)*(1,0,0)_{12}$,  $SARIMA(2,0,4)*(0,0,1)_{12}$, $SARIMA(2,0,4)*(1,0,1)_{12}$ and $SARIMA(2,0,4)*(0,1,0)_{12}$.
+
+```{r}
+sarma24100<-arima(tp,order=c(2,0,4),seasonal = list(order=c(1,0,0),period=12))
+sarma24001<-arima(tp,order=c(2,0,4),seasonal = list(order=c(0,0,1),period=12))
+sarma24101<-arima(tp,order=c(2,0,4),seasonal = list(order=c(1,0,1),period=12))
+sarma24010<-arima(tp,order=c(2,0,4),seasonal = list(order=c(0,1,0),period=12))
+sarma24100$aic
+sarma24001$aic
+sarma24101$aic
+sarma24010$aic
+```
+
+From the 4 AIC values above, $SARIMA(2,0,4)*(1,0,1)_{12}$ has the lowerest value. So we choose $SARIMA(2,0,4)*(1,0,1)_{12}$ as fitted model.
+
+# Diagonostic Analysis
+For the rigorousness of the modeling, we have to check the residuals of the fitted model if they are consistent with the initial assumption.
+```{r}
+fm_res<-sarma24101$residuals
+par(mfrow=c(1,3))
+plot(fm_res)
+acf(fm_res)
+qqnorm(fm_res)
+qqline(fm_res)
+```
+
+The first plot reveals that residuals are settled around 0, so we can regard the expectation of residual as 0.
+From the ACF plot, nearly all the acf values are inside the dashed line. Since we only care about the relevant residuals with small lag, and the acf values outside the dashed line are 24 and 25, we still treat residuals as uncorrelated.
+From the QQ plot, residual values are evenly scattered around normal line.
+
+As a conclusion, residual $\epsilon_n \sim Normal(0,\sigma^2)$, and $SARIMA(2,0,4)*(1,0,1)_{12}$ is a good fit.
+
+# Conclusion
+
+The temperature of Toronto from 1930s-2010s kept stable overall, while there is a subtle increasing trend  1977 to the present. This pattern is consistent with the global warming from the second half of last century. If we have more data after 2013, the global warming evidence from this project would be much clearer.
+
+Below is the global surface temperature trend form NASA, and there is a significant rise after 1970, which is consistent with the result of our trend analysis of the increasing trend after 1977.
+![global surface temperature](https://climate.nasa.gov/system/news_items/main_images/468_newsPage-468.jpg) 
+
+From the frequency domain analysis, the temperature has a 12-month cycle and this is compatible with the yearly temperature cyclic change. Although 12-month cycle cannot reveal anything strange, but it can help testify the data rationality.
+
+From the model fitting process, $SARIMA(2,0,4)*(1,0,1)_{12}$ is the best fit for the temperatue of Toronto. The diagnosis proves the fitted parameter candidates is a good choice and the model could be used for future prediction. However the acf of residuals still has some subtle relevance in higher lag, so the model could be further modified and optimized in the future.
+
+# Reference
+[1]Data Source  
+https://www.kaggle.com/rainbowgirl/climate-data-toronto-19372018  
+[2]Time series analysis for the sunpots amount from 1900 to 1983   https://ionides.github.io/531w18/midterm_project/project9/531mid.html  
+[3]Earthquakes World Wide from 1917 to 2017  
+https://ionides.github.io/531w18/midterm_project/project6/Midterm_Project.html  
+[4]https://en.wikipedia.org/wiki/Global_warming
+

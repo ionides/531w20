@@ -1,0 +1,436 @@
+---
+title: "STATS 531 Midterm Project: Estimating Value-at-Risk and Expected Shortfall"
+date: "3/09/2020"
+output:
+  html_document:
+    number_sections: TRUE
+    theme: flatly
+    highlight: pygments
+    toc: TRUE
+    toc_float: TRUE
+---
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+  TeX: { equationNumbers: { autoNumber: "AMS" } }
+});
+</script>
+
+<style type="text/css">
+h1.title {
+  font-size: 28px;
+}
+h1 { /* Header 1 */
+  font-size: 22px;
+}
+h2 { /* Header 2 */
+    font-size: 18px;
+}
+h3 { /* Header 3 */
+  font-size: 16px;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+library(kfigr)
+library(ggplot2)
+library(latex2exp)
+library(BatchGetSymbols)
+library(bizdays)
+library(dplyr)
+library(tidyr)
+library(fGarch) # for qstd() function
+library(rugarch)
+library(kableExtra)
+library(grid)
+library(gridExtra)
+library(scales)
+library(MASS)
+
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE,
+	eval = TRUE
+)
+```
+
+# Introduction
+
+The financial crisis of 2007-08 is regarded as the most serious economic downturn since the Great Depression in 1930s [1]. Various precautionary measures such as Dodd-Frank Act and Basel III capital and liquidity standards were adopted in order to encourage better risk management practices by financial institutions. 
+
+As of mid February, the stock market has dropped by 12\%, due to the corona virus outbreak. Thus, it is important for any financial institution to properly quantify risk in order to protect themselves from another economic downturn. In this project we will compute two of the most popular measures of risk used in practice, next-day Value at Risk and Expected Shortfall. We will compute estimates using an ARMA+GARCH model, and compare the model to parametric and non-parametric methods as a benchmark. 
+
+------------------------------------------
+
+# Data
+
+Value at Risk and Expected Shortfall are typically calculated to quantify potential losses of a stock portfolio. For our example, we will have a $\$1,000,000$ portfolio that is evenly split between between Coca-cola and Pepsi stock, using historical price data from ($2015$-$03$-$06$) to ($2020$-$03$-$06$). The stock price data comes from Yahoo Finance. 
+
+------------------------------------------
+
+# Methodology
+
+The two risk measures we will focus on are defined as follows. 
+
+- **Value at Risk**: VaR helps to quantify the amount of capital needed for covering a loss in a portfolio. It is defined as the $\alpha$-quantile of the returns of a portfolio multiplied by -1 * capital, because the number must be reported as a positive number (representing losses). In other words, given the distribution of returns $R_t$, 
+$$
+\begin{array}{c}
+P(R_{t}<q_{\alpha})=\alpha\\
+\textrm{VaR}_{\alpha}=-q_{\alpha}\times\textrm{Capital}
+\end{array}
+$$
+
+- **Expected Shortfall**: ES quantifies the average loss given that we have lost at least VaR. ES is calculated by taking the average of losses that are larger than VaR. Thus, before we calculate ES, we must estimate VaR. If $X$ represents the distribution of negative returns, i.e. $X = -R_t$, then given a level $\alpha$, ES is computed as, 
+$$ES_{\alpha}=\textrm{Capital}\times \mathbb{E}\left(X\mid X>\textrm{VaR}_{\alpha}\right)=\textrm{Capital}\times\frac{1}{\alpha}\int_{x>\textrm{VaR}_{\alpha}}xf(x)dx$$
+
+We will compare three approaches to calculate VaR and ES, and decide on which of the approaches provides the most reasonable estimate.
+
+## Historical VaR, ES
+
+The non-parametric approach computes VaR by simply calculating the sample $\alpha$-quantile of returns directly from the data. This method works ok if $\alpha$ is not too small and sample size is large. The expected shortfall can also be computed directly from the data, by averaging the losses that are larger than VaR. 
+
+## Parametric VaR, ES
+
+The parametric approach fits the distribution of returns with a parametric model. Portfolio returns are typically heavy-tailed and not normally distributed, so it is appropriate to use a heavy-tailed distribution to model returns. Thus, for the parametric approach, we will model portfolio returns as $R_t\sim t_{\nu}(\mu, {\lambda}^2)$, where the parameters are estimated by MLE. 
+
+After fitting t-distribution to the returns, VaR is computed as the $\alpha$-quantile of our estimated t-distribution. We estimate ES using Monte Carlo simulation, by generating random variates from our estimated t-distribution and averaging the losses that are larger than VaR. 
+
+## ARMA + GARCH VaR, ES
+
+This method will take the most amount of effort to compute, but the benefit is that we can estimate the conditional distribution of next-day returns, which allows VaR and ES to adjust to higher or lower periods of volatility clustering. The purpose of the ARMA + GARCH combination is ARMA is aimed at estimating the conditional mean of the returns process, while GARCH is aimed at estimating the conditional variance of the process [2]. More specifically, the $\textrm{ARMA}\left(p,q\right)$ model is defined as, 
+$$
+Y_{t}=\alpha_{0}+\sum_{i=1}^{p}\alpha_{i}Y_{t-j}+\sum_{j=1}^{q}\beta_{j}\epsilon_{t-j}
+$$
+
+and the $\textrm{GARCH}\left(p,q\right)$ model is defined as,
+$$
+\sigma_{t}^{2}=\delta_{0}+\sum_{i=1}^{p}\delta_{i}a_{t-i}^{2}+\sum_{j=1}^{q}\gamma_{j}\sigma_{t-j}^{2}
+$$
+where,
+$$
+a_{t}=\sigma_{t}\epsilon_{t},
+$$
+The procedure to estimate VaR and ES is as follows [3],
+
+1. Suppose we have $n$ returns, $R_{1}, \ldots, R_{n}$ and we need to estimate VaR and ES for the next return $R_{n+1}.$ Let $\widehat{\mu}_{n+1 \mid n}$ and $\widehat{\sigma}_{n+1 \mid n}$ be the estimated conditional mean and variance of tomorrow's return $R_{n+1}$. 
+2. We will assume that $R_{n+1}$ has a conditional $t$ -distribution with tail index $\nu$. 
+3. After fitting an ARMA+GARCH model, we have estimates $\widehat{\nu}, \widehat{\mu}_{n+1 \mid n},$ and $\widehat{\sigma}_{n+1 \mid n} .$ The estimated conditional scale parameter is,
+$$
+\widehat{\lambda}_{n+1 \mid n}=\sqrt{(\widehat{\nu}-2) / \widehat{\nu}} \widehat{\sigma}_{n+1 \mid n}
+$$
+4. We estimate VaR and ES as in the parametric approach, but with $\mu$ and $\lambda$ replaced by $\widehat{\mu}_{n+1 \mid n}$ and $\widehat{\lambda}_{n+1 \mid n}$.
+
+------------------------------------------
+
+# Data Exploration
+
+First we plot the time series of portfolio returns for Coca-Cola and Pepsi. 
+
+```{r}
+# Introduction --------------------------------------------------------------
+# set dates
+start = "2015-03-06"
+end = "2020-03-06"
+cal = create.calendar(name = "mycal", weekdays=c("saturday", "sunday"))
+first.date = as.Date(start)
+last.date = as.Date(end)
+
+freq.data = 'daily'
+
+# Read in Data
+full_data = BatchGetSymbols(tickers = c("KO", "PEP"), 
+                            first.date = first.date,
+                            last.date = last.date, 
+                            freq.data = freq.data,
+                            cache.folder = file.path(tempdir(), 
+                                                     'BGS_Cache') ) # cache in tempdir()
+
+# Construct Data frame of returns per asset
+df = full_data$df.tickers
+df = df[,c("ref.date", "ticker", "ret.adjusted.prices")]
+data = spread(df, ticker, ret.adjusted.prices)
+data = data[complete.cases(data), ]
+rownames(data) = data[,"ref.date"]
+data = dplyr::select(data, -ref.date)
+data = data[-1,]
+```
+
+```{r plot1, out.width = "80%", out.height = "80%", fig.align = "center", fig.cap= "Figure 1: Portfolio Returns for Coca-Cola and Pepsi (2015-2020)", anchor = "figure"}
+# Plot Returns ---------------------------------------------------------------
+returns = 0.5*data[,"KO"] + 0.5*data[,"PEP"]
+# returns = data[,"KO"]
+# returns = ts(returns, frequency=250)
+df = data.frame(time = as.Date(rownames(data)), returns)
+# plot(as.Date(rownames(data)), returns, type = "l")
+ggplot(df, aes(x = time, y = returns)) +
+  geom_line(colour = "steelblue") + 
+  ylab("Portfolio Returns") +
+  xlab("Time (Daily)") + 
+  ggtitle("Portfolio Returns for Coca-Cola + Pepsi")
+```
+
+```{r}
+Sd = matrix(NA,1,5)
+rownames(Sd) <- c("Annual Volatility")
+colnames(Sd) <- c("Year 1", "Year 2", "Year 3", "Year 4", "Year 5")
+rets = returns[5:length(returns)]
+for (i in 1:5) {
+  Sd[i] = sd(rets[(250*i + 1 - 250):(250*i)])
+}
+
+kable(Sd, "html", digits = 4) %>%
+  kable_styling(position = "center")
+```
+
+
+In `r figr('plot1', TRUE, type="figure")` we see that volatility is not constant through time. There are periods where volatility of returns is low and other periods where is high. Particularly around the most recent returns we see the highest amount of volatility over our entire dataset. When we compute VaR and ES, we hope to capture this higher than normal volatility in our estimates.
+
+## Fit an ARMA model
+
+First, we tabulate values of AIC in `r figr('tab1', TRUE, type="table")` according to different values of $p$ and $q$, where we take $p,q\in\{0,\ldots,4\}$. Recall that Akaike's information criterion (AIC) is given by,
+$$
+A I C=-2 \times \ell\left(\theta^{*}\right)+2 D
+$$
+
+```{r tab1, results = 'asis', anchor = "table"}
+# Choose parameters ARMA(p,q) model ----------
+aic_table <- function(data,P,Q) {
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- tryCatch(arima(data, order = c(p,0,q))$aic,
+                                 error = function(e){0})
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""), paste("MA",0:Q,sep=""))
+  table
+}
+
+aic_tableARMA = aic_table(returns,4,5)
+
+cap = "Table 1: ARIMA AIC table"
+
+kable(aic_tableARMA, "html", digits = 2, caption = cap) %>%
+  kable_styling(position = "center")
+```
+
+From `r figr('tab1', TRUE, type="table")` we see that there are a couple of candidate models such as ARMA(4,2), ARMA(2,4), ARMA(2,0) and even ARMA(1,1) with low AICs. If we these 4 models and plot their squared residuals, we can see which model does a better job at diminishing autocorrelation and thus better account for volatility clustering. 
+
+```{r plot2, out.width = "100%", out.height = "100%", fig.align = "center", fig.cap= "Figure 2: ACF plots of squared residuals for ARMA(4,2), ARMA(2,4), ARMA(2,0) and ARMA(1,1)", anchor = "figure"}
+# Fit ARMA model and show diagnostic plots on residuals
+# ARMA(4,2), ARMA(2,4), ARMA(2,0) and even ARMA(1,1)
+plot_list = list()
+params = list(c(4,2), c(2,4), c(2,0), c(1,1))
+iter = 1
+for (pq in params) {
+  plot_list[[iter]] = local({
+    arma = arima(returns, order=c(pq[[1]],0,pq[[2]]))
+    bacf <- acf(arma$residuals^2, plot = FALSE)
+    bacfdf <- with(bacf, data.frame(lag, acf))
+    
+    p1 = ggplot(data = bacfdf, mapping = aes(x = lag, y = acf)) +
+      geom_hline(aes(yintercept = 0), colour = "steelblue") +
+      geom_segment(mapping = aes(xend = lag, yend = 0), colour = "steelblue") + 
+      geom_abline(slope = 0, intercept = 1.96 / sqrt(length(arma$residuals)), 
+                  linetype = "dashed", colour = "darkred") + 
+      geom_abline(slope = 0, intercept = -1.96 / sqrt(length(arma$residuals)), 
+                  linetype = "dashed", colour = "darkred") + 
+      ggtitle(paste0("Square Residuals for ARMA(",pq[[1]], ",",pq[[2]],")")) + 
+      theme(plot.title = element_text(hjust = 0.5))
+  })
+  iter = iter + 1
+}
+# plot all subplots
+n <- length(plot_list)
+nCol <- ceiling(sqrt(n))
+grid.arrange(grobs = plot_list, ncol = nCol,
+             top = textGrob("ACF plots of squared residuals for ARMA models"),
+                            gp = gpar(fontsize = 13, font = 8))
+```
+
+In `r figr('plot2', TRUE, type="figure")` we see there is some dependency between short term lags. Since the ACF plots look similar for each ARMA model, we will choose the simplest model ARMA(1,1). We can also show a normal plot of the residuals to check the normality assumption, shown in `r figr('plot3', TRUE, type="figure")`.
+
+```{r plot3, out.width = "80%", out.height = "80%", fig.align = "center", fig.cap= "Figure 3: Normal Plot of ARMA(1,1) Residuals", anchor = "figure"}
+# QQ plot of residuals to check normality assumption
+arma = arima(returns, order = c(1,0,1))
+df = data.frame(resids = arma$residuals)
+ggplot(data = df, aes(sample = resids)) +
+  stat_qq(colour = "darkred", shape = 1) +
+  stat_qq_line(colour = "steelblue") +
+  ggtitle("Normal Plot of ARMA(1,1) Residuals") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab('Theoretical Quantiles') +
+  ylab('Sample Quantiles')
+```
+
+We see from `r figr('plot3', TRUE, type="figure")`, that the normality assumption is not satisfied and residuals are more heavier tailed than normal distribution. Both the short-term dependency problem and non-normality of residuals motivate our use of GARCH model. Next, our task will be to compute VaR and ES using the approaches we covered in [Section 3][Methodology]. 
+
+----------------------------
+
+# VaR and ES
+
+Below we will estimate VaR and ES with $\alpha = 0.05$ level.
+
+## Non-parametric Approach
+```{r}
+# Historical VaR is average between lowest and second lowest return
+S = 1e6
+alpha = 0.05
+hist_VaR = -S * quantile(returns, c(alpha))
+hist_ES = -S * mean(returns[returns < hist_VaR / -S])
+```
+Using the non-parametric approach, we compute VaR as the sample $\alpha$-quantile of the data. In this case we find, $\textrm{VaR}_{\alpha}=$ `r dollar(hist_VaR)` and $\textrm{ES}_{\alpha}=$ `r dollar(hist_ES)`. This means that with 5\% probability our portfolio will lose `r dollar(hist_VaR)` or more on a bad day, and on average we will lose `r dollar(hist_ES)` when losses are larger than `r dollar(hist_VaR)`.
+
+## Parametric Approach
+
+Fitting $t_{\nu}(\mu, {\lambda}^2)$ to the portfolio returns, we must estimate the parameters by MLE. In the code chunk below, we show how we can fit this distribution in R. 
+
+```{r echo = TRUE}
+library(MASS)
+
+res = fitdistr(returns, 't')
+mu = res$estimate['m']
+lambda = res$estimate['s']
+nu = res$estimate['df']
+```
+
+Thus our estimated parameters are $\hat{\mu}=$ `r format(round(mu, 4), scientific = FALSE)`, $\hat{\lambda}=$ `r round(lambda, 4)`, $\hat{\nu}=$ `r round(nu, 4)`. To see how well our estimated model fits the portfolio returns, we show a t-plot in `r figr('plot4', TRUE, type="figure")`.
+
+```{r plot4, out.width = "80%", out.height = "80%", fig.align = "center", fig.cap= "Figure 4: t-plot of Portfolio Returns", anchor = "figure"}
+
+# Check the fit of our t-distribution
+qqt = function(x, nu){
+  xsort = sort(x)
+  n = length(xsort)
+  q = (1 / (n + 1)) * c(1:n)
+  qq = qt(q, nu)
+  # Construct dataframe to plot in ggplot
+  df = data.frame("quantiles" = qq, "data" = xsort)
+  # Compute theoretical quantiles
+  xx = quantile(qq, c(0.25, 0.75))
+  yy = quantile(xsort, c(0.25, 0.75))
+  slope = (yy[2] - yy[1]) / (xx[2] - xx[1])
+  inter = yy[1] - slope*xx[1]
+  g = ggplot(df, aes(x = quantiles, y = data)) +
+    geom_point(colour = "darkred", shape = 1) +
+    ggtitle(TeX(paste0("t-Plot $\\nu$= ", as.character(round(nu, 3))))) +
+    theme(text=element_text(size=7),
+          plot.title = element_text(hjust = 0.5)) +
+    geom_abline(intercept = inter, slope = slope, colour = "steelblue") +
+    xlab('Theoretical Quantiles') +
+    ylab('Sample Quantiles')
+  return(g)
+}
+
+qqt(returns, nu)
+```
+
+We see that the tails of the data are slightly heavier than those of our fitted model, particularly on the lower tail. This is due to the fact that the portfolio returns are asymmetric and t-distribution is a symmetric distribution. An alternative approach could be to fit a model to the lower tail of returns since we are focused mostly on quantifying losses. Nonetheless, we will continue forward with our VaR and ES calculation using t-distribution since our ARMA+GARCH model also makes use of conditional t-distribution. 
+
+```{r}
+# Parametric VaR fitted with t-distribution
+r_VaR_par = qstd(alpha, mean = mu, sd = lambda, nu = nu)
+VaR_par = -S * r_VaR_par
+
+# Calculate ES
+draws = 1e7
+sim_rets = rstd(draws, mean = mu, sd = lambda, nu = nu)
+ES_par = -S * mean(sim_rets[sim_rets < r_VaR_par])
+```
+
+Recall for the parametric approach, VaR and ES are derived from our estimated t-distribution, rather than the data. Using the parametric approach, we find $\textrm{VaR}_{\alpha}=$ `r dollar(VaR_par)` and $\textrm{ES}_{\alpha}=$ `r dollar(ES_par)`.
+
+## ARMA+GARCH Approach
+
+Next we proceed by fitting $\textrm{ARMA}(1,1)+\textrm{GARCH}(1,1)$ model. 
+
+```{r out.width = "110%", out.height = "110%", fig.align = "center"}
+# Now, fit a ARMA(1,1)+GARCH(1,1) model to the returns and calculate one step 
+# forecasts.
+returns = data.frame(returns)
+rownames(returns) = rownames(data)
+garch.t = ugarchspec(mean.model=list(armaOrder=c(1,1)),
+                     variance.model=list(garchOrder=c(1, 1)),
+                     distribution.model = "std")
+KO.garch.t = ugarchfit(data=returns, spec=garch.t, solver = "hybrid")
+
+df = data.frame(matrix(c(coef(KO.garch.t), KO.garch.t@fit$se.coef, KO.garch.t@fit$tval), ncol = 3))
+rownames(df) = c("mu", "ar1", "ma1", "omega", "alpha1", "beta1", "shape")
+colnames(df) = c("Estimate", "Std. Error", "t value")
+
+kable(df, "html", digits = 6) %>%
+  kable_styling(position = "center")
+
+
+# Plot Garch fit 
+par(mfrow=c(2,2))    # set the plotting area into a 1*2 array
+plot(KO.garch.t, which = 1)
+plot(KO.garch.t, which = 3)
+plot(KO.garch.t, which = 8)
+plot(KO.garch.t, which = 9)
+
+# Get prdicted values
+pred = ugarchforecast(KO.garch.t, data=returns, n.ahead=1)
+
+nu = as.numeric(coef(KO.garch.t)["shape"])
+q = qstd(alpha, mean = fitted(pred), sd = sigma(pred), nu = nu)
+```
+
+```{r}
+# Calculate VaR
+VaR = -S*q
+
+# Calculate ES
+lambda = sigma(pred) / sqrt( (nu)/(nu-2) )
+qalpha = qt(alpha, df=nu)
+es1 = dt(qalpha, df=nu)/(alpha)
+es2 = (nu + qalpha^2) / (nu - 1)
+mu = as.numeric(coef(KO.garch.t)["mu"])
+es3 = -mu + lambda*es1*es2
+ES = S*es3
+```
+
+From the summary table, we see that all the parameters in the $\textrm{ARMA}+\textrm{GARCH}$ model are significant. From the plots above we see that the conditional standard deviation has reached its highest point during the most recent returns. From the bottom-left plot, we see the conditional t-distribution model fits the residuals well. The t-plot on bottom right shows that returns are fitted better compared to the model we fitted in the parametric approach. Using the $\textrm{ARMA}(1,1)+\textrm{GARCH}(1,1)$ model, we find $\textrm{VaR}_{\alpha}=$ `r dollar(VaR)` and $\textrm{ES}_{\alpha}=$ `r dollar(ES)`. See a summary of our estimates for each approach in `r figr('tab2', TRUE, type="table")`. 
+
+```{r tab2, results = 'asis', anchor = "table"}
+# Create Table summarizing estimates
+dat = matrix(dollar(c(hist_VaR, hist_ES, VaR_par, ES_par, VaR, ES)), ncol = 3)
+tab_summary = data.frame(dat)
+colnames(tab_summary) = c("Historical", "Parametric", "ARMA+GARCH")
+rownames(tab_summary) = c("VaR", "ES")
+
+cap = "Table 2: VaR and ES Table"
+
+kable(tab_summary, "html", caption = cap) %>%
+  kable_styling(position = "center")
+```
+
+In `r figr('tab2', TRUE, type="table")` we see that both estimates of VaR and ES are highest for the ARMA+GARCH model. This makes sense since the most recent volatility has been quite high, as can be seen in `r figr('plot1', TRUE, type="figure")`. The VaR and ES from the historical approach seem reasonable, but as estimates for next-day VaR and ES, they seem to underestimate. The parametric approach in fact underestimates VaR and ES even more, which due to the fact that we did not fit the lower tail of the returns distribution as well as we should have. As mentioned in [Section 5.2][Parametric Approach], we could instead fit only the lower tail of returns and/or consider other heavy-tailed distributions such as Generalized Pareto distribution. 
+
+----------------------------
+
+# Conclusion
+
+We explored three approaches to compute VaR and ES. We found that the estimates produced by ARMA+GARCH model are much larger than those of historical and parametric approaches. This is because ARMA+GARCH model takes into account the most recent volatility and conditional mean to make prediction on next-day VaR and ES, while the historical and parametric approaches look at the whole history of returns and provide unconditional estimates. In portfolio risk management, it is typically better to overestimate risk than underestimate. Thus, we see that the use of time-series models can help one quantify risk more accurately. 
+
+----------------------------
+
+# References
+
+[1] https://en.wikipedia.org/wiki/Financial_crisis_of_2007–08
+
+[2] Time Series Analysis and Its Applications, Robert H. Shumway, David S. Stoffer
+\
+[3] Statistics and Data Analysis for Financial Engineering, David Ruppert, David S. Matteson, Chapter 19.4 [Link to Book](https://files.transtutors.com/cdn/uploadassignments/2710528_1_ruppert.pdf)
+\
+[4] Lecture Notes from Stats 531
+
+
+
+
+
+
+
+

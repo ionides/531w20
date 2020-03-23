@@ -1,0 +1,186 @@
+---
+title: 'Study of household electricity consumption data'
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Introduction
+Electricity is an important energy in our daily life. In my project I will use the data of household electricity consumption from 2016/1/12 0:00 to 2016/1/23 23:50 to analyze the pattern and trend of people's daily usage of electricity. The intervel of data is 10 minutes. 
+
+From these datas, I want to see the periodic pattern and trends of household electricity consumption and try to find a good model for it. For example, does people use more energy in certain time of a day or a week? Does ARMA model we learnt proper to fit the data of household electricity consumption? Is there any periodic pattern on people's household electricity consumption?
+
+
+## Data overview
+We can first see the overview and plot of our data which is the data of energy consume from 2016/1/12 0:00 to 2016/1/23 23:50 and the intervel of data is 10 minutes.
+ 
+```{r, warning = FALSE}
+e <- read.csv(file="energydata_complete.csv", header = TRUE)
+head(e)
+```
+
+```{r, warning = FALSE}
+app <- e$Appliances
+plot(app,type = "l")
+```
+
+From the plot of data we can see a pattern of periodic and the data seems good for arma analysis.
+
+Then we can see the acf plot of data:
+
+```{r, warning = FALSE}
+acf(app, na.action = na.pass)
+```
+
+From the acf plot we can see that there is an evident for arma model since the ACF is descending and fall into confidence lag after some lag.
+
+## Frequency domain analysis
+
+Then we can convert the data into frequency domain and analyze the frequency property of data.
+
+```{r, warning = FALSE}
+spec=spectrum(app,spans=c(10,10))
+```
+
+```{r, warning = FALSE}
+fre <- spec$freq[which.max(spec$spec)]
+fre
+```
+
+The domain of frequency is shown as previous 0.00694 and we can try to convert it into cycle.
+
+Since the data we get have intervals of 10 miniutes, we can convert them into hour to see the pattern:
+
+```{r, warning = FALSE}
+((1/fre)*10)/60
+```
+
+We can see there is a pattern of 24 hours on energy consumption which is really reasonable.
+
+Then we can try to approach the trend of data:
+
+```{r, warning = FALSE}
+time <- seq(from=12, length = length(app), by = 1/144)
+plot(time, app, type = "l")
+appt_l <- loess(app~time, span = 0.5)
+lines(appt_l$x,appt_l$fitted,type="l")
+```
+
+
+```{r, warning = FALSE}
+u_low <- ts(loess(app~time,span=0.5)$fitted,
+start=12,frequency=144)
+u_hi <- ts(app - loess(app~time,span=0.1)$fitted,
+start=12,frequency=144)
+u_cycles <- app - u_hi - u_low
+plot(ts.union(app, u_low,u_hi,u_cycles),
+main="Decomposition of unemployment as trend + noise + cycles")
+
+```
+
+The trend of data show a pattern of having more electricity consumed on 15, 16 and 17 of 2016 January which are weekends as searching the calendar. So the trend from the data can be an evidence that people can consume more electricity on weekends which is reasonable.
+
+## Fix with ARMA model
+
+First I try to use ARMA(p, 0, q) to fit the data. The AIC table is shown as follow:
+
+```{r, echo=FALSE, warning = FALSE}
+aic_table <- function(data,P,Q){
+table <- matrix(NA,(P+1),(Q+1))
+for(p in 0:P) {
+for(q in 0:Q) {
+table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+}
+}
+dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+table
+}
+huron_aic_table <- aic_table(app,5,5)
+require(knitr)
+kable(huron_aic_table,digits=2)
+```
+
+I finally choose ARMA(2, 4) which doesn't have the lowest AIC but have the relatively low AIC and less parameters.
+
+So I try to use ARIMA(2, 0, 4) to fit my data:
+
+```{r, warning = FALSE}
+arma204 <- arima(app, order = c(2, 0, 4))
+arma204
+```
+
+Then we can see the ma_root and ar_root of ARMA(2, 4) model.
+
+```{r, warning = FALSE}
+AR_roots <- polyroot(c(1,-coef(arma204)[c("ar1","ar2")]))
+MA_roots <- polyroot(c(1,coef(arma204)[c("ma1","ma2","ma3","ma4")]))
+```
+
+AR roots:
+
+```{r, warning = FALSE}
+AR_roots
+```
+
+MA roots:
+
+```{r, warning = FALSE}
+MA_roots
+```
+
+Since all the roots are outside the unit circle so we can prove the causality and invertibility of our model.
+
+## Try Sarima model
+
+Then I tray to add seasonal part in my model. In the previous section we find that there is a cycle of 24 hour for our data. Since our data has the unit of 10 minites. So we add a period of 144. The information of new SARIMA model:
+
+```{r, warning = FALSE}
+arma204101 <- arima(app, 
+                    order = c(2,0,4),                           seasonal=list(order=c(0,1,0),period=144))
+```
+
+```{r, warning = FALSE}
+arma204101
+```
+
+We can see there is a decreasing of aic which may indicate that SARIMA model fits the data better than ARIMA model.
+
+I finally use $SARIMA(2, 0, 4) * (0, 1, 0)_144$ as model to fit the data of energy consumption.
+
+## Diagnostic Analysis
+
+We can first see the plot of residual of the fitted model. The plot and acf plot of residual can be shown as follow:
+
+```{r, warning = FALSE}
+plot(arma204101$residual)
+```
+
+```{r, warning = FALSE}
+acf(arma204101$residual)
+```
+
+We can see from the plot of residual that the ACF is all within the dashed line after lag 1 and that can be a indication of the mean statinarity of the model and which is also an evidence that our model fit the data well.
+
+```{r, warning = FALSE}
+qqnorm(arma204101$residual)
+qqline(arma204101$residual)
+```
+
+From the qqplot we can see that it has a tail near the end and the tail can't be neglected. So we can conclude that the model is good for the data but we can still improve the model by adding more parameters or we can try to seek for better performance by looking for some enhanced models.
+
+## Conclusion
+From our frequency analysis we can find a cycle of 1440 minutes which prove a cycle of 24 hours on the consumption of electricity with is reasonable. And we use this information in the fitting of SARIMA model.
+Also we discover the trend of using more energy on weekends which is also interesting.
+From the analysis we can see that the $SARIMA(2, 0, 4) * (0, 1, 0)_144$ is relatively fitted for energy consumption data. However, we can see that the model of data can still be improved so that may need more novel models and further study.
+
+
+## Reference
+[1]Dataset https://archive.ics.uci.edu/ml/machine-learning-databases/00374/
+
+[2]STATS 531 course notations: Some R codes are modified from course notations.

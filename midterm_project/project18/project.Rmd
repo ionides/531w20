@@ -1,0 +1,343 @@
+---
+title: "STATS 531  Midterm project: Application of ARMA methods to photometry of variable stars"
+author: 
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    theme: flatly
+    df_print: paged
+    toc: yes
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r library, message=F, error=F, echo = F}
+require(tidyverse)
+require(tseries)
+require(zoo)
+require(forecast)
+require(kableExtra)
+require(knitr)
+require(car)
+```
+
+# 1. Introduction
+
+Recently, the star Betelgeuse was in the news for sudden dimming, raising excitement that it will go supernova.  
+Contrary to common belief, the brightness of stars is not constant but can vary over the course of  months, weeks, or even hours. Fluctuations in the stellar atmosphere, convection currents, stellar winds, etc. cause both systematic and random changes in the total light output from a star. Closer home, minute changes in the Earth's atmosphere and clouds introduce random errors in the observed brightness of the star.  
+
+
+One class of variable stars are eclipsing binaries. When two stars are in orbit around each other, one of the stars sometimes gets eclipsed by the  other, as seen from the Earth. This causes the light received at the Earth to drop, and then rise back to the original value as the eclipse ends.  
+
+
+Generally, epoch folding techniques are used to analyse these systems. In this method, a time period is assumed and all observations are wrapped in a circular fashion. For example, if the assumed period is one week, then any observation on day 8 or 15 is the same as day 1. If the assumed time period is correct, the peaks and valleys of the periodic signal will add up and we get a coherent plot, otherwise, we just get a flat profile.
+
+Considering the underlying physics of eclipsing binaries, where the start of an eclipse (a deviation from the mean) has an effect on subsequent observations as the star gets dimmer, it makes sense to model this as some ARMA process with seasonality.
+
+
+
+# 2. Data
+
+The photometry [data](http://ogledb.astrouw.edu.pl/~ogle/OCVS/getobj.php?s=OGLE-LMC-ECL-05133&q=8pm.Eq9buayg8ofrWsdncL_f1flQY4FfrusvIBwcyb4ewaFuydSkBwwgq6JNl1Wkz5gJ8SwEIa1n8hh2B_IQVoNKyggsQ484HePkxLDhf7iWvdMty6D9M.NlttaExkosjVxdWzlsIgtQiLhtRm4371XEz2lbEODPYXLDbQ--&pos=zAxgnarLHTUAX5sK36IyCHWKJtCYnk9.wUpx9fQmjOzKepbtDYxOg8a1fzzwYN9UEGgK1eST4h6ULp4sM0ao4eX0_QbVjLANZqTzlySUUN4fHSCc) chosen is of an eclipsing binary observed in the Large Magellanic Cloud (OGLE-III: LMC127.3.10403). There are about 700 observations taken over the course of 4 years. 
+
+```{r read in data, echo=F,  cache=T}
+data <- read.csv("OGLE_LMC_ECL_05133.csv")
+head(data, n=5)
+```
+
+It has 3 columns: 'MJD', 'i$\_$mag' and 'err'. MJD stands for Modified Julian Date, a time refernce system similar to UTC used by astronomers. A value 'MJD = 5260.627' means the observation was done on day 5260, once 0.627 of the day has passed, i.e. 0.627*24 = 15 hrs. 'i$\_$mag' is a measure of the observed brightness. 'err' is the estimated margin of error in 'i$\_$mag' reported by the observatory. 
+
+
+# 3. Visual exploration
+
+
+The observations are done at non-constant times of the day, as and when telescope time is available. To convert them into equi-spaced observations, aggregate all observations in a 2-day period. Since the period of variability is more than 50 days, it is expected that the brightness will not vary significnatly over two days, and we can thus aggregate the data.  
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r equi-spaced buckets, echo=F, fig.align='center', cache=T}
+data$D1 <- floor(data$MJD/2)*2
+mydata <- data.frame(data$D1, data$i_mag)
+plot(mydata$`data.D1`, mydata$`data.i_mag`, ylim = c(17.4, 17.8),
+     xlab = "Modified Julian Date",
+     ylab = "i-band Magnitude",
+     main = "Brightness Variation of Eclipsing Binary")
+
+
+new_data <- mydata %>%
+  select(data.D1, data.i_mag) %>%
+  group_by(data.D1) %>%
+  summarize(averaged.IM = mean(data.i_mag))
+
+new_data <- new_data[29:359,]
+```
+
+There are 3 spans of continuous observation of $\sim 100$ data-points that can be used for  analysis. Select the observations around MJD = 5900 as this series is the longest. We keep the other two for verification.
+
+
+```{r separate 3 time-series, echo=F, cache=T}
+
+day_buckets <- seq(5430,6416, by=2)
+i_mag <- rep(c(day_buckets[0], NA), length(day_buckets))
+
+for (i in (1:length(day_buckets))){
+  for (j in (1:length(new_data$averaged.IM))){
+    if(new_data$data.D1[j] == day_buckets[i]){
+      i_mag[i] <- new_data$averaged.IM[j]
+    }
+  }
+}
+
+new_data_2 <- data.frame(day_buckets, i_mag)
+
+new_data_3 <- new_data_2[187:317,]
+new_data_4 <- new_data_2[24:140,]
+new_data_5 <- new_data_2[371:475,]
+
+
+```
+
+
+```{r , echo=F, cache=T, fig.align='center'}
+new_data_3$i_mag <- na.approx(new_data_3$i_mag) # interpolation to replace 'NA' values
+new_data_4$i_mag <- na.approx(new_data_4$i_mag) # interpolation to replace 'NA' values
+new_data_5$i_mag <- na.approx(new_data_5$i_mag) # interpolation to replace 'NA' values
+plot(i_mag~day_buckets,data=new_data_3,type="l",
+     xlab = "Modified Julian Day",
+     ylab = "i-band Magnitude",
+     main = "Zoomed-in view of main Time-Series")
+
+```
+
+The process appears to be mean-stationary and variance stationary. There is a definite seasonal component with period around 30 observation cycles, i.e. 60 days. We first plot the spectral power to determine the period of seasonality.  
+
+```{r, echo=F, cache=T, fig.align='center'}
+
+series <- spectrum(new_data_3$i_mag, span = c(3, 3), plot=FALSE)
+
+plot(series$freq, series$spec, , main = "Smoothed periodogram", xlab = "cycles per 2 days", ylab = "power", type = "l", log = "y")
+freq <- series$freq[ which.max(series$spec)]
+print(paste("Most dominant frequency, f = ", freq, " with cycle time  = ",1/freq, "observations."))
+```
+
+# 4. Fitting the ARMA model
+
+## 4.1 Determining period
+
+There isn't enough resolution at the lower frequencies to state if the period is 33 or 34 so we fit a SARMA$[1,0]_{t}$ model with $t$ varying in 30-35.
+
+```{r period determination, echo=FALSE, cache=T, fig.align='center'}
+aic_table <- function(data, P, Q){
+  table <- matrix(NA, P+1, Q)
+  for (p in 0:P) {
+      table[p+1][Q] <- suppressWarnings(arima(data, order=c(0,0,0), seasonal=list(order=c(1, 0, 0), period = p+30), method = "ML"))$aic
+  }
+  dimnames(table) <- list(paste("Period = ", 0:P+30, " samples", sep = ""), paste("AIC"))
+  table
+}
+period_aic <-aic_table(new_data_3$i_mag, 5, 1)
+kable(period_aic, digits=2) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
+```
+## 4.2 Ascertaining the SARMA model 
+
+Now do a sweep of SARMA$[0, 0]\times[p, q]_{33}$ models, with $p, q \in (0:3)$. We do not take more than 3 lags of period 33, since we have limited data. Therefore, our initial model is of the form 
+$$ y_{n} - \mu = \Phi_{1}(y_{n-33}-\mu) + \Phi_{2}(y_{n-66}-\mu) + \Phi_{3}(y_{n-99}-\mu) + \epsilon_{n} + \Psi_{1}\epsilon_{n-33} + \Psi_{2}\epsilon_{n-66} + \Psi_{3}\epsilon_{n-99}$$
+where $y_{i}$'s are the observations, $\Phi_{i}, \Psi_{i}$ are the model parameters, $\mu$ is the intercept term, and  $\epsilon_{i}$'s follow a Gaussian White-Noise distribution.  
+
+Tabulating the AIC values:  
+
+```{r SARMA trial, echo=F, cache=T, fig.align='center'}
+aic_table <- function(data, P, Q){
+  table <- matrix(NA, (P+1), (Q+1))
+  for (p in 0:P) {
+    for (q in 0:Q) {
+      table[p+1, q+1] <- suppressWarnings(arima(data, order=c(0,0,0), seasonal=list(order=c(p, 0, q), period = 33), method = "ML"))$aic
+    }
+  }
+  dimnames(table) <- list(paste("SAR", 0:P, sep = ""),
+                          paste("SMA", 0:Q, sep = ""))
+  table
+}
+ecl_table <-aic_table(new_data_3$i_mag, 3, 3)
+kable(ecl_table, digits=2) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T) %>%
+  column_spec(1, bold = T)
+```
+
+The model with best AIC has only SAR1 coefficient.  
+
+## 4.3 Intra seasonal ARMA terms 
+
+Now to find the ARMA coefficients. Again, we do not fit beyond 4 lags due to data length constraints, considering the possibility of overfitting.  
+
+AIC table:
+
+```{r SARMA trial 2, echo=F, cache=T}
+
+aic_table <- function(data, P, Q){
+  table <- matrix(NA, (P+1), (Q+1))
+  for (p in 0:P) {
+    for (q in 0:Q) {
+      table[p+1, q+1] <- suppressWarnings(arima(data, order=c(p,0,q), seasonal=list(order=c(1, 0, 0), period = 33), method = "ML"))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR", 0:P, sep = ""),
+                          paste("MA", 0:Q, sep = ""))
+  table
+}
+ecl_table <-aic_table(new_data_3$i_mag, 4, 4)
+
+kable(ecl_table, digits=2) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T) %>%
+  column_spec(1, bold = T)
+```
+
+SARMA$[3, 1]\times[1,0]_{33}$, SARMA$[2, 3]\times[1,0]_{33}$ and SARMA$[4, 1]\times[1,0]_{33}$ models show the best AIC. There is evidence of imperfect maximisation at SARMA$[3, 2]\times[1,0]_{33}$, where the AIC increases by more than 2 on adding a parameter. We prefer smaller models with less coefficients, so the final model to be chosen is SARMA$[3, 1]\times[1,0]_{33}$.  
+$$ (1-\Phi_{1}B^{33})(1-\phi_{1}B - \phi_{2}B^{2} - \phi_{3}B^{3})(y_{n}-\mu) = (1-\Psi_{1}B^{33})(1-\psi_{1}B )\epsilon_{n}$$
+
+# 5. Validity of fitted SARMA model
+
+We see that the fitted values are very  close to the true data. However, this can simply be due to overfitting as we have used a complex model for a relatively short time-series.
+
+```{r fitting SARIMA(3,1)(1,0), echo=F, cache=T, fig.align='center'}
+ecl_sarma = Arima(new_data_3$i_mag, order=c(3,0,1), seasonal=list(order=c(1, 0, 0), period = 33), method = "ML")
+
+plot(new_data_3$day_buckets, new_data_3$i_mag,
+     xlab = "Modified Julian Date",
+     ylab = "Observed i magnitude",
+     main = "Comparing fit of SARMA model")
+lines(new_data_3$day_buckets, ecl_sarma$fitted,  col = "red")
+legend("topright", 
+  legend = c("Data", "Fitted"), 
+  col = c("black","red"), 
+  pch = c(19,19), 
+  pt.cex = 0.5, 
+  cex = 0.8, 
+  text.col = "black", 
+  horiz = F , 
+  inset = c(0.1, 0.1))
+
+ecl_sarma
+```
+
+The SAR1 coefficient of 0.0438 seems rather low for a series that has such strong seasonality
+
+## 5.1 Root Analysis of ARMA polynomials
+
+``` {r root analysis, echo=F, cache=T, fig.align='center'}
+
+AR_roots <- polyroot(c(1, -coef(ecl_sarma)[c("ar1", "ar2", "ar3")]))
+MA_roots <- polyroot(c(1, -coef(ecl_sarma)[c("ma1")]))
+
+abs_AR1 <- abs(AR_roots)
+print("Absolute values of roots of 3-degree AR polynomial")
+abs_AR1
+
+abs_MA1 <- abs(MA_roots)
+print("Absolute values of roots of 1-degree MA polynomial")
+abs_MA1
+ll1 <- ecl_sarma$loglik/ecl_sarma$nobs
+```
+
+The roots of the ARMA polynomial all have moduli greater than 1, indicating a causal, invertible model. But some of the roots are just outside the unit circle, so we need to check whether it is alright to use  this model, or reduce some parameters.
+
+
+## 5.2 Residual analysis for White-Noise
+
+```{r residual analysis, echo=F, cache=T, fig.align='center'}
+library(car)
+plot(ecl_sarma$residuals,
+     xlab = "Time step",
+     ylab = "residuals",
+     )
+paste( "Mean of residuals = ",  mean(ecl_sarma$residuals))
+paste( "Median of residuals = ",  median(ecl_sarma$residuals))
+paste( "St. Dev of residuals = ",  sqrt(ecl_sarma$sigma2))
+paste("Mean err of raw data = ",  mean(data$err[187:317]))
+par(mfrow=c(1,2))
+low_acf <- acf(ecl_sarma$residuals, lag.max = 30, xlab = "lag", main = "")
+low_pacf <- pacf(ecl_sarma$residuals, lag.max = 30, xlab = "lag", main = "")
+
+par(mfrow=c(1,1))
+qqPlot(ecl_sarma$residuals,
+       ylab="Standardized Residuals",
+       xlab="Normal Scores",
+       main="Normality of Residuals") 
+```
+
+There is no significant autocorrelation in the residuals. They have mean and median equal to 0. The Q-Q plot shows that the residuals are almost normally distributed, except for some deviation at the upper tail. Moreover, the predicted value of $\sigma$ is very close to the average error in the source data. This is consistent with the Gaussian White-Noise assumption.
+
+## 5.3 Stability of model
+
+Since the three chunks of 100 observations are just different realisations of the same underlying process, we expect that fitting the same SARMA$[3, 1]\times[1,0]_{33}$ model to those data will give similar results.  
+
+```{r fitting SARIMA(3,1)(1,0)  2, echo=F, cache=T, fig.align='center'}
+ecl_sarma2 = Arima(new_data_4$i_mag, order=c(3,0,1), seasonal=list(order=c(1, 0, 0), period = 33), method = "ML")
+
+
+AR_roots <- polyroot(c(1, -coef(ecl_sarma2)[c("ar1", "ar2", "ar3")]))
+MA_roots <- polyroot(c(1, -coef(ecl_sarma2)[c("ma1")]))
+
+
+abs_AR2 <- abs(AR_roots)
+
+abs_MA2 <- abs(MA_roots)
+
+ll2 <- ecl_sarma2$loglik/ecl_sarma2$nobs
+```
+```{r fitting SARIMA(3,1)(1,0) 3, echo=F, cache=T, fig.align='center'}
+ecl_sarma3 = Arima(new_data_5$i_mag, order=c(3,0,1), seasonal=list(order=c(1, 0, 0), period = 33), method = "ML")
+
+
+AR_roots <- polyroot(c(1, -coef(ecl_sarma3)[c("ar1", "ar2", "ar3")]))
+MA_roots <- polyroot(c(1, -coef(ecl_sarma3)[c("ma1")]))
+
+
+abs_AR3 <- abs(AR_roots)
+
+abs_MA3 <- abs(MA_roots)
+
+ll3 <- ecl_sarma3$loglik/ecl_sarma3$nobs
+```
+
+We cannot directly compare AIC values across the three time series, but we know that, 
+$$\text{Log likelihood, } l = \sum_{i=1}^{n}\log(p_{i})$$
+
+If the true parameter values are the same across time series, then $p_{i}$ values will be similar. Hence we compare 
+$$\bar l = \sum_{i=1}^{n}\frac{\log(p_{i})}{n}$$
+
+the average log likelihood for each model fit.
+
+
+```{r model comparison, echo=F, cache=T, fig.align='center'}
+df <- data.frame(matrix(ncol = 8, nrow = 3))
+x <- c("dataset", "number  of observations", "aic", "avg. log likelihood", "sar1", "intercept", "sigma", "MA root moduli")
+colnames(df) <- x
+df[1,] <- c(1, ecl_sarma$nobs, ecl_sarma$aic, ll1, coef(ecl_sarma)[5], coef(ecl_sarma)[6], sqrt(ecl_sarma$sigma2), c(abs_MA1))
+df[2,] <- c(2, ecl_sarma2$nobs, ecl_sarma2$aic, ll2, coef(ecl_sarma2)[5], coef(ecl_sarma2)[6], sqrt(ecl_sarma2$sigma2), c(abs_MA2))
+df[3,] <- c(3, ecl_sarma3$nobs, ecl_sarma3$aic, ll3, coef(ecl_sarma3)[5], coef(ecl_sarma3)[6], sqrt(ecl_sarma3$sigma2), c(abs_MA3))
+myList <- list(abs_AR1, abs_AR2, abs_AR3)
+df$'AR root moduli' <- myList
+kable(df, align="cr") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = T)
+```
+
+The values of the coefficients differ across realisations. SAR coefficient is larger for datasets 2 and 3, justifying the seasonality assumption. The model still retains causality and invertibility.  
+But, for dataset-3, the increased white-noise variance and lesser log-likelihood indicate  that the model has less predictive power. Therefore, we cannot proceed with this model. If by any means we are able to concatenate the three time series and use the entire history of $\sim$ 400 observations, perhaps we can get a better estimate.
+
+# 6. Conclusion
+
+* The predicted period of 66 days is half of the true period of 132 days. This is partly because the data we haev spans only ~200 days continuously, so predicting a period of 132 days is difficult, and partly because this eclipsing binary has two similar stars, so the two half cycles are identical.  
+* THE ARMA model predicted does not appear to be statistically significant, we are only sure of the period of 66 days, which could have been computed from a simple Fourier-Transform.
+* Main obstacle was the lack of continuous equi-spaced data. This is an argument in favor of using epoch folding, where the time-series wraps around to fill in the gaps in observation.
+
+
+# 7. References
+* http://ogledb.astrouw.edu.pl/~ogle/OCVS/
+* https://ionides.github.io/531w18/midterm_project/
+* https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html
+* https://robjhyndman.com/hyndsight/simulating-from-a-specified-seasonal-arima-model/
+
+<br><br>

@@ -1,0 +1,246 @@
+---
+title: "531Midterm Project"
+date: "3/3/2020"
+output:
+  html_document:
+    toc: yes
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Industrial production is closely related to the market demand. By looking at the production data of sugar and confectionery product, we may learn the patterns of candy consumption in the United States. This project is about a time series dataset of U.S. candy production. The variable of interest is the industrial production (IP) index, measuring the real output of all relevant establishments located in the United States, regardless of their ownership, but not those located in U.S. territories [1]. As candy is a kind of nondurable goods, large variation and seasionality pattern is expected in the production index.
+
+The goal of this project is to learn the pattern of candy production throughout the years and identify any potential seasonality. In addition, to propose a model, evaluate how well the model fits the data and forecast the production index of some future months.
+
+## Data Overview
+
+```{r}
+#setwd("midterm_project")
+dt = read.csv("candy_production.csv")
+dt$observation_date = as.Date(dt$observation_date)
+head(dt)
+dim(dt)
+summary(dt)
+```
+
+First, we look at the basic summary of the data. There are 548 observations, one for each month from January 1972 to August 2017, and the production index ranges from 50.67 to 139.92 with an average of 100.66. 
+
+```{r}
+plot(x = dt$observation_date, y = dt$IPG3113N, type = "l", xlab = "Date", ylab = "Candy Production Index", main = "US candy production by month")
+```
+
+By looking at the line plot of the original data, it is easy to notice the periodic trend. The maximum occurred at time points of roughly equal lengths. The overall production index increased slowly before year 2020, and then decreased from 2000 to 2010, then slightly increased afterwards. So there may also exist some linear or quadratic trend. We could also observe that the amplitude of cycles did not change much throughout the years.
+
+```{r}
+acf(dt$IPG3113N, main = "Acutocorrelation plot of candy production")
+```
+
+The ACF plot of original data shows strong autocorrelation in the production index. We could also notice the seasonality pattern, and the cycle repeats for every 12 lags. 
+
+It might be helpful to visualize the data separately at each single year to learn the pattern. We choose to randomly look at 4 years -- 1972, 1982, 1992 and 2002:
+
+```{r}
+library(dplyr)
+dt$year = as.numeric(format(dt$observation_date, "%Y"))
+dt1972 = filter(dt, year == 1972)
+dt1982 = filter(dt, year == 1982)
+dt1992 = filter(dt, year == 1992)
+dt2002 = filter(dt, year == 2002)
+par(mfrow = c(2, 2))
+plot(x = dt1972$observation_date, y = dt1972$IPG3113N, type = "l", xlab = "Date", ylab = "Candy Production Index", main = "US candy production in 1972")
+plot(x = dt1982$observation_date, y = dt1982$IPG3113N, type = "l", xlab = "Date", ylab = "Candy Production Index", main = "US candy production in 1982")
+plot(x = dt1992$observation_date, y = dt1992$IPG3113N, type = "l", xlab = "Date", ylab = "Candy Production Index", main = "US candy production in 1992")
+plot(x = dt2002$observation_date, y = dt2002$IPG3113N, type = "l", xlab = "Date", ylab = "Candy Production Index", main = "US candy production in 2002")
+```
+
+From these 4 yearly plots, we may find similiar patterns in the candy production during a year. The peak occurs around November, and keeps high values till December. In the new year, the production index declines from January till May, then gradually increase to Octomber or November. It is quite reasonable as we know Halloween is the crazy time for candies, which happens at the end of October, early November. During Christmas, people also love to eat candies to spend the holidays. The reason why the first few months' production is lower might be because people like to make new year resolutions to live a healthier life [2], therefore declined consumption for candies.
+
+To obtain the precise period of the seasonality effect, we need to borrow some tools from spectrum analysis [3].
+
+## Spectrum Analysis
+
+Using the spectrum function, we could obtain the unsmoothed and smoothed periodogram for spectrum density under various frequencies:
+
+```{r}
+unsmooth = spectrum(dt$IPG3113N, main = "Unsmoothed periodogram of candy production")
+frequency = unsmooth$freq
+spectral_dens = unsmooth$spec
+unsmooth$freq[which.max(unsmooth$spec)]
+```
+
+```{r}
+smooth = spectrum(dt$IPG3113N, spans=c(3, 5, 3), main = "Smoothed periodogram of candy production")
+frequency = smooth$freq
+spectral_dens = smooth$spec
+smooth$freq[which.max(smooth$spec)]
+```
+
+The frequency corresponding to the maximum spectral denstiy was 0.083 in both smoothed and unsmoothed periodogram. So the most dominant frequency is 0.083, which indicates a period length of 1/0.083 = 12 months. The result matched with the observation from the ACF plot. We may conclude that the U.S. candy production time series data during those 45 years had a strong yearly cycle. 
+
+To further assess the variation in the candy production data at difference frequencies, we decompose it by band pass filter [3]. High frequency variation would be considered "noise", and low frequency variation would be considered trend.
+
+```{r}
+original = dt$IPG3113N
+date = seq(from = 1972, length = length(original), by = 1/12)
+t_low = ts(loess(original ~ date, span = 0.5)$fitted, 
+               start = 1972, frequency = 12)
+t_high = ts(loess(original ~ date, span = 0.1)$fitted, 
+               start = 1972, frequency = 12)
+cycles = original - t_high - t_low
+plot(ts.union(original, t_low, t_high, cycles), 
+     main = "Decomposition as trend + noise + cycles")
+```
+
+From the trend of the low frequency plot, the overall candy production exhibits increasing trend, with slight decrease after year 2000. The high frequency plot does not show too much noise or randomnes, and we can see the filtered cycles plot is very similiar to the original data plot, which indicates the data is not very noisy but with a relatively clear periodic pattern. It makes model fitting and forcasting relatively easier. 
+
+## Model Fitting and Diagnostics
+
+### ARMA Model
+
+We start with fitting a stationary ARMA(p,q) model under the null hypothesis that there is no trend [3]:
+
+$\phi(B)(Y_n - \mu) = \psi(B)\epsilon_n$, where
+
+$\mu = E[Y_n]$
+
+$\phi(x) = 1 - \phi_1(x) - ... - \phi_p(x^p)$
+
+$\psi(x) = 1 + \psi_1(x) + ... + \psi_q(x^q)$
+
+$\epsilon_n \sim iid N(0, \sigma^2)$
+
+We tabulate AIC values for a range of different choices of p and q, and try to select the p, q parameters with the smallest AIC.
+
+```{r}
+# Fitting a stationary ARMA(p, q) model
+aic_table =  function(data, P, Q) {
+  table <- matrix(NA, (P+1), (Q+1)) 
+  for (p in 0:P) {
+    for (q in 0:Q) {
+      table[p+1, q+1] = arima(data, order = c(p, 0, q))$aic
+    }
+  }
+  dimnames(table) = list(paste("AR", 0:P, sep = " "), 
+                         paste("MA", 0:Q, sep = " ")) 
+  table
+}
+```
+
+```{r}
+low_temp_table = aic_table(dt$IPG3113N, 5, 5)
+require(knitr)
+kable(low_temp_table, ditigs = 2)
+```
+
+The table suggests ARMA(4, 3) as the optimal model with the smallest AIC value. We also notice that even though the value of ARMA(5, 3) should not be greater than ARMA(4, 3) for more than 2 units, it is a lot higher. This is beyond the general principle, however, we decide to trust our current choice of p, q for now, and validate the model selection results later using model diagnostics. 
+
+```{r}
+arma43 = arima(dt$IPG3113N, order = c(4, 0, 3))
+arma43
+```
+
+```{r}
+library(car)
+qqPlot(resid(arma43), ylab = "Q-Q plot of residuals from the ARMA(4, 3) model")
+```
+
+```{r}
+acf(resid(arma43), na.action=na.pass, main="ACF of residuals from the ARMA(4, 3) model")
+```
+
+By checking the normal Q-Q plot and ACF plot of residuals, we may find the residuals of the ARMA model is normally distributed, but still correlated at most lags. The ACF plot still shows obvious periodic trend. This is because we have not yet added either the trend with respect the yearly seasionality or the time.
+
+### SARMA Model with trend
+
+Now, to account for the seasonality in the data, we fit a SARIMA$(4, 0, 3) \times (P, D, Q)_{12}$ model. Since this is monthly time series data, following a general analytical approach, we choose P, D, Q values 0, 1, 1 as in the airline model [3].
+
+We would also like to add regression parameters to account for the time trend. From the above analysis, we concluded that the data has the periodic behavior every 12 months, so the overall increasing and decreasing trend should not be with respect to the specific month or day but to the year. We therefore extract the year from the observation date, and center it by 1972, the first year, so that the year ranges from 0 to 45. We treat this year variable as a regression parameter in the new SARMA model. Since the overall trend was not monotune, we think adding a quatratic year on top of the linear year parameter would be helpful to capture the trend.
+
+```{r}
+year = as.numeric(format(dt$observation_date, "%Y")) - 1972
+year_sq = year ^ 2
+sarma_t = arima(dt$IPG3113N, 
+              order = c(4, 0, 3), 
+              xreg = matrix(c(year, year_sq), byrow = FALSE, ncol = 2),
+              seasonal = list(order = c(0, 1, 1), period = 12)
+              )
+sarma_t
+```
+
+To validate the necessity of adding the linear and quadratic year parameters in the model, we perform hypothesis tests on the two paramters. The current model:
+
+$\phi(B)(Y_n - \mu - \beta_1 y_n - \beta_2 y_n^2) = \psi(B)\epsilon_n$, where $y_n$ represents the year.
+
+The null and alternative hypothesis for the squared term:
+
+$H_0: \beta_2 = 0$ 
+
+$H_0: \beta_2 \neq 0$ 
+
+We could perform a Z-test on the coefficient of squared year. The test statistic $z = |\frac{\hat{\beta_2}}{se(\hat{\beta_2})}| = 0.0137/0.0214 = 0.64 < 1.96$, so fail to reject the null hypothesis.
+
+Repeat the test for the linear year term:
+
+$H_0: \beta_1 = 0$ 
+
+$H_0: \beta_1 \neq 0$ 
+
+The test statistic $z = |\frac{\hat{\beta_1}}{se(\hat{\beta_1})}| = 1.3112/1.0853 = 1.21  < 1.96$, again fail to reject the null hypothesis. Conclude that there is no significant linear or quadratic association between year and production index. The guess is that the seasonality effect has already accounted for the increasing or decreasing trend over the years. 
+
+Therefore in the final SARMA model, we will not keep any year parameters:
+
+```{r}
+sarma = arima(dt$IPG3113N, 
+              order = c(4, 0, 3), 
+              seasonal = list(order = c(0, 1, 1), period = 12)
+              )
+sarma
+```
+
+
+Then we take a look at the residuals Q-Q plot and ACF plot:
+
+```{r}
+qqp(resid(sarma), "norm", main = "Q-Q plot of esiduals from the SARIMA model")
+acf(resid(sarma), main = "ACF of residuals from the SARIMA model")
+```
+
+The Q-Q plot shows similiar normal property as in the previous Q-Q plot, so the residuals of the SARMA model still satisfy normal distribution. The ACF plot however, has significantly changed. The residuals have no obvious autocorrelation at any of the lags. We believe that this model has captured all major trend and seasonality in the candy production data. 
+
+## Model Evaluation and Forecasting
+
+As we have proposed a model for candy production data, we would like to see how close the fitted values are comparing to the true values. The forecast package in R [4] helped us obtain the predicted values from the model we fit. In the following plot, the black solid line is the true production data we have analyzed with, the red dashed line represents the fitted values from our SARMA model.
+
+```{r}
+library(forecast)
+fcast <- forecast(sarma, h=4)
+plot(x = dt$observation_date, y = dt$IPG3113N, type = "l", xlab = "Date", ylab = "Candy Production Index", main = "US candy production by month")
+lines(y = fcast$fitted, x = dt$observation_date, col = "red", lty = 2)
+legend("bottomright", legend = c("true", "fitted"), col = c("black", "red"), lty = c(1, 2))
+```
+
+The fitted values are very close to the original values, as the red dashed line seems to be overlapping with the black line. It shows the model is a good fit, even though some points are not precisely predicted, the trend of the fitted values is completely simulating the true periodicity for every year. 
+
+```{r}
+plot(fcast)
+fcast
+```
+
+Another goal of this project is to predict or forecast the candy production index for September through December 2017, and the result is 118.85, 129.48, 127.68 and 127.27. It is quite reasonable because the production reaches the maximum during October to November, and usually keeps it high till December.
+
+## Conclusion
+From our analysis, we found that the U.S. candy production follows a similar trend every year, in other words, the data exhibits strong seasonality pattern every 12 months. We fit a SARIMA$(4, 0, 3) \times (0, 1, 1)_{12}$ model with no regression parameter to account for the seasonality and overall trend in the data. It turns out to be a great fit, and we used it to predict the rest 4 months in 2017. More advanced statistical tools could be utilized to build a better model for more precise prediction.
+
+## References
+[1] Board of Governors of the Federal Reserve System (US), Industrial Production: Nondurable Goods: Sugar and confectionery product [IPG3113N], retrieved from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/IPG3113N, October 13, 2017.
+
+[2] Kaggle Dataset, US Candy Production by Month, Rachael Tatman, https://www.kaggle.com/rtatman/us-candy-production-by-month#candy_production.csv, 2018
+
+[3] Lecture slides #5, #6, #7, #8
+
+[4] Forecasting Functions for Time Series and Linear Models, Rob Hyndman, https://cran.r-project.org/web/packages/forecast/forecast.pdf, February 9, 2020 

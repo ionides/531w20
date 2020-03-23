@@ -1,0 +1,213 @@
+---
+title: "Trend Analysis of import trade values between Japan and USA"
+output: 
+  html_document:
+    toc: yes
+    theme: flatly
+csl: ecology.csl
+---
+
+
+## 1.Introduction
+
+  The world economy is gradually developing in the direction of anti-globalization. 
+And the development of world trade faces many uncertain factors.The concern is partially comes from the reading of articles about trade and globalization[1]. Therefore, the project will focus on the trade between the Asian country Japan and the United States, and analyze the fluctuation of trade through the US import data. The data is downloaded from UN Comtrade database[2], and for the analysis, I choose the month trade values between two countries from 2010 to 2019.
+
+  The analysis will focus on studying how the trade value changed during past ten years, and try to see if there are some obvious fluctrations among the data. Moreover, I'll try to use appropriate models to fit the data, which may help predict the future trend of the import trade value.
+
+## 2.Data Exploration
+
+  Starting by importing the data, we can see the month trade value went as below:
+
+```{r data_import}
+data<-read.csv('USA-JAPAN import month trade value data.csv',sep=',',header=TRUE)
+data.TV<-data[,c("Trade.Value")]
+data.GR<-data[,c("Growth.Rate")]
+plot(data.TV, type='l')
+```
+
+And we can calculate some properties of the data:
+
+```{r properties}
+library(plyr)
+each(max,min,mean,median,sd)(data.TV)
+```
+
+From the plot and the properties of the data, we can see that the trade value is large and has a large volatility, so then I calculate the growth rate of the value each year to see if that is more proper for analyzing.
+
+```{r plot_growth}
+plot(data.GR, type='l')
+```
+
+The properties of growth rate is as follows:
+```{r propertiesGR}
+library(plyr)
+data.GR[is.na(data.GR)] <- 0
+each(max,min,mean,median,sd)(data.GR)
+```
+
+From both the plot and the properties, the growth rate seems more stable and worth to analyze. Furthermore, we can use the acf and pacf plots to speculate if it’s stationary.
+
+```{r}
+acf(data.GR,type="correlation")
+```
+
+```{r}
+acf(data.GR,type="partial")
+```
+
+Above analyzing processes are partly refered to my hw3 project[3]
+
+It's clear that the seasonality property exists for the growth rate data, so I'll then try to smooth the data and find the period. The following processes are also applied in my hw4 project[4].
+
+```{r unsmoothed_spectrum}
+spectrum(data.GR, main="Unsmoothed Periodogram of Growth rate")
+```
+
+```{r smoothed}
+plot1 = spectrum(data.GR,spans=c(3,3),main="Smoothed Periodogram of Growth rate")
+```
+
+The dominant frequency seems to be around 0.42. Use the following code to find the dominant frequency point:
+
+```{r dominant_sequence}
+plot1$freq[which.max(plot1$spec)] 
+```
+
+It seems that the dominant frequency is 0.417, the accordingly period is around 2.4 month, while the other frequencies is not much significant. From this value, we can find that the ocillatory period is just close to what is shown in the time plot, which is around 2 month.
+
+Then we try to use loess method to smooth.
+
+```{r loess}
+month = data$Period
+GR_loess <-loess(data.GR~month, span=0.2)
+plot(data.GR,type="l")
+lines(GR_loess$fitted,type="l")
+```
+
+After smoothing, we can see the growth rate is close to 0.01 and maintained at a rather stable level.Then we can start to fit the models with the above preperties of data set.
+
+## 3.Model Selection
+
+We start by assuming the data is stable wihout trend, and trying to let the data fit to an ARMA model.
+
+The general equation of an ARMA model is given by:
+
+$$
+\phi(B) (Y_{n}-\mu )=\psi(B)\varepsilon _{n}
+$$
+
+Witin the above equation, $\phi(B)$ is the autoregressive operator, and $\psi(B)$ is the moving average operator.$\mu$ is the mean value of the data, and $\varepsilon _{n}$ is the white noise. What we need to do is to find the pair of (p,q) which can make the data fit the model most.
+
+A good method to choose the model is using AIC, which is given by:
+
+$$
+(-2)\times l(\theta)+2D
+$$
+
+So, we can make a table of AIC values of different pairs of(p,q), and then try to compare them.
+
+```{r AIC_TABLE,echo=FALSE}
+aic_table<-function(data,P,Q){
+  table<-matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1]<-arima(data,order=c(p,0,q),method="ML")$aic
+    }
+  }
+  dimnames(table)<-list(paste("AR",0:P,sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+Low_aic_table<-aic_table(data.GR,5,5)
+require(knitr)
+kable(Low_aic_table,digits=2)
+```
+
+Comparing with their AIC values, we can achieve that ARMA(0,1) model may better reflect the data, which has a lower AIC value and less numbers of parameters. So then we can fit the ARMA(0,1) model to the data:
+
+```{r ARMA(0,1),echo=FALSE}
+a0<-arima(data.GR,order=c(0,0,1))
+a0
+```
+
+We can get the plot of residuals:
+
+```{r,echo=FALSE}
+plot(a0$resid, ylab="residuals")
+data.fitted = data.GR + a0$residuals
+```
+
+Compare the estimated data fiited with ARMA(0,1) model with the original data:
+
+```{r comparison}
+plot(data.GR,type="l")
+lines(data.fitted,type="l",lty=2,col='blue')
+```
+
+Then calculate the bias at each point:
+
+```{r bias}
+bias.GR = (data.GR-data.fitted)/data.GR
+plot(bias.GR,type="l")
+```
+
+We can find that ARMA(0,1) model describes the similar trend, but there are some deviations in the values of the vertices. What's more, the bias at these vertices can be quite large. As for it's the estimation of growth rate, we may need to find a better model to describe the data. Considering the rotating period, I decide to try SARMA model.
+
+Using $SARIMA(0,0,1)\times(1,0,1)_{3}$ model to fit the data:
+
+```{r , echo=FALSE}
+a1 <- arima(data.GR, order=c(0,0,1),
+            seasonal=list(order=c(1,0,1),period=3))
+a1
+```
+
+The plot of residuals is below:
+
+```{r,echo=FALSE}
+plot(a1$resid, ylab="residuals")
+data.fitted2 = data.GR + a1$residuals
+```
+
+
+Again we can compare the estimated data under $SARIMA(0,0,1)\times(1,0,1)_{3}$ model between the growth rate data:
+
+```{r comparison2, echo=FALSE}
+plot(data.GR,type="l")
+lines(data.fitted2,type="l",lty=2,col='blue')
+```
+
+We can calculate the bias plot as follows:
+
+```{r bias2}
+bias2.GR = (data.GR-data.fitted2)/data.GR
+plot(bias2.GR,type="l")
+```
+
+The bias at certain points is still large, while some of the biases is smaller than ARMA(0,1) model. It seems that it's better to change the estimated value with large biases, for growth rate can have accumulated results on trade value, or find a better model to fit the growth rate data.
+
+## 4.Conclusion
+
+We can just use the growth data estimated by $SARIMA(0,0,1)\times(1,0,1)_{3}$ model to predict trade value. Comparing with the real value, we can get the plot below:
+
+```{r, echo=FALSE}
+data.TV2<-(data.fitted2+1) * data.TV
+data.TV2<-data.TV2[-108]
+data.compare<-data.TV[-1]
+plot(data.compare,type="l")
+lines(data.TV2,type="l",col='blue')
+```
+
+In conclusion, through all above analyzing processes, we can use $SARIMA(0,0,1)\times(1,0,1)_{3}$ model to fit growth rate data, and then predict the future trade value. This method can totally catch the trend of the value, however, we can find directly from the plot that the certain value at vertices have some biases compared with the true value. So it still needs better model if we want to predict the value of trade amount.
+
+
+By achieving the trend of the trade value, we can use this to further analyzing the economic growth, or sometime may also evaluate the relationship between two countries. From the result achieved by this project, we can see the United States' import from Japan has a rather clear trend
+
+## 5.References
+
+[1]Our World in Data https://ourworldindata.org/trade-and-globalization
+
+[2]UN Comtrade Database https://comtrade.un.org/data/
+
+[3]Homework 3 https://ionides.github.io/531w20/hw03/hw03.html
+
+[4]Homework 4 https://ionides.github.io/531w20/hw04/hw04.html

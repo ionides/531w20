@@ -1,0 +1,242 @@
+---
+title: "STATS531 Midterm Project"
+date: "3/3/2020"
+output:
+  html_document:
+    toc: yes
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(repos=c(CRAN="https://cran.mtu.edu/"))
+library('ggplot2')
+library('dplyr')
+library('forecast')
+library('readr')
+library(lubridate)
+```
+# 1. Introduction and Motivation
+
+Dengue was recognized as a tropical disease, a disease that is transmitted by most a specific species of mosquitoes called Aedes aegyopti and several other species. ^[1]^ Dengue, as a disease that came out of Africa around the 15th to 19th centuries, was first documented was around 18th centuries in Asia, Africa, and North America. Dengue has been in history for a very long time and started spreading with the help of the slave trade and the second world war. ^[2]^ It now has been the second most diagnosed cause of fever after malaria, which is also a mosquito-borne viral infection. As of today, there is no specific cure for Dengue and it has continued being a major cause of child mortality ^[3][4]^. Even today, severe Dengue is still a major cause of death in many tropical countries. Dengue, according to WHO, could be influenced by many different variables such as temperature, humidity, or other unknown factors. It also has been a disease that has rather specific documentation over a range of time, which makes possible for researchers to find pattern and correlations via data. Or, if possible, predict when would be the peak so that it could help locals to prevent spreading. 
+
+In this project, we would like to use a classical time-series ARIMA analysis to capture much of the variation in our data. Since Aedes Aegypti mosquitoes breed in stagnant water and these mosquitoes are the major cause of dengue, thus rainy period in a tropical country would be hazardous. Therefore, in order to predict and help to prevent more people from such disease, we think understanding the correlation between precipitation, temperature and breeding level of the mosquitoes would be essential. 
+
+# 2 Exploratory Data Analysis
+
+## 2.1 Data Overview
+This project generally gets inspired by the Dengue Forecasting project from the National Oceanic and Atmospheric Administration (NOAA). ^[5]^ Indeed, the two datasets we leveraged also provided by NOAA. 
+Data for dengue is historical surveillance data provided for Iquitos, Peru from July 1st, 2000 to June 25th, 2009. It provides weekly data for laboratory-confirmed cases of dengue and, luckily, provides data for all four serotypes of dengue. The other data is the daily environmental data from the weather station which included temperature and precipitation data for Iquitos, Peru from January 2nd, 1973 to March 14th, 2015. In this project, we would like to use the subset of the two datasets, which is, we would like to restrict the dates to from January 1st, 2002 to June 29th, 2009. Since the data is detailed to work, we are then able to convert our daily data to weekly data and then match the two datasets together. By using both datasets, we might be able to see the clear correlation between temperature, precipitation, and the cases count.
+
+
+```{r, echo = FALSE, message = FALSE}
+rm(list=ls())
+dengue = read_csv('http://dengueforecasting.noaa.gov/Training/Iquitos_Training_Data.csv')
+station = read_csv('http://dengueforecasting.noaa.gov/StationData/IquitosPE000084377.csv')
+#ndengue <- dengue[79:468, ]
+summary(station)
+```
+
+Based on the summary of the station data, we would find several data for temperature and precipitation that have been missed. To avoid misunderstanding and interference, we would simply insert the mean as the missing value. 
+
+```{r, echo = FALSE, message = FALSE}
+#clean and resort the Station dataset
+#build a new column in station data
+station = station %>% mutate(date = as.Date(paste(YYYY, MM, DD, sep = "-")))
+#replace the mean with the missing value of precipitation 
+station$PRCP[station$PRCP==-9999.0] <- NA
+m1 = mean(station$PRCP, na.rm = TRUE)
+station$PRCP[is.na(station$PRCP)] <- m1
+#replace the mean with the missing value of temperature
+station$TAVG[station$TAVG==-9999.0] <- NA
+m2 = mean(station$TAVG, na.rm = TRUE)
+station$TAVG[is.na(station$TAVG)] <-m2
+```
+
+```{r, echo = FALSE, message = FALSE}
+#Try to group the two dataset together
+station = station%>%mutate(wsd=as.Date(format(as.Date(station$date, "%m/%d/%Y"),"%Y-%W-1"),"%Y-%W-%u"))
+dengue = dengue %>% rename(weekly_start_date = week_start_date)
+dengue = dengue %>% mutate(nwsd =
+                          as.Date(format(as.Date(weekly_start_date,"%m/%d/%Y"),"%Y-%W-1"),"%Y-%W-%u"))
+#pick the data by the dates of degenue data
+station1 = station[station$date > as.Date('2001-12-31'),]
+nstation = station1[station1$date < as.Date('2009-06-29'),]
+```
+
+```{r, echo = FALSE, message = FALSE}
+#resort the Dengue dataset 
+dengue = dengue[dengue$weekly_start_date > as.Date('2001-12-31'),]
+dengue = dengue[dengue$weekly_start_date < as.Date('2009-06-29'),]
+```
+
+The following plots show the relationships between weekly data and the number of total cases. From the first plot, we would see that there is a peak around the end of 2005. From 2008 to 2009, there are two small peaks. Since the original plot occasional large peak and for making patterns more visible, we take log transformation of the number of total cases and plot the relationship between it and weekly data. 
+
+```{r, echo = FALSE, message = FALSE}
+require(gridExtra)
+plot1 = ggplot(dengue, mapping=aes(x=weekly_start_date, y=total_cases)) + 
+  geom_line()+labs(x="Weekly start date", y="Total cases")
+plot2 = ggplot(dengue, mapping=aes(x=weekly_start_date, y=log(total_cases+1))) + 
+  geom_line()+labs(x="Weekly start date", y="Total cases with log transformation")
+grid.arrange(plot1, plot2)
+```
+
+
+```{r, echo = FALSE, message = FALSE}
+#calculate the weekly sum and weekly average in Station dataset
+weekly_sum=nstation%>%group_by(wsd)%>%summarize(total_precip = sum(PRCP, na.rm = T))
+weekly_avg=nstation%>%group_by(wsd)%>%summarize(avg_temp = mean(TAVG, na.rm = T))
+```
+
+```{r, echo = FALSE, message = FALSE}
+#for better using, we made a new dataset which combine the necessary information from both datasets
+new<-cbind(weekly_sum, weekly_avg)
+new=new[,c(-1,-3)]
+ndengue=dengue[,-10]
+df<-cbind(ndengue, new)
+```
+
+
+```{r, echo = FALSE, message = FALSE}
+#hh<- vector()
+#for(i in 1:length(dengue$nwsd)){
+#  hh[i]<-(dengue$nwsd[i] == weekly_sum$wsd[i])
+#}
+# attach(nstation)
+#weekly_sum=nstation%>%group_by(week_start_date)%>%
+#summarize(total_precip = sum(PRCP, na.rm = T))
+# aggregate(PRCP~week_start_date,FUN = sum)
+```
+
+## 2.2 Cycle Study by a Band Pass Filter
+Literally, frequency variation is one of the most important things we would like to discover during time series analysis. For the new dengue data, high frequency variation might be considered as noise and low frequency variation might be considered as a trend. Moreover, a band of mid-range frequencies might be considered to correspond to the business cycle. Indeed,  we would apply the local linear regression approach to simulate the high frequency and low-frequency variation and then extract the business cycle.
+
+Based on the plot below, there does not exsit any obvious business cycles. Indeed, we would like to apply more approaches to study our data. 
+
+```{r, echo=FALSE, message = FALSE}
+df=df %>% mutate(wsd_decimal = decimal_date(weekly_start_date))
+log_dengue_loess=loess(log(total_cases + 1)~wsd_decimal,data =df, span=0.4)
+obs=ts(log(df$total_cases+1), frequency = 12, names = "log cases")
+trend <- ts(loess(log(total_cases + 1)~wsd_decimal, data = df,span=0.5)$fitted,frequency=12)
+noise <- ts(log(df$total_cases+1) - loess(log(total_cases + 1)~wsd_decimal, data = df, span=0.1)$fitted,frequency=12)
+cycles <- obs - noise - trend
+plot(ts.union(obs,trend, noise,cycles),main="Decomposition of cases as trend + noise + cycles",
+  xlab = "Time")
+```
+
+## 2.3 Autocorrelation of Residuals for Regression
+
+From the previous class, we know that it is highly likely that the value of a variable observed in the current time period will be similar to its value in the previous period, or even the period before that in time series analysis. Thus when we fitting a regression model to time series data, it is common to find autocorrelation in the residuals.
+
+In this case, the estimated model violates the assumption of no autocorrelation in the errors, and our forecasts may be inefficient — there is some information left over which should be accounted for in the model in order to obtain better forecasts. The forecasts from a model with autocorrelated errors are still unbiased, and so are not “wrong”, but they will usually have larger prediction intervals than they need to. ^[6]^ Therefore we should always look at an ACF plot of the residuals. Based on the plot below, the first several lags indicate that we need to consider ARMA models and the seasonally oscillating autocorrelations indicate the suitability of a SARMA model.  
+
+```{r, echo = FALSE, message = FALSE}
+cl=lm(log(total_cases + 1) ~ avg_temp + total_precip, data = df)
+cld=resid(cl)
+# autocorrelation plot
+acf(cld, lag = 100, main = 'Autocorrelation of Residuals')
+```
+
+## 2.4 Seasonality Study by Spectrum Analysis
+
+To estimate the spectral density of the dengue time series of given data, we would find the frequency to compute the period of oscillation by periodogram. The predominant frequencies occur at 0.02 cycles per week, which is as same as 50 weeks per cycle.
+
+```{r, echo = FALSE, message = FALSE}
+p2=spectrum(log(df$total_cases+1), main="Unsmoothed periodogram")
+p3=spectrum(log(df$total_cases+1),spans=c(3,3), main="Smoothed periodogram")
+p3$freq[which.max(p3$spec)]
+```
+
+
+# 3. Modeling
+
+## 3.1 Model Selection
+Recall that a more general approach is to compare likelihoods of different models by penalizing the likelihood of each model by a measure of its complexity, which is Akaike's information criterion(AIC). It is given by 
+$$AIC=-2 \times l(\theta)+2D,$$
+which means minus twice the maximized log likelihood plus twice the number of parameters. 
+```{r, echo=FALSE, warning = FALSE, message = FALSE}
+aic_table <- function(data, P, Q, xreg = NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q), xreg = xreg)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+cases_lm_aic_table <- aic_table(log(df$total_cases+1),6,6, xreg = df[c('avg_temp', 'total_precip')])
+require(knitr)
+kable(cases_lm_aic_table,digits=2)
+```
+
+Based on the above table of AIC values, we could observe that $ARMA(2, 2)$ indicates the lowest AIC.  However, $ARMA(4, 2)$ also provides a low AIC value which is close to $ARMA(2, 2)$. Since we don't want to make strong claims about having found the best model using AIC, then we would also look at details for these modes. Without loss of generality, we would like to apply hypothesis tests on $ARMA(2, 2)$ and $ARMA(4, 2)$ to observe which one is significantly better than the other by Wilks' approximation. 
+
+```{r, echo = FALSE, message = FALSE}
+arma22=arima(log(df$total_cases+1),order=c(2,0,2), xreg=df[c('avg_temp','total_precip')])$loglik
+arma42=arima(log(df$total_cases+1),order=c(4,0,2), xreg=df[c('avg_temp','total_precip')])$loglik
+lambda=2*(arma42-arma22)
+lambda
+pchisq(lambda, df=2, lower.tail = F)
+```
+
+For this hypotheis test, my null hypothesis correpsonds to $ARMA(2, 2)$, and mu alternative hypothesis corresponds to $ARMA(4, 2)$. Then we would have $\Lambda=3.88$, by comparing this value to the cutoff value $5.99$ for a $95%$ siginificance level with $2$ degree of freedom, which indicates that the null hypothesis cannot be reject. Thus, the model $ARMA(2, 2)$ would be more appropriate for our data. Generally, intentionally fitting a larger model than required would capture the dynamics of the data as identified, which as known as overfitting. Since the difference between $ARMA(2, 2)$ and $ARMA(4, 2)$ is significant, then this would be another reason for us to choose the model $ARMA(2,2)$. 
+
+
+Furthermore, we would like to fit a $SARMA(2,0,2) × (1,0,1)$ and $SARMA(2,0,2) × (2,0,1)$ to investigate the parameter estimates.
+
+```{r,  echo = FALSE, message = FALSE}
+# estimate ARMA(2,2) and beta parameters
+sarma22<-arima(log(df$total_cases+1),order=c(2,0,2),seasonal=list(order=c(1,0,1),period=52), xreg =df[c('avg_temp', 'total_precip')])
+sarma22
+```
+
+
+```{r, echo = FALSE, message = FALSE}
+# estimate ARMA(2,2) and beta parameters
+sarma221<-arima(log(df$total_cases+1),order=c(2,0,2),seasonal=list(order=c(2,0,1),period=52), xreg =df[c('avg_temp', 'total_precip')])
+sarma221
+```
+
+Based on the results of $SARMA(2,0,2) × (1,0,1)$, we would find that the AR parameter, seasonal AR parameter, and MA parameters are all significant. From the results of $SARMA(2,0,2) × (2,0,1)$, we would see that the coefficient of AR parameter is close to 2. It might because of $SARMA(2,0,2) × (2,0,1)$ way over-modeled as the sum of the coefficients is approximately 1. Thus, we would say that the $SARMA(2,0,2) × (1,0,1)$ is enough to capture the dependence. Indeed, we would use some diagnostics for our SARMA model.
+
+## 3.2 Model diagnostics
+
+```{r, echo = FALSE, message = FALSE}
+# residual plot
+sarma22re = resid(sarma22)
+require(gridExtra)
+plot3 = ggplot() +  
+  geom_line(mapping = aes(x = df$weekly_start_date, y = sarma22re)) +
+  labs(x = "Weekly Start Date", y = "Residual", title = "Time plot of residuals")
+# QQ plot
+plot4 = ggplot(data = as.data.frame(sarma22re)) + stat_qq(mapping = aes(sample = sarma22re)) + labs(x = "Theoretical Quantiles", y = "Sample Quantiles", title = "QQ plot of residuals")
+grid.arrange(grobs = list(plot3, plot4))
+#shapiro test
+shapiro.test(sarma22$residuals)
+# auto-correlation function plot
+acf(sarma22re, lag = 100, main = "Autocorrelation of residuals of SARMA(2,2) model")
+```
+
+Based on the time plot, we would observe that the residuals seem to be mean-zero station. The QQ plot shows that the residuals seem to be approximately normal. To verify this, we apply the Shapiro test, p-value = 0.07663 > 0.05, which indicates that we failed to reject the null hypothesis and the residuals follow the normal distribution. Moreover, the ACF uncorrelated (we expect 5 out of 100 lines to cross the blue lines and 6 do, which isn't too bad) and approximately Gaussian, as our model dictates. Meanwhile, Residuals ACF shows uncorrelated and has no trend. 
+
+# 4. Conclusion
+
+In this project, we take temperature and precipitation as signals and the ARMA process as the noise process to build a signal-plus-noise model. The SARMA model shows that our datasets should have a remarkable amount of seasonality in our noise process because of the relationship among the Aedes mosquitoes' lifecycle, seasonal weather patterns, and human-mosquito interaction is highly dynamic and rather impossible to fully explain using only weather variables.
+
+Another reason that complicates the data analysis, and causes the data rather obscure is the complex cyclical nature of the system is the existence of temporary cross-immunity.^[1]^ The hospital or government should create a clever system for dengue patients to be documented. Since once this temporary cross-immunity fades away, then subsequent infections from other serotypes make individuals more susceptible to severe dengue, which indicates the recovery dengue patient is not "safety" enough to be documented as a recovery patient. ^[1]^
+
+Indeed, the reasons for the virus spread are much more complex than we thought and definitely nonlinear. Therefore, it is necessary and important for us to include more variables and try more detailed approaches to investigate the latent processes that result in the dengue data.
+
+# 5. Reference and Coding Support
+1. "Dengue and severe dengue". WHO. March 2020. 
+2. Gubler DJ (July 1998). "Dengue and dengue hemorrhagic fever". Clinical Microbiology Reviews. 11(3): 480–96.
+3.Simmons CP, Farrar JJ, Nguyen vV, Wills B (April 2012). "Dengue" (PDF). The New England Journal of Medicine. 366 (15): 1423–32. 
+4.Ranjit S, Kissoon N (January 2011). "Dengue hemorrhagic fever and shock syndromes". Pediatric Critical Care Medicine. 12 (1): 90–100.
+5.National Oceanic and Atmospheric Administration, Dengue Forecasting, http://dengueforecasting.noaa.gov/
+6. https://otexts.com/fpp2/regression-evaluation.html
+7. https://ionides.github.io/531w18/midterm_project/index.html
+8. https://ionides.github.io/531w16/midterm_project/index.html
+9. https://ionides.github.io/531w18/midterm_project/project18/midterm_proj.html
+10. https://ionides.github.io/531w20/#class-notes
+11. https://ionides.github.io/531w20/#homework-assignments

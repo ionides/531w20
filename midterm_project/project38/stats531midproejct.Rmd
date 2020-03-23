@@ -1,0 +1,290 @@
+---
+title: "stats531_mid_project"
+output: html_document
+ouput:
+  html_document:
+    toc: yes
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1 Introduction
+
+This data set comes from a Kaggle data challenge: DJIA 30 Stock Time Series (https://www.kaggle.com/szrlee/stock-time-series-20050101-to-20171231). The original dataset contains historical stock prices (last 12 years) for 29 of 30 DJIA companies. In this project, I will mainly focus on four stocks: AAPL, GS, JPM, GOOGL. The target of this project is to study the volatility of the stock prices by fitting time-series models and to help people make statistically informed trades.
+
+Section 2 is the data pre-processing, which involves data cleaning, exporatory data analysis. Section 3 is the time series modelling part where I fit ARIMA model to the volatility of four stocks, make hypothesis testing, and conduct frequency domain analysis.
+
+## 2 Data Pre-processing
+
+```{r}
+dat <- read.csv(file ="all_stocks_2006-01-01_to_2018-01-01.csv")
+```
+
+```{r}
+summary(dat)
+```
+
+```{r}
+str(dat)
+```
+
+We can see that the data contains missing values and the data type of variable "Date" is factor, so I will conver it into date.
+
+```{r}
+dat$Date <- as.Date(dat$Date, format = "%Y-%m-%d")
+dat = na.omit(dat)
+```
+
+```{r}
+par(mfrow = c(2,2))
+hist(dat$Open,main = "Open all stocks")
+hist(dat$High,main = "High all stocks")
+hist(dat$Low, main = "Low all stocks")
+hist(dat$Close,main = "Close all stocks")
+```
+The distribution of all stocks' open, high, low and close prices are very similar, mostly concentrated on the range of $0 to $200.
+
+
+```{r}
+dat_aapl = dat[dat$Name == "AAPL",]
+dat_gs = dat[dat$Name == "GS",]
+dat_jpm = dat[dat$Name == "JPM",]
+dat_googl = dat[dat$Name == "GOOGL",]
+```
+
+
+Now take a closer look at four companies' stocks
+```{r}
+name = c("AAPL","GS","JPM","GOOGL")
+#par(mfrow = c(2,2))
+#hist(dat_aapl$Open,main = "Open AAPL")
+#hist(dat_gs$Open,main = "Open GS")
+#hist(dat_jpm$Open,main = "Open JPM")
+#hist(dat_googl$Open,main = "Open GOOGL")
+
+
+par(mfrow = c(2,2))
+hist(dat_aapl$High,main = "High AAPL")
+hist(dat_gs$High,main = "High GS")
+hist(dat_jpm$High,main = "High JPM")
+hist(dat_googl$High,main = "High GOOGL")
+
+#par(mfrow = c(2,2))
+#hist(dat_aapl$Low,main = "Low AAPL")
+#hist(dat_gs$Low,main = "Low GS")
+#hist(dat_jpm$Low,main = "Low JPM")
+#hist(dat_googl$Low,main = "Low GOOGL")
+
+#par(mfrow = c(2,2))
+#hist(dat_aapl$Close,main = "Close AAPL")
+#hist(dat_gs$Close,main = "Close GS")
+#hist(dat_jpm$Close, main = "Close JPM")
+#hist(dat_googl$Close,main = "Close GOOGL")
+```
+The distribution of GS and JPM looks like a normal distribution, while AAPL and GOOGL are very skewed to the left. Generally speaking, the price of GOOGL is the most expensive and the price of JPM is the least expensive. The price of GOOGL is also mose volitile.
+
+
+## 3 Time Series Analysis
+
+### First, plot the High price of four stocks over the time
+
+```{r}
+par(mfrow = c(2,2))
+plot(dat_aapl$High ~dat_aapl$Date,type = "l",main = "AAPL")
+plot(dat_gs$High ~dat_gs$Date,type = "l",main = "GS")
+plot(dat_jpm$High ~dat_jpm$Date,type = "l",main = "JPM")
+plot(dat_googl$High ~dat_googl$Date,type = "l",main = "GOOGL")
+
+```
+It seems like the price of all four stocks are gradually increasing. However, it seems that GS has some fluctuation during year 2016 to 2010 
+
+### Study the ACF of the prices
+
+```{r}
+par(mfrow = c(2,2))
+acf(dat_aapl$High,main = "AAPL ACF",xlab = "AAPL")
+acf(dat_gs$High,main = "GS ACF",xlab = "GS")
+acf(dat_jpm$High,main = "JPM ACF",xlab = "JPM")
+acf(dat_googl$High,main = "GOOGL ACF",xlab = "GOOGL")
+```
+From ACF plots, we see that the acf for all four stocks prices are highly correlated.
+
+```{r}
+par(mfrow = c(2,2))
+acf(diff(dat_aapl$High),main = "diff AAPL ACF",xlab = "AAPL")
+acf(diff(dat_gs$High),main = "diff GS ACF",xlab = "GS")
+acf(diff(dat_jpm$High),main = "diff JPM ACF",xlab = "JPM")
+acf(diff(dat_googl$High),main = "diff GOOGL ACF",xlab = "GOOGL")
+```
+However, the difference of the prices are not highly correlated, the only correlated lag is probably around 1 or 2.
+
+```{r}
+par(mfrow = c(2,2))
+acf(abs(diff(dat_aapl$High) - mean(diff(dat_aapl$High))),lag.max = 200,main = "mag AAPL ACF",xlab = "AAPL")
+acf(abs(diff(dat_gs$High) - mean(diff(dat_gs$High))),lag.max = 200,main = "mag GS ACF",xlab = "GS")
+acf(abs(diff(dat_jpm$High) - mean(diff(dat_jpm$High))),lag.max = 200,main = "mag JPM ACF",xlab = "JPM")
+acf(abs(diff(dat_googl$High) - mean(diff(dat_googl$High))),lag.max = 200,main = "mag GOOGL ACF",xlab = "GOOGL")
+```
+The magnitude are highly correlated, however. Even though the difference of the price is uncorrelated, the volitility is correlated.
+
+
+### Fit ARIMA model with AIC table
+
+Try to pick the best ARMA model using the AIC table for stock price of GOOGL.
+```{r}
+aic_table <- function(data,P,Q,I){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q),method="ML")$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  return(table)
+}
+diff_GOOGL = diff(dat_googl$High)
+diff_AAPL = diff(dat_aapl$High)
+diff_GS = diff(dat_gs$High)
+diff_JPM = diff(dat_jpm$High)
+library(kableExtra)
+options(warn=-1)
+googl_aic_table <- aic_table(abs(diff_GOOGL-mean(diff_GOOGL)),4,4)
+require(knitr)
+table = kable(googl_aic_table,digits=2,caption = "Low AIC Table") %>% kable_styling()
+table
+```
+From the AIC table, the lowest AIC value occurs at ARMA(1,5), which is 17968.60
+The model is:
+$$Y_n = \mu + \theta{Y_{n-1}}+{\epsilon}_n + \psi_1{\epsilon_{n-1}} + \psi_2{\epsilon_{n-2}} + \psi_3{\epsilon_{n-3}} + \psi_4{\epsilon_{n-4}} + \psi_5{\epsilon_{n-5}}$$
+where $\epsilon$ is a white noise process. Note that $Y_n$ is the difference between the price, so essentially it is an ARIMA(1,1,5) with respect to the price of the stock. In the report, I will still use $Y_n$ for consistency.
+
+```{r}
+arima_GOOGL = arima(abs(diff_GOOGL-mean(diff_GOOGL)),order = c(1,0,5))
+arima_GOOGL
+```
+
+The arma model for GOOGL stock price is:
+$$Y_n = 4.0298 + 0.9972  {Y_{n-1}}+{\epsilon}_n - 0.9213{\epsilon_{n-1}} - 0.0315{\epsilon_{n-2}} + 0.0288{\epsilon_{n-3}} - 0.0053{\epsilon_{n-4}} - 0.0444{\epsilon_{n-5}}$$
+
+To study whether a ARIMA model is more suitable, I make hypothesis and do statistical testing.
+We make two nested hypothese:
+$$H^{<0>} : \theta \in ARIMA(1,0,5)$$
+$$H^{<1>} : \theta \in ARIMA(1,1,2)$$
+
+Try some other nested model and do statistical testing
+```{r}
+googl_arma1 = arima(abs(diff_GOOGL-mean(diff_GOOGL)),order = c(1,0,4))
+googl_arma1
+```
+
+We know that:
+$$l^{<1>} - l^{<0>} \approx (\frac{1}{2})\chi^2_{D^{<1>} - D^{<0>}}$$
+
+which is approximate equal to 1.92. Since the difference $l^{<1>} - l^{<0>} =-8976.3 -(-8979.25) = 2.95 > 1.92$, we  cannot reject the null hypothesis, so we will choose ARIMA(1,0,4) over ARIMA(1,0,5), so the model is now:
+$$Y_n = 4.0281 + 0.9965{Y_{n-1}}+{\epsilon}_n - 0.9192{\epsilon_{n-1}} - 0.0333{\epsilon_{n-2}} + 0.0259{\epsilon_{n-3}} - 0.0436{\epsilon_{n-4}}$$
+
+For the rest three stocks, will use Auto.arima to fit the model
+```{r}
+library(forecast)
+arima_AAPL = auto.arima(abs(diff_AAPL - mean(diff_AAPL)),max.p = 5,max.q = 5,method = "ML")
+arima_AAPL
+arima_GS = auto.arima(abs(diff_GS - mean(diff_GS)),max.p = 5,max.q = 5,method = "ML")
+arima_GS
+arima_JPM = auto.arima(abs(diff_JPM - mean(diff_JPM)),max.p = 5,max.q = 5,method = "ML")
+arima_JPM
+```
+The model for AAPL is ARIMA(3,1,1), for GS is ARIMA(1,1,1), for JPM is ARIMA(1,1,2)
+Write in mathematical formula:
+AAPL:
+$$Z_n = 0.0064Z_{n-1} - 0.0398Z_{n-2} + 0.0395Z_{n-3} + {\epsilon}_n - 0.9758{\epsilon_{n-1}}$$
+where $Z_n = Y_n - Y_{n-1}$
+GS:
+$$Z_n = 0.0636Z_{n-1} + {\epsilon}_n - 0.9546{\epsilon_{n-1}}$$
+
+JPM:
+$$Z_n = 0.8620Z_{n-1} + {\epsilon}_n - 1.7803{\epsilon_{n-1}} + 0.7848\epsilon_{n-2}$$
+
+### Check the causality and invertibility based on the roots.
+
+```{r}
+ar_root_AAPL = polyroot(c(1,-coef(arima_AAPL)[c("ar1","ar2","ar2")]))
+ma_root_AAPL = polyroot(c(1,coef(arima_AAPL)[c("ma1")]))
+print(abs(ar_root_AAPL))
+print(abs(ma_root_AAPL))
+
+ar_root_JPM = polyroot(c(1,-coef(arima_JPM)[c("ar1")]))
+ma_root_JPM = polyroot(c(1,coef(arima_JPM)[c("ma1","ma2")]))
+print(abs(ar_root_JPM))
+print(abs(ma_root_JPM))
+
+ar_root_GOOGL = polyroot(c(1,-coef(googl_arma1)[c("ar1")]))
+ma_root_GOOGL = polyroot(c(1,coef(googl_arma1)[c("ma1","ma2","ma3","ma4")]))
+print(abs(ar_root_GOOGL))
+print(abs(ma_root_GOOGL))
+
+ar_root_GS = polyroot(c(1,-coef(arima_GS)[c("ar1")]))
+ma_root_GS = polyroot(c(1,coef(arima_GS)[c("ma1")]))
+print(abs(ar_root_GS))
+print(abs(ma_root_GS))
+```
+AAPL have all AR roots outside unit circle, so it is invertible. The MA roots of AAPL almost fall on the unit circle so it may not be causal, neither. JPM has AR roots outside the unit circle, so it is causal, but one of its MA roots is on the unit circle so it may not be invertible. GOOGL has both MA root and AR root on unit circle so it is neither invertible nor causal. GS has both AR root and MA root outside unit circle so it is invertible and causal.
+
+
+### Now, study the seasonality
+
+We study the seasonality by the frequency domain analysis
+```{r}
+par(mfrow = c(2,2))
+spectrum(ts(dat_aapl$High,frequency = 250),span = c(3,5,3))
+spectrum(ts(dat_googl$High,frequency = 250),span = c(3,5,3))
+spectrum(ts(dat_gs$High,frequency = 250),span = c(3,5,3))
+spectrum(ts(dat_jpm$High,frequency = 250),span = c(3,5,3))
+```
+None of the stock shows seasonality since there is no clear peaks on the plot.
+
+### Residual Analysis
+
+```{r}
+AAPL_resid = forecast(arima_AAPL, h = 30)
+checkresiduals(AAPL_resid)
+
+GOOGL_resid = forecast(arima_GOOGL, h = 30)
+checkresiduals(GOOGL_resid)
+
+GS_resid = forecast(arima_GS, h = 30)
+checkresiduals(GS_resid)
+
+JPM_resid = forecast(arima_JPM, h = 30)
+checkresiduals(JPM_resid)
+```
+The residuals look normal or like white noise, so the model is reasonal and is able to explain the correlation part in the data.
+
+## Conclusion
+
+1. The difference between the stock price is uncorrelate. However, their absolute deviance are correlated. In other words, the volatility is correlated.
+2.For four stocks, fit different ARIMA models. The model for GOOGL is ARIMA(1,0,4), AAPL is ARIMA(3,1,1), for GS is ARIMA(1,1,1), for JPM is ARIMA(1,1,2). From the residual analysis, all the model work pretty well.
+3. There is no clear seasonality.
+4. It is possible that the price is related to other factors, such as the volumn. More complex model is needed in order to gain a more accurate model.
+
+
+## Reference
+
+1. DJIA 30 Stock Time Series https://www.kaggle.com/szrlee/stock-time-series-20050101-to-20171231
+2. Time Series Analysis ARIMA basic model https://www.kaggle.com/szrlee/time-series-analysis-arima-basic-model/report
+3. Using R for Time Series Analysis https://a-little-book-of-r-for-time-series.readthedocs.io/en/latest/src/timeseries.html
+4. Time Series ARIMA Models https://sites.google.com/site/econometricsacademy/econometrics-models/time-series-arima-models
+5. Lecture notes 3-8 https://ionides.github.io/531w20/
+
+
+
+
+
+
+
+
+
+
+

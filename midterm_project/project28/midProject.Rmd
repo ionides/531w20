@@ -1,0 +1,258 @@
+---
+title: "STATS 531 Midterm Project"
+date: "2020/3/7"
+output: 
+   html_document:
+    toc: yes
+    theme: flatly
+---
+
+```{r, echo = FALSE, message = FALSE}
+library(dplyr)
+library(stringr)
+library(tseries)
+```
+
+## Introduction
+
+First, I am interested if there is any seasonal variation. In general the crop is planted in the spring and grows during the summer and it would be harvested in the fall. ["Wheat markets have a tendency to decline between spring and the July harvest, then begin to rise from these harvest lows into fall and winter."](https://www.cmegroup.com/education/courses/introduction-to-grains-and-oilseeds/understanding-seasonality-in-grains.html) So in my guessing, there might be 1-2 cycles per year.
+
+Second, I would like to know if there is a trend in wheat price. Is it increasing or decreasing over times. I think economic growth or human dietary habit will have an impact on the price of grains.
+
+Then I would like to fit a suitable model for the wheat price data.
+
+## Data 
+
+I choose the [daily wheat price dataset](https://www.cmegroup.com/education/courses/introduction-to-grains-and-oilseeds/understanding-seasonality-in-grains.html) dated from 2009-10-14 to 2018-03-12. There is more than one price record for each month; hence, I average the wheat price within the same months to get one data point each month from 2009-10 to 2018-03. (Total data point will be 102)
+
+```{r, echo = FALSE}
+wheat = read.csv("wheat_200910-201803.csv",header=TRUE)
+```
+
+```{r, echo = FALSE}
+names(wheat) = c("Date", "open", "high", "low", "close")
+data_wheat = wheat %>% mutate(avg = (high+low)/2) %>% select(Date, avg)
+
+for(i in 1:nrow(data_wheat)){
+  data_wheat$Month[i] = paste(strsplit(str_extract(data_wheat$Date, '^\\d+\\-\\d+'), "-")[[i]], collapse = "")
+}
+
+wheat_unlist = data_wheat %>% mutate(Month = Month %>% unlist())
+
+data_wheat_filtered = wheat_unlist %>% group_by(Month) %>% summarise(AvgPrice = mean(avg)) %>% mutate(indicator = 1:102)
+```
+
+## Data Exploration
+
+```{r}
+summary(data_wheat_filtered$AvgPrice)
+data_wheat_filtered$Month[which.max(data_wheat_filtered$AvgPrice)]
+```
+
+```{r, echo = FALSE}
+plot(data_wheat_filtered$AvgPrice, type = "l", xlab = "Year/Month", ylab = "Price", main = "Wheat Price", sub="Figure 1")
+abline(585.8, 0, col = "blue")
+```
+
+We can see that the wheat price range from 402 to 890.4, and the mean price is 585.8. The price reach the peak in 2012/09. Moreover, there is a report showing that there was a rise in the price of grains in 2012 due to the severe drought. Although Wheat price was not as much in the US, export wheat price advanced because of a reduction in world wheat production.
+
+The blue line in Figure 1 is the mean of the overall data. 
+
+
+## Stationary
+By looking at the data, it seems like stationary model is not appropriate. Which means non-constant mean and variance over time. The variance seems a bit larger in the first half time period, and there is some fluctuations in the data.
+
+It seems like the simplest model that make sense is a cubic trend. We fit a cubic trend to the data (show as red line in Figure 2)
+
+```{r, echo = FALSE}
+#original data
+lm_fit = lm(AvgPrice ~ indicator+I(indicator^2)+I(indicator^3), data = data_wheat_filtered)
+summary(lm_fit)
+yrm = 1:102
+z = cbind(1, yrm, yrm^2, yrm^3)
+beta = coef(lm_fit)
+prediction = z %*% beta
+plot(data_wheat_filtered$AvgPrice, type = "l", xlab = "Year/Month", ylab = "Price", main = "Wheat Price", sub="Figure 2")
+lines(x = yrm, y = prediction, col = "red")
+```
+
+We can use the Augmented Dickey-Fuller (ADF) test to identify stationary series. 
+Looks like it indicates the model is not stationary, since p-value = 0.088 > 0.05. 
+
+```{r, echo = FALSE}
+ts_dat = ts (data_wheat_filtered$AvgPrice)
+adf.test(ts_dat) 
+```
+
+From ACF plot below, autocorrelation exceeds the dashed lines at many lags. So cubic model may not be a good fit for our data.
+
+```{r, echo = FALSE}
+acf_resid = acf(resid(lm_fit), plot = FALSE)
+plot(acf_resid, main = "ACF of Wheat Price", sub="Figure 3")
+```
+
+
+## Data Transformation
+
+We would like to detrend our data.
+
+### Log Transformation
+
+We can see there is still an obvious trend after log transformation. Cubic trend is also fit for our data shown in Figure 4. Log transformation did not change much for the distribution of our data. Only the range of our data decreases. 
+
+```{r, echo = FALSE}
+#log transformation
+lm_fit_log = lm(log(AvgPrice) ~ indicator+I(indicator^2)+I(indicator^3), data = data_wheat_filtered)
+#summary(lm_fit_log)
+yrm = 1:102
+z = cbind(1, yrm, yrm^2, yrm^3)
+beta_log = coef(lm_fit_log)
+prediction_log = z %*% beta_log
+plot(log(data_wheat_filtered$AvgPrice), type = "l", xlab = "Year/Month", ylab = "log(Price)", main = "Log of Wheat Price", sub="Figure 4")
+lines(x = yrm, y = prediction_log, col = "red")
+```
+
+From ACF plot (Figure 5), autocorrelation exceeds the dashed lines at many lags. So cubic model also doesn't look like a good fit for our data after log transformation.
+
+```{r, echo = FALSE}
+acf_resid_log = acf(resid(lm_fit_log), plot = FALSE)
+plot(acf_resid_log, main = "ACF of log(Wheat Price)", sub="Figure 5")
+```
+
+The slow decay in residual correlation shown in the ACF plot below is a sign that differencing may be required.
+
+```{r, echo = FALSE}
+par(mfrow = c(1, 2))
+log_price_ts = ts(log(data_wheat_filtered$AvgPrice))
+price_ts = ts(data_wheat_filtered$AvgPrice)
+acf(price_ts)
+acf(log_price_ts)
+```
+
+The spectrum plot (Figure 6) has no main peak to show seasonality evidence.
+
+```{r, echo = FALSE}
+spectrum(log_price_ts, spans = c(3, 5, 3), main = "Smoothed periodogram for log(wheat price)", sub="Figure 6")
+```
+
+
+### Differnced Log Transformation
+
+$y_n = \Delta \log x_n = \log x_n - \log x_{n-1}$
+
+```{r, echo = FALSE}
+par(mfrow = c(1, 2))
+
+plot(diff(log(data_wheat_filtered$AvgPrice), differences = 1), type = "l", xlab = "Year/Month", ylab = "Price", main = "Difference of log(Wheat Price)", sub="Figure 7")
+
+diff_log_price = diff(log(data_wheat_filtered$AvgPrice))
+diff_log_price_ts = ts(diff_log_price)
+
+acf_resid_log_diff = acf(diff_log_price_ts, plot = FALSE)
+plot(acf_resid_log_diff, main = "ACF of Differenced log(Wheat Price)", sub="Figure 8")
+```
+
+After transformation, it looks more stationary with a more constant mean. Although around 35th data point the variance looks larger, we'll do further analyze to see if that point has a huge influence on our decision. ACF plot (Figure 8) have ACF's in the acceptance region, which shows a good sign to do further analyzing.
+
+Next, we'll start our model selection to find a suitable model for our data after transformation.
+
+## Model Selection
+
+### Frequency Domain
+
+We'll look at the frequency domain to see if there is any seasonality happens in our data. From the spectrum plot (Figure 9 and Figure 10), there is no obvious peak since the y axis has small scale. 
+
+
+```{r, echo = FALSE, fig.width=10}
+par(mfrow = c(1, 2))
+
+spectrum(diff_log_price_ts, main = "Unsmoothed periodogram", sub="Figure 9")
+smoothed = spectrum(diff_log_price_ts, spans = c(3, 5, 3), main = "Smoothed periodogram for Differenced log(wheat price)", sub="Figure 10")
+```
+
+### ARMA Model
+
+We'll see our transformed data as a stationary data under our null hypothesis.
+
+Then I choose to fit $ARIMA(p,1,q)$ model for nonstationary monthly data, given by 
+$$\phi (B) ((1-B) Y_n - \mu) = \psi(B) \epsilon_n$$
+where ${\epsilon_n}$ is a white noise process, $\mu = -0.0003993$
+
+$$ \phi (B) = 1 - \phi_1 B - \phi_2 B^2 - \cdots - \phi_pB^p$$
+$$ \psi(B) = 1 + \psi_1 B + \psi_2 B^2 + \cdots + \psi_q B^q$$
+
+#### Choosing parameters p and q by model AIC.
+
+```{r, echo = FALSE}
+
+aic_table = function(data,P,Q){
+table = matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] = arima(data, order = c(p,1,q))$aic
+    }
+  }
+dimnames(table) = list(paste("AR", 0:P, sep=""),paste("MA", 0:Q, sep=""))
+table
+}
+
+wheat_price_aic_table = aic_table(log_price_ts, 4, 4)
+
+knitr::kable(wheat_price_aic_table,digits=2, caption = "Model AIC Table")
+```
+
+From the AIC table we can see that ARIMA(0, 1, 1) has the smallest AIC. We'll first consider ARIMA(0, 1, 1) model. However, ARIMA(1, 1, 0), ARIMA(0, 1, 3) and ARIMA(2, 1, 0) have small AIC close to the lowest AIC, ARIMA(0, 1, 1) is a simple model with the lowest AIC. So we'll consider ARIMA(0, 1, 1) model at this time.
+
+```{r}
+arima011 = arima(log_price_ts, order = c(0,1,1))
+
+arima011$coef
+```
+
+ARIMA(0, 1, 1) has a coefficient = 0.191.
+We can get model for ARIMA(0, 1, 1): $((1-B)Y_n -\mu) = (1+ 0.191B)\epsilon_n$, where $\mu = -0.0003993$.
+
+
+## Check model assumptions
+Now we can check if our model ARIMA(0, 1, 1) meet the model assumption.
+
+First, we check the residuals. The residuals seem to be equally distributed around zero, and there is no obvious pattern. ACF plot also shows that $\epsilon_n$ follows normal distribution (white noise), since they did not exceed the dashed lines. We have no evidence to reject the null hypothesis that $\epsilon_n$ follows normal distribution. So the model seems like a pretty good fit.
+
+```{r}
+forecast::checkresiduals(arima011)
+```
+
+## Simulating
+
+Simulate ARIMA(0, 1, 1) model with $\mu = -0.0003993$
+
+```{r, echo = FALSE}
+set.seed(409622)
+arima011.sim = arima.sim(list(order = c(0,1,1), ma = 0.191), n = 102, sd = sqrt(0.00451))-0.0003993
+
+par(mfrow = c(1, 2))
+plot(arima011.sim, type = "l", main = "Simulated ARIMA(0, 1, 1) Model")
+plot(diff(log(data_wheat_filtered$AvgPrice), differences = 1), type = "l", xlab = "Year/Month", ylab = "Price", main = "Difference of log(Wheat Price)")
+```
+
+## Conclusion
+The original data has a large range in the price, and there is a cubic trend by looking at the data. Although the trend seems to be decreasing, there is a little increase at the end of the data. I won't say the price of wheat will continue to decrease in the future. Moreover, we can see from the periodogram, there is no obvious peak in the plot. Therefore, we'll assume that there is no seasonality, although in my guess, there will be a seasonality in wheat price.
+
+After data transforming and model fitting, I choose to fit a ARIMA(0, 1, 1) model by AIC to fit our data. From the diagnosis, we can say that the model selected is a pretty good fit for our data.
+
+## References
+
+Data source: https://www.kaggle.com/nickwong64/daily-wheat-price
+
+Wheat Price: https://www.cmegroup.com/education/courses/introduction-to-grains-and-oilseeds/understanding-seasonality-in-grains.html
+
+Drought Report: https://www.bls.gov/opub/btn/volume-1/impact-of-the-drought-on-corn-exports-paying-the-price.htm
+
+Seasonal decaying acf: https://medium.com/@kfoofw/seasonal-lags-sarima-model-fa671a858729
+
+SARIMA Model Parameters: https://towardsdatascience.com/time-series-forecasting-with-a-sarima-model-db051b7ae459
+
+Past project: https://ionides.github.io/531w16/midterm_project/project5/mid_term.html
+https://ionides.github.io/531w16/midterm_project/project19/crude_oil_price.html
+
+Lecture Notes and Script for main analysis.

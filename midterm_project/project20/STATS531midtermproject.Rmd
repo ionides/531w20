@@ -1,0 +1,292 @@
+---
+title: "Time Serires Analysis on Population of United States"
+date: "2/29/2020"
+output:
+  html_document:
+    fig_caption: true
+    theme: flatly
+    toc: yes
+    toc_depth: 2
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Background Introduction
+Population is always an attractive topic in time series study. The exact number of population can help the government make better decisions and the trend of population can somehow reflects the development of the whole country. In particular, people care about sustainable development and the fact that many countries suffer from ageing population. When population grows rapidly, it may cause the problem of insufficient resources in the future. On the contrary, slow increasing rate or even negative increasing rate may lead to ageing population. United States is the first modern country that take census. And in this project, I am going to analyze the trend of population among the nearest 70 years in United States. The result may do help to some further analysis like fertility rate and age structure of the society.
+
+# Data Introduction
+The data is collected by U.S. Census Bureau $^{[1]}$ from 1952.1 to 2019.12, recorded once a month. And the whole dataset can be downloaded from Kaggle $^{[2]}$. The overview of the data is showing below.
+
+
+```{r, warning=FALSE, message=FALSE,echo=FALSE}
+require(readr)
+require(tseries)
+require(forecast)
+require(knitr)
+require(plyr)
+require(doParallel)
+require(foreach)
+require(sarima)
+POP <- read_csv("POP.csv")
+ttt = ts(POP$value, start = c(1952,1))
+value = ts(POP$value, frequency = 12, start = c(1952,1))
+summary(value)
+```
+
+```{r, warning=FALSE, message=FALSE,echo=TRUE}
+plot.ts(value, xlab = "year", ylab = "population", main = "Population of United States")
+```
+
+# Data Analysis
+
+Obviously, the population is increasing all the time. In this case, we are more interested in the newly-born population. Therefore, doing first order difference is meaningful. Below is the plot of the data after transformation.
+
+```{r, warning=FALSE, message=FALSE,echo=FALSE}
+inc = diff(value)
+```
+
+```{r, warning=FALSE, message=FALSE,echo=TRUE}
+plot.ts(inc, xlab = "year", ylab = "newly-born population", main = "Newly-born Population of United States")
+```
+
+From the plot above, we can easily find out that there is an outlier at April, 2010. It is the only month that the population decrease. There are several methods to deal with the outlier. And I take the mean value of its last and next month as the new value. 
+
+```{r, warning=FALSE, message=FALSE,echo=FALSE}
+value[699] = (309212.0 + 309369.1)/2
+inc = diff(value)
+```
+
+## Spectrum Analysis
+
+One month is too short to observe the exact trend of population. Thus, in the following analysis, I set frequency of the time series data as 12, which means the unit of time is a year. We first take a look at the expected spectrum of the original data with and without smoothers. 
+
+```{r, warning=FALSE, message=FALSE,echo=TRUE}
+spectrum(value)
+spectrum(value, spans = c(3,5,3))
+```
+
+The spectrum density plot shows that there may be a seasonality every year. But the local peak is not large enough to confirm  the seasonality. Therefore, we can look at the spectrum density plot of the data after first order difference transformation.
+
+```{r, warning=FALSE, message=FALSE,echo=TRUE}
+spectrum(inc)
+spectrum(inc, spans = c(3,5,3))
+```
+
+In this plot, the seasonality can be better observed. When we try to find a model to fit this time series data, I will prefer a SARIMA model with period equals to 12.
+
+```{r, warning=FALSE, message=FALSE,echo=TRUE}
+unseason = decompose(inc)
+xadjust = inc - unseason$seasonal
+spectrum(ts.union(inc, xadjust), spans = c(3,5,3), main = "Original Data and Unseasonal Data")
+```
+
+To confirm what we observe above, we can apply smoothers to remove the seasonality of the original data. We can find out that the seasonal adjustment removes most of the signal at seasonal frequencies and little elsewhere.
+
+## ACF Analysis
+
+And then we can take a look of ACF (Auto Correlation Function). The first plot is for the original data (total population). The correlations are very high and decrease very slowly, which shows that the first order difference is neccessary.
+
+```{r, warning=FALSE, message=FALSE,echo=TRUE}
+acf(value)
+```
+
+The second plot is for the data after first order difference transformation. The correlations are still above the 95% CI and shows a seasonality of lag difference = 1 (12 months). 
+
+```{r, warning=FALSE, message=FALSE,echo=TRUE}
+acf(inc)
+```
+
+The last plot is for the data without seasonality. The correlation is still too high and decrease slowly. While selecting the proper model, we should also consider do the first order difference transformation on seasonal part.
+
+```{r, warning=FALSE, message=FALSE,echo=TRUE}
+acf(xadjust)
+```
+
+## Model Selection
+
+In this part, I try to find out the best model. From the analysis above, the timeseries data is nonstationary monthly data. Therefore, I select SARIMA$(p,d,q) \times (P,D,Q)_{12}$ model. The general form can be written as
+
+$$\phi(B) \Phi(B^{12}) ((1-B)^d (1 - B^{12})^D Y_n - \mu) = \psi(B)  \Psi(B^{12}) \epsilon_n$$
+
+where ${\epsilon_n}$ is a white noise process, the intercept $\mu$ is the mean of the differenced process ${\{(1-B)^d(1-B^{12})^D Y_n\}}$. 
+
+$$\phi(x) = 1 - \phi_1x - \cdots - \phi_px^p  $$
+$$\psi(x) = 1 + \psi_1x + \cdots + \psi_qx^q  $$
+$$\Phi(x) = 1 - \Phi_1x - \cdots - \Phi_Px^P  $$
+
+
+$$\Psi(x) = 1 + \Psi_1x + \cdots + \Psi_Qx^Q  $$
+
+First of all, I try SARIMA$(p,1,q) \times (0,1,1)_{12}$ model, which is frequently used for forecasting monthly time series in economics and business $^{[4]}$, and use AIC as evaluation. 
+
+```{r aic_global_table, warning=FALSE, message=FALSE}
+aic_table = function(data, P, Q){
+  table = matrix(NA, (P+1), (Q+1))
+  for (p in 0:P) {
+    for (q in 0:Q) {
+      table[p+1, q+1] = Arima(data, order=c(p,1,q), seasonal=list(order=c(0,1,1),period=12))$aic
+    }
+  }
+  dimnames(table) = list(paste("AR", 0:P, sep=""), paste("MA", 0:Q, sep=""))
+  table
+}
+population_aic_table = aic_table(value, 4, 5)
+kable(population_aic_table, digits = 2)
+```
+
+When p=2 and q=1, we have the lowest AIC value. So, we can fit the SARIMA$(2,1,1) \times (0,1,1)_{12}$ model and look at the acf of its residual.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+model = Arima(value, order=c(2,1,1), seasonal=list(order=c(0,1,1),period=12))
+summary(model)
+acf(model$resid)
+```
+
+The first correlation is still a little larger than the value of dotted line. It may suggests us to add an AR part on the seasonal part.
+
+Figuring out whether the model is invertible or casual by computing the root of $\phi(x), \psi(x)$
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+rootAR <- polyroot(c(1,-coef(model)[c("ar1","ar2")]))
+rootAR
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+rootMA <- polyroot(c(1,-coef(model)[c("ma1")]))
+rootMA
+```
+
+Though all the roots are out of the unit cycle, the root of ar1 is very close to 1, which may cause some incasual problems.
+
+And then, I also try SARIMA$(p,1,q) \times (1,1,1)_{12}$ model and use AIC as evaluation. 
+
+```{r, warning=FALSE, message=FALSE}
+aic_table2 = function(data, P, Q){
+  table2 = matrix(NA, (P+1), (Q+1))
+  for (p in 0:P) {
+    for (q in 0:Q) {
+      table2[p+1, q+1] = Arima(data, order=c(p,1,q), seasonal=list(order=c(1,1,1),period=12))$aic
+    }
+  }
+  dimnames(table2) = list(paste("AR", 0:P, sep=""), paste("MA", 0:Q, sep=""))
+  table2
+}
+population_aic_table2 = aic_table2(value, 4, 5)
+kable(population_aic_table2, digits = 2)
+```
+
+According to the AIC table, I pick SARIMA$(2,1,1) \times (1,1,1)_{12}$ and SARIMA$(1,1,2) \times (1,1,1)_{12}$ because they have relatively close AIC. I fit this two model and take a look at the ACF of their residuals.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+model1 = Arima(value, order=c(2,1,1), seasonal=list(order=c(1,1,1),period=12))
+summary(model1)
+acf(model1$resid)
+```
+
+The root examination of $\phi(x), \psi(x)$.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+root1AR <- polyroot(c(1,-coef(model1)[c("ar1","ar2")]))
+root1AR
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+root1MA <- polyroot(c(1,-coef(model1)[c("ma1")]))
+root1MA
+```
+
+Fit the SARIMA$(1,1,2) \times (1,1,1)_{12}$ model.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+model2 = Arima(value, order=c(1,1,2), seasonal=list(order=c(1,1,1),period=12))
+summary(model2)
+acf(model2$resid)
+```
+
+The root examination of $\phi(x), \psi(x)$.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+root2AR <- polyroot(c(1,-coef(model2)[c("ar1")]))
+root2AR
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+root2MA <- polyroot(c(1,-coef(model2)[c("ma1", "ma2")]))
+root2MA
+```
+
+We can find out that the results of this two model are very similar. The correlation at the first lag is still a little bit over the dotted line. Like the SARIMA$(2,1,1) \times (0,1,1)$ model I fit before, though all the roots are out of the unit cycle, the root of ar1 is very close to 1, which may cause some incasual problems. In general, both the two models fit the data well.
+
+Moreover, the auto.arima function suggests that SARIMA$(1,1,2) \times (1,1,1)_{12}$ is the best model. This function use Hyndman-Khandakar algorithm to minimize AICc and maximize log likelihood $^{[5]}$.
+
+```{r, echo = TRUE, warning=FALSE, message=FALSE}
+auto.arima(value)
+```
+
+In order to find out whether the sar1 part is neccessary or not, I apply SARIMA$(2,1,1) \times (1,1,1)$ model to do simulation for 1000 times. Below is the histogram of the coefficient of sar1.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+require(plyr)
+require(doParallel)
+require(foreach)
+require(sarima)
+set.seed(57892330)
+J <- 1000
+params <- coef(model1)
+theta <- matrix(NA,nrow=J,ncol=length(params),dimnames=list(NULL,names(params)))
+t1 <- system.time(
+pop_sim <- foreach(j=1:J) %dopar% {
+Y_j <- sim_sarima(n=816, model=list(ar=c(0.8598, 0.1217), ma=-0.6527, sar=0.0398, sma=-0.8642,iorder=1, siorder=1, nseasons=12), sigma2 = model1$sigma2)
+try(coef(Arima(Y_j, order=c(2,1,1), seasonal=list(order=c(1,1,1),period=12))))
+}
+)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+sar1 <- unlist(lapply(pop_sim,function(x)
+if(!inherits(x,"try-error"))x["sar1"] else NULL ))
+hist(sar1,breaks=50)
+```
+
+We can find out that in the most circumstances, the coefficient is non-zero. So I prefer SARIMA model with P=1. And both SARIMA$(1,1,2) \times (1,1,1)$ and SARIMA$(2,1,1) \times (1,1,1)$ can fit the data well.
+
+## Prediction
+
+Use SARIMA$(1,1,2) \times (1,1,1)$ to predict the population of United States and also apply SARIMA$(1,0,2) \times (1,1,1)$ to predict the increasement of population for the upcoming 5 years. The result shows that the population of United States will increase stably.
+
+```{r, warning=FALSE, message=FALSE}
+plot(forecast(Arima(value,order=c(1,1,2),seasonal=c(1,1,1)),h=60), main="Prediction of the Population", xlab="year", ylab="population")
+plot(forecast(Arima(inc,order=c(1,0,2),seasonal=c(1,1,1)),h=60), main="Prediction of the increase amount of Population", xlab = "year", ylab = "increase amount of population")
+```
+
+Also use SARIMA$(2,1,1) \times (1,1,1)$ to predict the population of United States and also apply SARIMA$(2,0,1) \times (1,1,1)$ to predict the increasement of population for the upcoming 5 years.
+
+```{r, warning=FALSE, message=FALSE}
+plot(forecast(Arima(value,order=c(2,1,1),seasonal=c(1,1,1)),h=60), main="Prediction of the Population", xlab="year", ylab="population")
+plot(forecast(Arima(inc,order=c(2,0,1),seasonal=c(1,1,1)),h=60), main="Prediction of the increase amount of Population", xlab = "year", ylab = "increase amount of population")
+```
+
+# Conclusion
+
+This project is aimed at exploring the trend of population of the United States. Based on the result of spectrum analysis and acf analysis, I notice that SARIMA$(p,1,q) \times (P,1,Q)_{12}$ model can be a good choice. Furthermore, I apply AIC as evaluation to figure out the best parameters p,q,P and Q of the model. A simulation study is also used to confirm my choice that SARIMA$(2,1,1) \times (1,1,1)$ and SARIMA$(1,1,2) \times (1,1,1)$ can both fit the data well.
+
+Based on the model I select, the population of United States will increase stably in the upcoming 5 years.
+
+There are also some disadvantages using SARIMA model. For example, the correlations of residuals are not all under the dotted line. And the root of $\phi(x)$ is close to unit circle, which may cause incasual problems. More advanced techniques can be applied to better fit with the data.
+
+
+# Reference
+[1] https://www.census.gov/
+
+[2] https://www.kaggle.com/census/population-time-series-data
+
+[3] https://fred.stlouisfed.org/
+
+[4] https://ionides.github.io/531w20/06/notes06-annotated.pdf
+
+[5] https://www.rdocumentation.org/packages/forecast/versions/8.11/topics/auto.arima
+
+[6] https://ionides.github.io/531w18/midterm_project/

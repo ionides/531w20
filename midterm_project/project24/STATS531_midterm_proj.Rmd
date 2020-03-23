@@ -1,0 +1,320 @@
+---
+title: "STATS531 Midterm Proj"
+date: "3/8/2020"
+output: 
+  html_document:
+    toc: yes
+    theme: flatly
+---
+
+```{r include=F}
+library(pomp)
+library(knitr)
+library(ggplot2)
+library(mFilter)
+library(astsa)
+library(forecast)
+```
+
+# 1. Introduction
+
+As the development of globalization, exchange rate is now playing a very important role in finance and it is the most important price in any economy. When the currency appreciates, the country becomes more expensive and less competitive internationally. At the same time its citizens enjoy a greater standard of living as they can buy international products at lower prices.[1] 
+
+Here in this report, I want to conduct an analysis about the exchange rate between US Dollar (USD) and British Pound (GBP) between 2009 and 2015 since the United States and the United Kindom are two of the most powerful western countries and I would like to figure out how their currecies' relationship behave. And the reason why I'm interested in this time period is that exchange currency rate is usually significantly affected by influential international events. And as we know, due to the huge financial crisis in 2007-2008, not only GBP and USD are greatly affected but the whole currency system as well. And the unintentional "Brexit" event that first came out in 2016, also significantly affected the GBP currency system. Since these kinds of global high-impact events are not very predictable, I am more interested in investigating the relationship in normal years, from 2009 to 2015.
+
+# 2. Data Overview
+
+I downloaded the data from "FRED" (Federal Reserve Bank of St.Louis) [2]. The data contains weekly exchange rates between USD and GBP from the first week of 2009 to the first week of 2015. 
+
+First, let's read in the data and get some general ideas. 
+```{r echo=F}
+data <- read.csv("DEXUSUK.csv")
+date <- seq(from=2009+1/52,length=nrow(data),by=1/52)
+data$DATE <- date
+head(data)
+```
+There are a total of 312 equally spaced time points. For each data point, there are two parameters. The parameter "DATE" is the time of the price, and the parameter "DEXUSUK" being the average rate of the week. Each price in a data point represents how much on average is 1 pound in USD in this week. Take as example the value of 1.46, then that means in this week, 1 pound = 1.46 dollars. 
+(Note that, for parameter "DATE", for the purpose of analysis, I have transformed the original dates into numerical form by adding multiples of 1/52 to 2009 so that it's easier to plot.)
+
+Now let's look at a brief summary of this time series data:
+```{r echo=F}
+summary(data$DEXUSUK)
+```
+We can see from above that the average exchange rate is around 1.585 and the min is around 1.381 while the max is around 1.714. To have a more thorough idea of the date, let's make a time plot! Note that the blue line represents the mean of the exchange rates.
+
+```{r echo=F}
+plot(DEXUSUK~DATE,data=data,type="l",xlab="Year", ylab="USD",main="Monthly Exchange Rate of 1 GBP to USD",
+     ylim = c(1.3,1.8))
+abline(h=mean(data$DEXUSUK),col="blue")
+```
+
+From above plot, we notice that there exists some oscillation in different weeks, but they overall tend to bounce back to the average line. At the beginning of the data, the exchange rate is relatively low, which might be explained by the continuing effect of the great financial crisis of 2008. Other than that, there are some high's such as around the mid of 2014 where it reached the peak (1 pound to 1.714 dollars), and there are some low's as well around the mid of 2010 (1 pound to 1.43 dollars).
+
+To make the plot easier to read, let's make a smoothed time plot using Loess smoothing.
+
+```{r echo=F}
+rates <- data[,2]
+loess1 <- loess(rates~date,span=0.5)
+plot(date,rates,type="l",col="red", xlab="Year",ylab="USD",main="Trend of GBP to USD Exchange Rate")
+lines(loess1$x,loess1$fitted,type="l")
+abline(h=mean(rates),col="blue")
+```
+
+From the plot, we don't see very obvious periods in the time series, but we can never confirm until we check it. 
+
+To identify whether or not these exists periods, we can do a smoothed spectrum analysis.
+
+```{r echo=F}
+unsmooth <- spectrum(data$DEXUSUK,spans=c(2,2),main="Unsmoothed periodogram")
+freq_un <- unsmooth$freq[which.max(unsmooth$spec)]
+```
+
+From the frequency plot, we can identify that the most frequent is around 0.0125 cycles per week, or in other word, 80 weeks per cycle. If we look back to the time plot, we can find that there is very weak period of around 80 weeks. There are some downs in the plot roughly around multiples of 80 weeks. However, this is very week and doesn't intuitively make much sense, thus I will not cover it in this analysis.
+
+# 3 Fitting an ARMA(p, q) model
+
+From the time plot we see that the trend in this time series data is very weak, if not none. Therefore, starting with a ARMA(p,q) model seems reasonable to me. The null hypothesis is that, the average of exchange rates between GBP and USD doesn't change much over the years, despite the osciallations, which almost every time series data has. 
+
+In order to choose optimal pair of (p,q) values, I decided to tabulate a chart of AIC values under different (p,q) values as below:
+```{r echo=F}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR", 0:P, "<b>", sep=" "), paste("MA", 0:Q, sep=" "))
+  table
+}
+usuk <- data$DEXUSUK
+date1 <- data$DATE
+usuk_aic_table <- aic_table(usuk,3,3)
+kable(usuk_aic_table,digits=2)
+```
+
+
+The formula of AIC is as follow: 
+$$AIC=-2 \times \ell(\theta^*) + 2D$$
+where $\ell(\theta^**)$ is the log likelihood function $\mathscr{L}=f_{Y_{1:N}}(y^*_{1:N};\theta)$ and $D$ represents the number of parameters, which makes the second term $2D$ a penalty for over-complicated models that might cause overfitting issues.
+
+Therefore, we would like to minimize the AIC value. And from the above table, we can see that ARMA(1,1) and ARMA(3,2) give the lowest AIC values, at -1709.81 and -1708.95 respectively. Let's start with ARMA(1,1), the simpler one first, since we always prefer the simpler model, if they have similar performances.
+
+## 3.1 Fitting ARMA(1,1)
+```{r echo=F}
+arma11 <- arima(usuk, order = c(1,0,1))
+arma11
+```
+
+The fitted ARMA(1,1) model given above result could be written as:
+$$\phi(B)(Y_n - 1.5751) = \psi(B)\varepsilon_n$$
+where $B$ is the backshift operator, and these polynomials are defined as follows:
+$$\phi(x) = 1 - 0.954x \hspace{3cm} \psi(x) = 1 - 0.254x$$
+
+### Diagnostic of ARMA(1,1)
+
+There are several things we need to check to make sure ARMA(1,1) satiefies the criteria.
+
+First I want to investigate more into the roots of the AR and MA polynomials of ARMA(1,1) model. In other words, we want to find the roots for $\phi(x)$ and $\psi(x)$ above.
+
+```{r, echo = FALSE}
+ar.root <- polyroot(c(1,-coef(arma11)["ar1"]))
+ma.root <- polyroot(c(1,-coef(arma11)["ma1"]))
+ar.root
+ma.root
+```
+
+Since these two roots are both greater than 1 (outside of the unit circle), we can say the causality and invertibility are satiefied properly. Also, there don't seem to be any redundancy since the roots are not similar.
+
+Then, we want to check whether the assumptions are satisfied for ARMA(1,1). Let's start with checking the residuals of the fitted ARMA(1,1) model as a time series plot:
+
+```{r echo=F}
+plot(arma11$residuals, ylab="residuals", main="Residuals of ARMA(1,1) model")
+```
+
+From this plot we notice that, except for one extreme value around the beginning, all other values seem not striking and this should not be too worrisome.
+
+Next, we look at the autocorrelation plot of the ARMA(1,1) residuals.
+
+```{r echo=F}
+acf(arma11$resid,main="ACF of residuals")
+```
+
+Since all of the lags have values lying between the dashed lines, this indicates the assumption that the errors $\{\varepsilon_n\}$ are uncorrelated is correct.
+
+Another important assumption of the model is that $\{\varepsilon_n\} \sim \mathcal{N}(0,\sigma^2)$, thus we will check the normality assumption by QQ-plot.
+
+```{r echo=F}
+qqnorm(arma11$residuals)
+qqline(arma11$residuals)
+```
+
+From this plot, we see that apart from a few points that deviate a bit from the line, all others almost lie on the line, which means the normality condition is roughly satisfied.
+
+
+Let's try the other model!
+
+## 3.1 Fitting ARMA(3,2)
+
+```{r echo=F}
+arma32 <- arima(usuk, order = c(3,0,2))
+arma32
+```
+
+The fitted ARMA(3,2) model given above result could be written as:
+$$\phi(B)(Y_n - 1.5822) = \psi(B)\varepsilon_n$$
+where $B$ is the backshift operator, and these polynomials are defined as follows:
+$$\phi(x) = 1 - 1.757x + 0.5721x^2 + 0.1891x^3 \hspace{3cm} \psi(x) = 1 + 0.574x + 0.3956x^2$$
+
+### Diagnostic of ARMA(3,2)
+
+Again, we check AR and MA polynomial roots:
+
+```{r echo=F}
+abs(polyroot(c(1,-1.7568,0.5721,0.1891)))
+abs(polyroot(c(1,-0.5736,-0.3956)))
+```
+
+AR roots are 1.02, 1.02 and 5.07, while MA roots are 1.02 and 2.47, indicating that there might be redundancy in the model, but the causality and invertibility are satiefied.
+
+We then check residuals of ARMA(3,2) by plotting it against time and making the autocorrelation plot.
+
+```{r echo=F}
+plot(arma32$residuals, ylab="residuals", main="Residuals of ARMA(3,2) model")
+acf(arma32$resid,main="ACF of residuals")
+```
+
+Here we see very similar plots between ARMA(3,2) and ARMA(1,1), therefore, ARMA(3,2) also has uncorrelated residuals.
+
+```{r echo=F}
+qqnorm(arma32$residuals)
+qqline(arma32$residuals)
+```
+
+Similarly, from this QQ-plot, we think the residuals are roughly normally distributed.
+
+Many of the times, directly using the time series data might not be a good idea. Instead, calculating the difference between data points and using that as the new data usually gives pretty good fit. 
+
+# 4 Fitting an ARIMA model
+
+In time series, it's usually worth a try to use the differenced data instead of the original one, since the differenced data might sometimes produce more mean-stationary time series, such that an ARMA model qualifies better. Therefore, let's consider fitting some ARIMA models.
+
+First, generate the differenced data by taking difference between adjacent data points and use as new data points.
+
+```{r echo=F}
+z <- diff(data$DEXUSUK)
+plot(z, type="l", xlab="Time")
+```
+
+From this time plot, we notice that it behaves quite similarly to untransformed time series.
+
+In order to build proper model, we tabulate a table of AIC values under different pairs of (p,q) values for ARIMA(p,1,q).
+
+```{r echo=F}
+aic_table2 <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] <- arima(data,order=c(p,1,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR", 0:P, "<b>", sep=" "), paste("MA", 0:Q, sep=" "))
+  table
+}
+usuk2_aic_table <- aic_table2(usuk,3,3)
+kable(usuk2_aic_table,digits=2)
+```
+
+From the AIC table, we notice that ARIMA(3,1,2), ARIMA(2,1,3) and ARIMA(3,1,3) have lowest AIC values.
+
+```{r}
+arma213 <- arima(usuk, order = c(2,1,3))
+arma312 <- arima(usuk, order = c(3,1,2))
+arma313 <- arima(usuk, order = c(3,1,3))
+# Check causality
+abs(polyroot(c(1,-coef(arma213)["ma1"],-coef(arma213)["ma2"],-coef(arma213)["ma3"])))
+abs(polyroot(c(1,-coef(arma312)["ma1"],-coef(arma312)["ma2"])))
+abs(polyroot(c(1,-coef(arma313)["ma1"],-coef(arma313)["ma2"],-coef(arma313)["ma3"])))
+```
+
+However, after building these three models and check the roots for MA polynomials, they all have one of the MA roots having absolute value smaller than 1, which means they have non-invertible issue. Thus I will check the next smallest AIC model, which is ARIMA(0,1,1)
+
+## 4.1 Fitting ARIMA(0,1,1)
+
+ARIMA(0,1,1) model is basically the ARMA(0,1) model built on 1 lag differenced data. Let's build the model and check its roots for AR and MA polynomials as usual.
+
+```{r echo=F}
+arma011 <- arima(usuk, order = c(0,1,1))
+arma011
+```
+
+```{r echo=F}
+abs(polyroot(c(1,-0.2355)))
+```
+
+Therefore, we know that this model satisfies both causality and invertibility. Then we want to check its residuals in terms of the normality and correlation by making time plot, QQ-plot and autocorrelation plot.
+
+```{r echo=F}
+plot(arma011$residuals, ylab="residuals", main="Residuals of ARIMA(0,1,1) model")
+qqnorm(arma011$residuals)
+qqline(arma011$residuals)
+acf(arma011$resid,main="ACF of residuals")
+```
+
+From the time plot and QQ-plot, we notice that even if there are some points slightly off the line, most points line on the line, and thus we think the residuals are roughly normally distributed. By looking at the ACF plot, we note that all lags have values between the dashed lines, meaning the residuals are uncorrelated. Therefore, the assumptions of the model seem to be satisfied.
+
+# 5. Forecasting future rates
+
+After the above analysis, I want to use ARMA(1,1), ARMA(3,2) and ARIMA(0,1,1) models to forecast future rates (next 30 weeks) and compare the results with real values. This could be done through the "forecast" package in R.[3]
+
+```{r echo=F}
+library(forecast)
+forecast1 <- forecast(arma11, h=30)
+forecast2 <- forecast(arma011, h=30)
+forecast3 <- forecast(arma32, h=30)
+plot(forecast1, xlab="Time", ylab="USD", ylim = c(1.3,1.8), main = "Forecasts from ARIMA(1,0,1)")
+plot(forecast2, xlab="Time", ylab="USD", ylim = c(1.3,1.8))
+plot(forecast3, xlab="Time", ylab="USD", ylim = c(1.3,1.8), main = "Forecasts from ARMA(3,2)")
+```
+
+From above three plots we note that, ARMA(1,1) predicts the rates going up, ARIMA(0,1,1) predicts the rates staying at current level and ARMA(3,2) predicts that the rates drop first and go back up.
+
+Then I will download the extended data set from "FRED"[1] and compare with the real data.
+
+```{r echo=F}
+data2 <- read.csv("DEXUSUK_30more.csv")
+date2 <- seq(from=2009+1/52,length=nrow(data2),by=1/52)
+data2$DATE <- date2
+```
+
+```{r echo=F}
+data3 <- cbind(data2, c(rep(0,nrow(data)), rep(1,nrow(data2)-nrow(data))))
+colnames(data3)[3] <- "Group"
+library(ggplot2)
+ggplot(data3, aes(x=DATE, y=DEXUSUK, color=as.factor(Group))) + 
+  geom_line(size=0.5) + 
+  xlab("Year") + 
+  ylab("USD") + 
+  ggtitle("Monthly Exchange Rate of 1 GBP to USD")
+```
+
+In the above real data time plot, the red part is the original data that we used to analyze earlier. The green part is the extended real data (30 more weeks after the first week of 2015). From here, we can clearly see that ARMA(3,2) model gives a better fit than the other two.
+
+# 6 Conclusion
+
+After all the analysis, we conclude that ARMA(3,2) is the most appropriate model in terms of forecasting accuracy. While ARIMA(0,1,1) and ARMA(1,1) might be chosen if we don't care too much about forecast but the simplicity of the model. 
+
+
+# 7 References
+
+[1] https://www.theglobaleconomy.com/guide/article/107/
+
+[2] https://fred.stlouisfed.org/series/DEXUSUK#0
+
+[3] https://www.datascience.com/blog/introduction-to-forecasting-with-arima-in-r-learn-data-science-tutorials
+
+Besides above references, I also referenced the following two report from previous years:
+
+[4] https://ionides.github.io/531w18/midterm_project/project5/ProjectPaper.html#fitting-an-armapq-model
+
+[5] https://ionides.github.io/531w16/midterm_project/project22/mid-project.html

@@ -1,0 +1,184 @@
+---
+title: "Time Series Analysis of value of real estate in the U.S"
+date: "`r format.Date(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(quantmod)
+library(xts)
+library(zoo)
+library(TTR)
+library(TSA)
+library(lmtest)
+```
+
+# Question Description
+
+Real estate investing may take a variety of forms. Real estate investments may be classified along two dimensions: debt or equity based, and in private or public markets. Equity investments in real estate that occur in the private markets are often referred to as direct investments in real estate. The money to finance real estate property purchases comes from many sources. A well-known form of debt financing of real estate purchases is mortgages. Private investors—institutional and individual, real estate corporations, and REITs-may provide the equity financing for the purchase.
+
+REITs sell shares to raise funds to make property purchases. REIT shares are typically publicly traded and represent an indirect investment in real estate property. REIT index use the prices of publicly traded shares of REITs to construct the indices. Therefore, the REIT index is a good way to evaluate the value of real estates as the trade of REITs share is more consistent campared with trading real estates directly. 
+
+The observations for the Wilshire US Real Estate Investment Trust Total Market Index (Wilshire US REIT) represent the daily index value at market close. The total market indice are total market returns, which do include reinvested dividends. The historical Wilshare US REIT index data used in the project comes from [FEDERAL RESERVE BANK of ST. Louis](https://research.stlouisfed.org/). I get access to the data via the package `quantmod`.
+
+I am interested in its short-term trend in the future, hoping to predict its future prices according to the past year data by a proper time series model. 
+
+
+# Data Analysis
+## Exploratory Data Analysis
+
+```{r 2.1.1}
+getSymbols("WILLREITIND", src = "FRED")
+chartSeries(WILLREITIND,theme = 'white')
+```
+
+This is the REIT index from 1977. As there are too many missing values in the early years and the financial crisis in 2009 affected the data dramaticlly, I tend to study the data starting from 2010 and then remove a few existing missing values. There are 2054 observations left after deleting data before 2010 and missing values.
+
+```{r 2.1.2, echo=FALSE}
+dt1 = data.frame(WILLREITIND)
+dt2 = na.omit(dt1[-(1:8871),])
+plot(dt2,type = 'l',ylab = 'REIT index',main = 'REIT index figure')
+```
+
+From the time series plot, we can see that REIT indice show a increasing trend during the years. However, there are some oscillations near each time points. Thus, I determine to study the detrending REIT indice instead. The time series plot and sample auto-correlation plot are shown as follows:
+
+```{r 2.1.3, echo=FALSE}
+par(mfrow=c(1,2))
+detrend = diff(dt2)
+plot(detrend,type = 'l',ylab = 'Remove tendency',main = 'Detrending REIT index')
+abline(h = mean(detrend),col = 'red', lty = 2)
+stats::acf(detrend,lag.max = 50, main = 'Sample ACF Plot')
+```
+
+We can see from the time series time plot that the sequence is mean stationary. For the sample auto-correlation plot, we can see that almost the auto-correlations for almost all lags fall between the two dashed lines. This could be a indication for covariance stationarity. We then dig more into the periodogram to find out whether there is a cycle exist in the sequence.
+
+```{r 2.1.4}
+spectrum(detrend, main = "Unsmoothed periodogram")
+smoothed_r = spectrum(detrend, spans=c(30,30), main = "Smoothed periodogram")
+abline(v = min(smoothed_r$freq[findPeaks(smoothed_r$spec)]),col = 'red',lty=2)
+1/min(smoothed_r$freq[findPeaks(smoothed_r$spec)])
+```
+
+We see that the dominant frequency is 0.01944444, which corresponds to a period of 51.42857 days after deleting the days that trades of REIT shares are not open.
+
+## Model Selection
+
+Next, we can fit stationary Gaussian ARIMA$(p,0,q)$. It is natural to choose $(p,q)$ by AIC scores. The lower AIC score reflects the higher log-likelihood and fewer parameters.
+
+```{r 2.2.1}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+temp_aic_table <- aic_table(detrend,5,5)
+require(knitr)
+kable(temp_aic_table,digits=2)
+
+```
+
+We can see that the ARIMA(3,0,4) model gives the smallest AIC.However, I tend to work with ARIMA(4,0,1) and ARIMA(4,0,0) model as the AIC value is not too far away from that of ARIMA(3,0,4). Although AIC rewards model simplicity, does so only as far as complexity leads to poor prediction from overfitting. Other considerations are that smaller models reduce problems with parameter identifiability, invertibility, and numerical stability which we know are common when fitting larger ARMA models. Implicity may be particularly valuable if we want to interpret parameters. Redundant models (or close to redundant) are undesirable, whatever the AIC.
+
+Also it is noticable that the table is inconsistent — adding a parameter can only increase the maximized log-likelihood, i.e. the AIC can only increase by $\leq$2. But there are several positions violating such a rule. This can only come about by imperfect likelihood calculation and/or maximization. We may suspect a problem with likelihood maximization.
+
+## Fit a Model
+
+We first fit the ARIMA(4,0,0) model:
+
+```{r 2.3.0}
+fit0 = arima(detrend, order = c(4,0,0))
+fit0
+```
+
+Thus the fitted model is:
+$$(1-0.0239B+0.0.0240B^2-0.0261B^3+0.0886B^4)(X_n-3.1403)=\epsilon_n$$
+
+Where $B$ is the backshift operator, $\{\epsilon_n\}$ is white noise with standard deviation 82.1. The likelihood calculation also
+assumes that $\{\epsilon_n\}$ is Gaussian, i.e. an independent sequence with $\epsilon_n ∼ N(0, 82.12)$.
+
+Then we fit the ARIMA(4,0,1) model:
+
+```{r 2.3.1}
+fit1 = arima(detrend, order = c(4,0,1))
+fit1
+```
+
+Thus the fitted model is:
+$$(1+0.2277B+0.0187B^2-0.0204B^3+0.0827B^4)(X_n-3.1642)=(1+0.2528B)\epsilon_n$$
+Where $B$ is the backshift operator, $\{\epsilon_n\}$ is white noise with standard deviation 82.1. The likelihood calculation also
+assumes that $\{\epsilon_n\}$ is Gaussian, i.e. an independent sequence with $\epsilon_n ∼ N(0, 82.12)$.
+
+We then want to decide which model is better.
+
+```{r 2.3.2}
+fit00 = arima(detrend, order = c(0,0,0))
+lrtest(fit0,fit1)
+lrtest(fit00,fit0)
+```
+
+The null hypothesis is that the smaller model is the “best” model; It is rejected when the test statistic is large. In other words, if the null hypothesis is rejected, then the larger model is a significant improvement over the smaller one. The p-value for the test is large which means we should not reject the null hypothesis. Therefore, ARIMA(4,0,1) model is no better than ARIMA(4,0,0) model. Also we use likelihood ratio test to make sure that ARIMA(4,0,0) model is better than the reduced ARIMA(0,0,0) model, which indicates REIT index is not an independent data.
+
+# Diagnostics
+
+As we have choosed ARIMA(4,0,0) model as before, we will do some diagnostics for the fitted model.
+
+```{r 3.1}
+par(mfrow=c(1,1))
+stats::acf(residuals(fit0), main = 'ACF plot for residuals')
+```
+
+From the auto-correlation plot of residuals, we can see that auto-correlation of almost all lags fall between the two dashed lines except for $lag=9$, which means the residuals appear to be uncorrelated. 
+
+```{r 3.4, }
+par(mfrow = c(1,2))
+plot(fitted(fit0),residuals(fit0),xlab = 'fitted values',ylab='residuals')
+abline(h = 0,lty=2,col='red')
+hist(residuals(fit0),breaks = 50,freq = F, xlab = 'residuals', main = 'Histogram of residuals')
+lines(density(residuals(fit0)),col='red', lty=2)
+par(mfrow=c(1,1))
+```
+
+From the residuals vs. fitted values plot and the density plot of residuals, we can conclude that the distribution of the residuals is not skewed.
+
+```{r 3.2}
+qqnorm(residuals(fit0))
+qqline(residuals(fit0))
+```
+
+From qqplot, we can see that the distribution of residuals is long-tailed at both ends, meaning more extreme values will occur.
+
+```{r 3.3}
+shapiro.test(residuals(fit0))
+```
+
+Then I conduct a Shapiro-Wilk test for the residuals. The null hypothesis for Shapiro-Wilk test is that the sequence follows normal distribution and p-value for the test is very small. Thus we have to reject the null hypothesis. As the normal assumption of residuals has been violated, the estimations of standard errors and confidence intervals are not dependable while the point estimation can still be valid. The further focuses may be transforming the sequence and looking for predictors to be added to the model.
+
+
+
+# Conclusion
+
+I find ARIMA(4,0,0) model fits REIT index time series by using the AIC table and comparing the model with ARIMA(4,0,1). However, though the autocovariance of the data seems that ARIMA(4,0,0) model fits well on the data, the qqplot shows that the residuals have long tail at both ends, deviateing from the independent normal distribution residual assumption, which indicates a more complex model is needed.
+
+Though ARIMA(4,0,0) model is not a good model fitting real data, it does show some main characteristics of the data. First, REIT index has a significant increasing trend, and the trend disappears by differentiating this time series index once. Second, REIT index does not have a seasonal effect, but there is a cycle of around 2 months in the sequence. Therefore, the model could be a reference in predicting the future.
+
+Finally, the study shows that REIT index series is not an independent data. Today’s index is related to historical index. However, ARIMA(4,0,0) model may not be the most exact model, and further analysis with more complex model is needed.
+
+
+# Reference
+
+- Wilshire US Real Estate Investment Trust Total Market Index([Wilshire US REIT](https://fred.stlouisfed.org/series/WILLREITIND)). FRED.
+- Sildes from [ionides.github.io/531w20](ionides.github.io/531w20). Prof. Edward L. Ionides.
+- Derivatives and Alternative Investments, Level I Volume 6, 2019. CFA Program Curriculum.
+- Time Series Analysis and its Applications, 4th edition. R. Shumway and D. Stoffer.
+- Linear Model with R, 2005. Julian J. Faraway.

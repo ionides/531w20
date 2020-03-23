@@ -1,0 +1,575 @@
+---
+title: 'Time Series Analysis on Mothly Crime Numbers in Seattle from 2008 to 2018 '
+date: "3/6/2020"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+  word_document:
+    toc: yes
+subtitle: STATS 531 MIDTERM PROJECT
+bibliography: references.bib
+---
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(MASS)
+library(foreign)
+if (!require('datasets')) install.packages('datasets'); library('datasets')
+if (!require('e1071')) install.packages('e1071'); library('e1071')
+if (!require('FNN')) install.packages('FNN'); library('FNN')
+if (!require('dplyr')) install.packages('dplyr'); library('dplyr')
+if (!require('tidyr')) install.packages('tidyr'); library('tidyr')
+if (!require('ggplot2')) install.packages('ggplot2'); library('ggplot2')
+if (!require('ISLR')) install.packages('ISLR'); library('ISLR')
+if (!require('gam')) install.packages('gam'); library('gam')
+if (!require('forecast')) install.packages('forecast'); library('forecast')
+if (!require('xts')) install.packages('xts'); library('xts')
+if (!require('zoo')) install.packages('zoo'); library('zoo')
+if (!require('fma')) install.packages('fma'); library('fma')
+if (!require('expsmooth')) install.packages('expsmooth'); library('expsmooth')
+if (!require('lmtest')) install.packages('lmtest'); library('lmtest')
+if (!require('tseries')) install.packages('tseries'); library('tseries')
+if (!require('fpp')) install.packages('fpp'); library('fpp')
+if (!require('knitr')) install.packages('knitr'); library('knitr')
+if (!require('ggpubr')) install.packages('ggpubr'); library('ggpubr')
+if (!require('simEd')) install.packages('simEd'); library('simEd')
+if (!require('bibtex')) install.packages('bibtex'); library('bibtex')
+if (!require('knitcitations')) install.packages('knitcitations'); library('knitcitations')
+library(knitcitations); cleanbib()
+cite_options(citation_format = "pandoc", check.entries=FALSE)
+set.seed(5454481)
+```
+
+# 1.Introduction
+
+As one of the earliest cities in U.S. which adopted new crime records management system, [Seattle Police Department](https://www.seattle.gov/police/information-and-data/seastat#2020slides) has one of the best data base on crimes since 1982. Based on the great dataset, multiple researches have been conducted on Seattle crimes. Pamela Rountree, Kenneth Land, and Terance Miethe investiagated individuals' risks of violent crime and burglary victimization as a function of both individual crime opportunity factors and contextual indicators of neighborhood social disorganization using hierarchical methods `r citep(c("10.1111/j.1745-9125.1994.tb01159.x"))`. David Weiburd, Nancy Morris, and Elizabeth Groff performed a longitudinal study to investigate the juvenile crimes by micro level units of geography `r citep(c("10.1007/s10940-009-9075-9"))`. David Weisburd and John Eck proceed to research on micro level crime incidients over a 14-year period and found the crimes on stree segments in Seattle are stable `r citep(c("10.1177/0002716203262548"))`. There are many more researches concerning on the different parts of Seattle crimes, thanks to the detailed crime data provided by Seattle Police Department. 
+
+Unfortunately, a better data base did not lead to a decrease in crime rate or lower police administration cost for Seattle Police Department. Even though there are many researches done on finding relationship between time, weather, and crimes. For example, a famous study conducted by Matthew Ranson analyzed 30-year panel of monthly crime accross 2997 US counties`r citep(c("10.1016/j.jeem.2013.11.008"))`, which set up a great example in relating time trends, weather, and crimes. However, there are seldom studies done to investigate the relationship of time, weather, and crimes for Seattle specifically, especially given the fact that Seattle Police Department's budget increased 9.7% in the past year. It would be valuable if we could use time series analysis to get insights from the whole crime data in the past 10 years, which can benefit Seattle Police Department allocate seasonal resources in controlling crimes and save some budget.
+
+--------------------------------------------------------------------------------
+
+## 1.1 Questions
+
+Following our discussion above, I would like to raise two questions that I want to solve in my report:
+
+* Question1: Does the monthly crimes in Seattle from 2008 to 2018 has an increasing trend?
+* Question2: Does the monthly crimes in Seattle from 2008 to 2018 has any time-related patterns that could be explained by ARIMA or SARIMA models?
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+# 2.Data
+
+## 2.1 Data Source and Setting up
+
+As mentioned above, The data were collected from [Seattle Police Department](https://www.seattle.gov/police/information-and-data/seastat#2020slides). The data covered the reported offenses and offense categorization coded to simulate the standard reported to the FBI under the National Incident Based Reporting System (NIBRS) in Seattle from January 1974 to May 2019. In its original form, it had detailed variables including incident ID, location, crime types, and so on. Each row contains the record of a unique event where at least one criminal offense was reported by a member of the community or detected by an officer in the field. I extracted the crime counts by month from the data's original form, which covered all sources/types of cimres. There is no missing data in the original data set, hence all the data were used for my analysis. There are 132 months included in the scope. Here is a first look at the data:
+
+```{r, include=FALSE}
+SEcrime <- read.csv2("Crime_Data.csv", sep=",", header=TRUE)
+SEcrime$Date = as.Date(SEcrime$OccurredDate, "%m/%d/%Y")
+SEcrime$WeekNum = strftime(SEcrime$Date, format = "%V")
+SEcrime$MonthNum = strftime(SEcrime$Date, format = "%m")
+SEcrime$YearNum = strftime(SEcrime$Date, format = "%Y")
+SEcrime = subset(SEcrime, YearNum >= 2008)
+SEcrime = SEcrime[complete.cases(SEcrime), ]
+crimeDF <- SEcrime %>%
+  group_by(SEcrime$YearNum,SEcrime$MonthNum) %>%
+  summarise(frequency = n())
+n<-dim(crimeDF)[1]
+crimeDF<-crimeDF[1:(n-5),]
+names(crimeDF)[names(crimeDF) == "frequency"] <- "CrimeCounts"
+```
+```{r, echo=FALSE}
+head(crimeDF)
+```
+
+----------------------------------------------------------------------------------
+
+## 2.2 Explortorary Data Analysis
+
+First we could take a look at the general distribution by looking at the summary statistics and boxplot(**Figure 1**):
+
+```{r,echo=FALSE, warning=FALSE,fig.align='center', fig.cap="Figure 1: Boxplot for time series data points"}
+summary(crimeDF$CrimeCounts)
+boxplot(crimeDF$CrimeCounts, main="Boxplot for Monthly Crime Counts in Seattle (Deaths/Month)")
+```
+
+From the statistics and boxplot, we could see that the monthly death could range from 2829 to 4552, but the majority of the death are around 3500 to 4200. The mean (3840) and median (3904) are very close to each other. It gives a good indication that there is no substantial outlier which might cause potential problem in our analysis.
+
+Then we could look at the plot of the time series data (**Figure 2**):
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center', fig.cap="Figure 2: Plot for Crimes Time Series"}
+crimeTS = ts(crimeDF$CrimeCounts, frequency = 12, start = 2008)
+plot(crimeTS, main="Crimes per Month from 2008 to 2018", xlab = "Time", ylab ="Crimes")
+```
+
+We could see that generally the Crimes per month has a general increasing trend from 2008 to 2018. The increasing trend is more obvious from 2011 to 2018. Also, we could see the data does not have constant variance along the whole time line. 
+
+We would like to confirm our guess on the trend through spectrum analysis(**Figure 3**). Spectrum analysis is the technique that allows us to analyze time series in the frequency domain. We represent the covariance of time series as spectral density and estimate them on periodogram, which is the squared correlation between time series and sin/consine waves at the different frequencies spanned by the series. Deatiled information could be found at the [class note 8](https://ionides.github.io/531w20/08/notes08-annotated.pdf). I choose to use loess smoothing as indicated in the class for the spectrum with a span of (5,3,5), which smooths 3 times with different moving average smoothers. The loess smoothing is a repreated moving average for each span, and the (5,3,5) is chosen by tradition which is introduced in class.
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center', fig.cap="Figure 3: Spectrum for Time Series"}
+spec = spectrum(crimeDF$CrimeCounts, span = c(5,3,5), ylab = "Spectrum of Monthly Crimes",main = "Smoothed Periodogram for Crimes Per Month")
+maxSpec = spec$freq[which.max(spec$spec)]
+# abline(v = maxSpec, col = "red", lty="dotted")
+abline(v = 0.081481481, col = "red", lty="dotted")
+abline(v = 0.414814815, col = "red", lty="dotted")
+```
+
+Here we could observe that the dominate frequency is at frequency of 0.081481481. Since specturm has the unit of cycles per month. Hence the the period is 1/0.081481481 = 12.27 months, approximately 1 year. We could also check other secondary dominate frequencies except for the first one. We could see that the spectrum also peaks at frequency of 414814815 (a period of 2.4 months). In general, there are evidences provided by spectrum that there are some seasonal trends presented in the data. So, we would like to detrend the data before we fit the models we learned, also we would like to stablize the data to solve the problem of heteroskedasticity.
+
+
+Following [class note 8](https://ionides.github.io/531w20/08/notes08-annotated.pdf)'s explanation on loess smoothing, we use different span of loess smoothing extracted high and low frequencies from the original data(**Figure 4**). High frequency has the span of 0.05, which takes 5% of the data points near any time t (except for the beginning and the end, which is handled by tapper built in loess function in r) and performed local linear regression with weighting function. Similar action is done to low frequency with span of 0.4, which looks at 40% of data points around any time t. After detrend the high and low frequency components from the original time series, we could extract the mid-range frenquency. The low frequency components are corresponding to the so-called "increasing trend along the time series" (extracting the low frequency components correctly could help us achieve the relatively constant mean), and the high frequency components are the small local variation that comes with the time series (extracting the high frequency components correctly could help us remove the heteroskedasticity). We could observe that "Cycles" here represents the detrended time series which removed the high and low frequency components. It looks weakly staionary with relative constant mean and constant variance.
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE, error=FALSE,  fig.align='center', fig.cap="Figure 4: Trend Breakdown for Time Series"}
+MonthlyDeath = crimeDF$CrimeCounts
+date = seq(from = 2008, length = length(crimeDF$CrimeCounts), by= 12)
+Trend1 <- ts(loess(MonthlyDeath~date,span=0.4)$fitted,
+start=2008,frequency=12)
+Noise <- ts(MonthlyDeath -loess(MonthlyDeath~date,span=0.05)$fitted,
+start=2008,frequency=12)
+Cycles <- MonthlyDeath - Trend1  - Noise
+plot(ts.union(MonthlyDeath, Trend1,Noise,Cycles),
+main="Decomposition of Death Per Month as trend + noise + cycles")
+```
+
+In order to support our argument on the weak stationarity, we check the histogram(**Figure 5**), qqplot(**Figure 6**), and the shapiro test for the mid-range frequency time series too, we could found that it not only looks stationary, the histogram shows a clear bell curve for the data points. Moreover, According to [wikipedia for normality test](https://en.wikipedia.org/wiki/Normality_test), I choose Shapiro–Wilk test to double confirm my result. 
+
+The Shapiro–Wilk test has:
+
+* Null hypothesis: Data points $x_{1}, x_{2}, ...,x_{n}$ come from a normally distributed population.
+* Alternate hypothesis: Data points $x_{1}, x_{2}, ...,x_{n}$ are not coming from a normally distributed population.
+
+And the test statistics is:  
+ <center>$W=\frac{\left(\sum_{i=1}^{n} a_{i} x_{(i)}\right)^{2}}{\sum_{i=1}^{n}\left(x_{i}-\bar{x}\right)^{2}}$</center>. 
+ 
+where $x_{(i)}$ is the ith order statistics and $\bar{x}$ is the sample mean. The coefficients $a_{i}$ are given by $\left(a_{1}, \ldots, a_{n}\right)=\frac{m^{\top} V^{-1}}{C}$. C is $C=\left\|V^{-1} m\right\|=\left(m^{\top} V^{-1} V^{-1} m\right)^{1 / 2}$ and m is $m=\left(m_{1}, \dots, m_{n}\right)^{\top}$. 
+
+Hence when p-value of Shapiro–Wilk test is less than the chosen alpha level, the null hypothesis could be rejected.
+
+By conducting Shapiro–Wilk test, we have the p-value of 0.8919, which is bigger than 0.05, which indicates the normality distribution of the detrended data points is strongly supported by Shapiro–Wilk test. We could also see from the qqnorm plot that most of the data points are distributed within the confidence interval, which could serve as another evidence of the normality achieved by the detrended time series.
+
+```{r,echo=FALSE, warning=FALSE, error=FALSE, message=FALSE,  fig.align='center', fig.cap="Figure 5: Histogrm for Detrended Time Series"}
+hist(Cycles)
+shapiro.test(Cycles)
+paste("Mean of the detrended time series is: ",mean(Cycles))
+```
+
+Most points here are distributed as a stragiht line too.
+
+```{r,echo=FALSE, warning=FALSE, error=FALSE, message=FALSE,  fig.align='center', fig.cap="Figure 6: QQplot for Detrended Time Series"}
+ggqqplot(Cycles)
+```
+
+
+We could see that after detrending the data, the mid-range frequency components behaves like the white noise. Along with the smoothed spectrum((***Figure4***)'s trend part), it proved there is some long term trend underlying the crime time series. From 2008 to 2013, the crime counts are flucuating around 3600; while from 2013 to 2018, the crime counts has a clear upwarding trend (low frequency component). It answered our Question1 from section 1.1.
+
+--------------------------------------------------------------------------------
+
+## 2.3 Data Detrending
+
+So far, we have used frequency decompsing to prove the existence of trends. Hence, we hae the motivation to also get weak stationarity for our raw time series.
+
+Taking log on the raw data set could help to approach constant variance. Let's check our data set after taking log once(**Figure 7**).
+
+
+```{r,echo=FALSE, warning=FALSE, error=FALSE, message=FALSE,fig.align='center', fig.cap="Figure 7: Log(Monthly Crimes) Time Series"}
+loggedCrimeCounts  = log(crimeTS)
+plot(loggedCrimeCounts , main="Log(Crimes per Month) from 2008 to 2018", xlab = "Time", ylab ="Log(Crimes)",type = "l")
+```
+
+We could see that, even the variances are a little bit more stable, the last two years still have apprentally less variance comparing to first few years. Hence, we could take one more log(**Figure 8**):
+
+```{r,echo=FALSE, warning=FALSE, error=FALSE, message=FALSE,fig.align='center', fig.cap="Figure 8: Log(Log(Monthly Crimes)) Time Series"}
+logged2CrimeCounts  = log(loggedCrimeCounts)
+plot(logged2CrimeCounts , main="Log(Log(Crimes per Month)) from 2008 to 2018", xlab = "Time", ylab ="Log(Log(Crimes))")
+```
+
+We could see that even the pattern did not change a lot, the magintude of the y-axis is become very small, which has a span of 0.05 only. Hence the variance is very small. Now we need to get the constant mean for our time series. I choose take difference on the log(log(Crimes per Month))(**Figure 9**).
+
+```{r,echo=FALSE, warning=FALSE, error=FALSE, message=FALSE,fig.align='center', fig.cap="Figure 9: Diff(Log(Log(Monthly Crimes))) Time Series"}
+difflogged2CrimeCounts  = diff(logged2CrimeCounts)
+plot(difflogged2CrimeCounts , main="Diff(Log(Log(Crimes per Month))) from 2008 to 2018", xlab = "Time", ylab ="Diff(Log(Log(Crimes)))",type = "l")
+```
+
+We could clearly observe that after taking the difference of log(log(Crimes per Month)), the time series is now fluctuating around 0. We could also check the spectrum(**Figure 10**) of the tranformed data get get some senese of the dominant frequencies.
+
+```{r,echo=FALSE, warning=FALSE, error=FALSE, message=FALSE,fig.align='center', fig.cap="Figure 10: Spectrum of Diff(Log(Log(Monthly Crimes)))"}
+spec = spectrum(diff(log(log(crimeDF$CrimeCounts))), span = c(5,3,5), ylab = "Spectrum of Diff(Log(Log(Monthly Crimes)))",main = "Smoothed Periodogram for Diff(Log(Log(Monthly Crimes)))")
+maxSpec = spec$freq[which.max(spec$spec)]
+# abline(v = maxSpec, col = "red", lty="dotted")
+abline(v = maxSpec, col = "red", lty="dotted")
+# abline(v = 0.414814815, col = "red", lty="dotted")
+```
+
+Now the the x-axis has the unit of cycles per month, and we could see that the dominant frequencies is 0.41814 now, which is a period of 2.4 months.
+
+
+Before we move on to model the data, we would like to check the ACF(**Figure 11**) for the detrended time series too.
+
+ACF is defined as: 
+
+ <center>$\rho_h = \frac{\gamma_h}{\gamma_0}$  </center>  
+ 
+where $\gamma_h$ and $\gamma_0$ are actually $\gamma_{n,n+h}$ and $\gamma_{n,n}$ repectively. They are the autocovariances. h is the lag inbetween time.
+
+For random variable $Y_{1:N}$, autocovariances are $\gamma_{m, n}=\mathbb{E}\left[\left(Y_{m}-\mu_{m}\right)\left(Y_{n}-\mu_{n}\right)\right]$
+
+By plotting thr autocovariance versus the lags, we can get ACF plot for the detredned data:
+
+Here 1 lag means 1 month. We could clearly observe some periodical patterns in the ACF. We could first observe a significant spike at lag = 1 and 6. Also, we could observe the local spikes at around every 12 lags, which could indicate the Moving Average of 12 or seasonal model if we fit ARIMA model. The ACF gives us a great indicator of the main features about the mid-frequency range that we care about.
+
+```{r,echo=FALSE, warning=FALSE, error=FALSE, message=FALSE,fig.align='center', fig.cap="Figure 11: ACF of Diff(Log(Log(Monthly Crimes)))"}
+date1 = seq(from = 0, length = length(Cycles))
+CyclesUse = ts(difflogged2CrimeCounts,start=0,frequency=1)
+acf(CyclesUse,lag.max = 100, main="ACF for Diff(Log(Log(Monthly Crimes)))")
+```
+
+In conclusion, we could observe differnt indicators for correlation in between time points for the Diff(Log(Log(Monthly Crimes))). 
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+# 3.Model Fitting
+
+## 3.1 ARMA Model Fitting
+
+For ARMA model fitting, by integrating AR and MA components, along with the bias (mean) into one function, it ends up in a funciton for $ARMA(p,q)$. Here p is the Autoregressive coefficient, while q is the Moving average coefficient:
+         <center>$\phi(B)(Y_n - \mu) = \psi(B)\epsilon_n$  </center>  
+         
+  + (a) Here $Y_n$ denotes the discrete low temperature for a single month, within the range of [1, 132], where 1 correspond to Jan, 2008. Similarly, $\epsilon_n$ denotes the residual(noise) for that month.
+  
+  + (b) $B$ is a backshift operator for $Y_n$ or $\epsilon_n$. For example, $BY_n = Y_{n-1}$ and $B^2\epsilon_n = \epsilon_{n-2}$;  
+  
+  + (c) $\mu$ is the random bias we have as the mean, which is a constant;
+  
+  + (d) $\phi(B)$ for $AR(p)$ model origins from:  
+  
+    <center>$\phi(y) = 1- \phi_1y - \phi_2y - ..... - \phi_py$</center>.   
+        Or it could be written as a function of B as $\phi(B)$ and ends up in $\phi(B)Yn$  :$\phi(B)Y_n = Y_n- BY_n - B^2Y_n - ..... - B^PY_n = Y_n - Y_{n-1} - Y_{n-2} - ... - Y_{n-p}$
+    
+  
+  + (e) Similiarly for $MA(q)$:
+  
+  <center>$\psi(B)\epsilon_n = \epsilon_n + B\epsilon_n + B^2\epsilon_n + ... + B^q\epsilon_n$</center>  
+  
+  
+  + (f) Notice that, by the definition of a stationary time series model, $\epsilon_n$ is called white nosie, where we are assuming the residuals after fitting the $ARMA$ model is distribued with $E(\epsilon_n) = 0$ and $Cov(\epsilon_m,\epsilon_n)= \sigma^2$, when $m==n$ and $Cov(\epsilon_m,\epsilon_n)= 0$, when $m!=n$. Moreover, we assume it is iid distriuted that it follows a Guassian distribution as $\epsilon_{1:N} \sim N[0,sigma^2]$  
+  
+After fitting the $ARMA(p,q)$, we are expect to generate a vector $\theta = (\phi_{1:p}, \epsilon_{1:q}, \mu, \theta^2)$, according to the description from [class note 5](https://ionides.github.io/531w20/05/notes05-annotated.pdf)
+
+To find the p and q combination using likelihood ratio test to compare different models. Too much items (more complexity) will be penalized . We could check the fomula: 
+
+  <center>$AIC = -2 * l(\theta) + 2D$  </center>
+  
+In more details, for $l(\theta)$, $\theta$ is from 2.2's vector we generated. Suppose we have two nested hypotheses:
+
+<center>$H_0 : \theta \in \Theta_0$  </center>  
+<center>$H_1 : \theta \in \Theta_1$  </center> 
+
+where $\Theta_0 \subseteq \Theta_1$, with respective dimensions $D_0 < D_1 \le D$. In our case, the null hypothesis $H_0$ corresponds to the simpler model, for example $ARMA(2,1)$, while $H_1$ corresponds to the more complex model, for example $ARMA(4,5)$. Since $ARMA(4,5)$ is more complex than $ARMA(2,1)$, with more levels of $AR$ and $MA$ components involved  
+
+We then consider the log likelihood maximized over each of the hypotheses:
+
+<center>$l_0 = sup_{\theta \in \Theta_0}l(\theta)$  </center>  
+<center>$l_1 = sup_{\theta \in \Theta_1}l(\theta)$  </center>  
+
+and the $l_1 - l_0$ could be approximated distributed as $(1/2)\chi^2_{D_1-D_0}$, where $\chi^2_{d}$ is a chi-squared random variable on $d$ degrees of freedom.  
+
+Given these, we could understand that AIC is comparing different models as models getting more complex. AIC will penalize the complexity(numbers of parameters). It is used to minimize the prediction error, while increasing parameters will lead to overfitting. So the lower the value for AIC, the better prediction performance the models obtains comparing to other models.  
+
+```{r,echo = FALSE, warning=FALSE}
+CyclesUse = difflogged2CrimeCounts
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+AALow_aic_table <- aic_table(CyclesUse,5,6)
+
+kable(AALow_aic_table ,digits=2, caption = "MA-AR Matrix for ARMA model fitting")
+```
+
+Given the output above, we could see that $AIC$ is minimized at model $ARMA(4,5)$ with a value of -910.62. However, we could observe that for $ARMA(4,4)$ AND $ARMA(3,4)$, leaving out one parameter has a better AIC of over 2. Accoding to the AIC defination above, it is not trustable. Combining with the model output below: 
+
+```{r,echo = FALSE, warning=FALSE,fig.align='center', fig.cap="Figure 12: AR and MA Roots on Unit Cycle for ARMA(4,5)"}
+AA_Low <- arima(CyclesUse, order = c(4,0,5))
+AA_Low
+plot(AA_Low)
+```
+
+We also ploted the unit cycle for both AR and MA roots(**Figure 12**) . We could clearly see that both of them have roots at the boundary of unit cycle. We could check the root numbers below too:
+
+```{r,echo=FALSE}
+AR_roots <- polyroot(c(1,-coef(AA_Low)[c("ar1","ar2","ar3","ar4")]))
+abs(AR_roots)
+
+MA_roots <- polyroot(c(1,coef(AA_Low)[c("ma1","ma2","ma3","ma4","ma5")]))
+abs(MA_roots)
+ # 
+```
+
+According to [class note 4](https://ionides.github.io/531w20/04/notes04-annotated.pdf)'s explnation on causality and invertibility, roots of AR should be outside the unit cycle to obtain invertibility and causality. Otherwise, the model might be at the risk of instability. Here the roots from $ARIMA(4,5)$are suffering from the problem of lack of invertibility and causality, making the model unstable. Hence, we would like to use simpler model when simpler model works too. By cancelling out the AR and MA roots, we could try $ARMA(0,1)$ model.
+
+```{r,echo=FALSE}
+AA_Low001 <- arima(CyclesUse, order = c(0,0,1))
+AA_Low001
+LRT <- 2*(AA_Low$loglik-AA_Low001$loglik)
+paste("The p-value for likelihood test is :", 1-pchisq(LRT,length(AA_Low$coef)- length(AA_Low001$coef)))
+```
+
+By choosing $ARMA(0,1)$, we conduct the log likelihood test inbetween $ARMA(4,5)$ and $ARMA(0,1)$.
+
+* The null hypothsis is $ARMA(0,1)$ is the better model;
+
+* The alternate hypothsis is $ARMA(4,5)$ (bigger model) is the better model
+
+AS we could see the p-value for likelihood test is : 1.4100982026477e-06 < 0.05 (siginificance level). Hence $ARMA(0,1)$ is the better model. It is simpler and is constant with the raw data ACF's indication. Let's also check the root for $ARMA(0,1)$.
+
+```{r}
+MA_roots <- polyroot(c(1,coef(AA_Low001)[c("ma1")]))
+abs(MA_roots)
+```
+
+ 
+We could see the the MA root is 1.707461 bigger than 1, which indicates the model has the invertibility. Hence, we would like to proceed with the $ARMA(0,1)$ 
+<!-- <center>$Y_{n}=0.0002-0.0122Y_{n-1}+0.9996Y_{n-2}-0.0072Y_{n-3}-0.9969Y_{n-4}+ \epsilon_n -0.5911\epsilon_{n-1}-1.0048\epsilon_{n-2}+0.5833\epsilon_{n-3} +0.9811\epsilon_{n-4} -0.6021\epsilon_{n-5}$  </center> -->
+
+The model function could be written as: 
+
+<center>$((1-B)Log(Log(Y_{n})) - \mu) = (1-0.5857B)*Log(Log(\epsilon_{n}))$</center>
+<!-- <center>$(1 + 0.0122B - 0.9996B^2 + 0.0072B^3 +0.9969B^4)((1-B)Log(Log(Y_{n})) - \mu) = (1-0.5911B -1.0048B^2 +0.5833B^3 +0.9811B^4 -0.6021B^5)*\epsilon_{n}$</center> -->
+
+
+-------------------------------------------------------------------------------
+
+
+## 3.2 ARMA Model Diagnostic
+
+We need to diagnostic our model bedore we proceed to draw conclusion from it or decide to do further modification. Performing diagnostic on residuals after fitting model could help us to reach to our dicision. We are expecting the residuals after modeling fitting behave like identically and independently distributed white noise.
+
+The first thing we need to check is if the redisuals are distrbuted independently after fitting $ARMA(0,1)$. We plot ACF(**Figure 13**) for the residuals.
+
+```{r, warning=FALSE,echo = FALSE,message=FALSE,fig.align='center',fig.cap="Figure 13: ACF of Residuals from Fitting ARMA(0,1)"}
+residTS = ts(resid(AA_Low001), frequency = 1, start = 0)
+acf(residTS,lag.max = 200, main="ACF of Residuals from Fitting ARMA(0,1)")
+```
+
+We could see from (**Figure 13**) that after fitting $ARMA(0,1)$, we still have outstanding spikes at around lag = 12 months and small lags at the period around 6. It indicates that it might be good to include a seasonl pattern with lag 12 to handle the correlation in between data points
+
+The second thing we want to check is that if the residual is white noise. We plot the residual versus fitted data (**Figure 14**), qqplot (**Figure 15**), and ran Shpiro test.
+
+From the residual plot we could see that the residuals are distributed around 0 with vairance that is not quite constant. There are some time points(begining of 2010, begining of 2014 and so on) that variances go really high. Also, the variance is generally bigger from 2008 to 2012 comparing to latter years. The residual plot indicates that we still need to do more work to find a better fit.
+
+```{r ,warning=FALSE,echo = FALSE,message=FALSE,fig.align='center', fig.cap="Figure 14: Residual versus Fitted for ARMA(0,1)"}
+par(mfrow = c(1,1))
+plot(AA_Low001$residuals, main = "Residual Plot Fitting ARMA(0,1)", ylab="ARMA(0,1) Residuals")
+```
+
+Then we could also check the qqplot and shapiro test. The ggplot shows the residuals has a tail that is not normally distributed as expected. The p-value from Shapiro test for residuals barely reached 3.942e-05, which is not at all Guassian distributed. Hence, $ARMA(0,1)$ did not reach the expectation of a good fit for our data. We would like to proceed with adding seasonal patterns.
+
+```{r,warning=FALSE,echo = FALSE,message=FALSE,fig.align='center', fig.cap="Figure 15: Residual QQplot Fitted for ARMA(0,1)"}
+ggqqplot(AA_Low001$residuals)
+shapiro.test(AA_Low001$residuals)
+```
+
+
+--------------------------------------------------------------------------------
+
+## 3.3 Seasonal ARMA Model
+
+From section 3.2, we have noticed the siginificant seasonl pattern at lag of 12 from residual ACF. However, we are not quite sure here if it is coming from a seasonal AR or MA. Hence, it would be good to run likelihood test again to help in choosing the model.
+
+```{r,warning=FALSE,echo = FALSE,message=FALSE,}
+Season_AIC <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(0,0,1),seasonal=list(order=c(p,0,q),period=12))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> SAR",0:P, "</b>", sep=""),paste("SMA",0:Q,sep=""))
+  table
+}
+Seasonal_aic_table <- Season_AIC(CyclesUse,4,5)
+knitr::kable(Seasonal_aic_table,digits=2,caption="MA-AR Matrix for SARMA model fitting")
+```
+
+Given the output above, we could see that $AIC$ is minimized at model $SARMA(0,1)X(1,1)_{12}$ with a value of -948.66. Also, we could notice that there is no big jumps in decreasing AIC when we take out one parameter from the model. Combining with the model output below:
+
+```{r,warning=FALSE,echo = FALSE}
+AA_LowS <- arima(CyclesUse, order = c(0,0,1), seasonal = list(ordero = c(1L, 0L, 1L), period = 12))
+AA_LowS
+```
+
+Therefore the model we pick by likelihood ratio test has the function: 
+
+<center>$(1-0.9979B^{12})((1-B)Log(Log(Y_{n})) - \mu) = (1-0.4943B)*(1-0.9327B^{12})*Log(Log(\epsilon_{n})))$</center> 
+
+--------------------------------------------------------------------------------
+
+## 3.4 Seasonal ARMA Model Diagnostic
+
+Now let's use the same method diagostic the $SARMA(0,1)X(1,1)_{12}$ model fitting. 
+
+First, let's check the ACF of residuals (**Figure 16**), we could see that there is no siginificant spike that goes over the confidence interval any more. Which indicates the $SARMA(0,1)X(1,1)_{12}$ model captured the autocorelation in between lags.
+
+```{r, warning=FALSE,echo = FALSE,message=FALSE,fig.align='center',fig.cap="Figure 16: ACF of Residuals from Fitting SARMA(0,1)(1,1)_12"}
+acf(resid(AA_LowS),lag.max = 48,main="ACF of Residuals from Fitting SARMA(0,1)(1,1)_12")
+```
+
+Second, let;s check the residual plot(**Figure 17**), we could see that the $SARMA(0,1)X(1,1)_{12}$ residuals are more like white noise comparing to $ARMA(0,1)$ before. But we also want to confirm with plotting the qqplot and conducting the Shapiro test.
+
+```{r, warning=FALSE,echo = FALSE,message=FALSE,fig.align='center',fig.cap="Figure 17: Residuals versus Fitted from Fitting SARMA(0,1)(1,1)_12"}
+plot(AA_LowS$residuals, main = "Residual versus fitted from Fitting SARIMA(0,1)(1,1)_12", ylab="SARMA(0,1)(1,1)_12 Residuals")
+```
+
+Here is the output from qqplot(**Figure 18**) and Shpiro test, we could see that the majority of the residuals are distributedd within the confidence interval for qqplot. Moreover, the Shapiro test yield the p-value of 0.5712, which is much bigger than the significance level of 0.05, indicating the normality of residuals.
+
+```{r, warning=FALSE,echo = FALSE,message=FALSE,fig.align='center',fig.cap="Figure 18: QQplott for Residuals from Fitting SARMA(0,1)(1,1)_12"}
+ggqqplot(AA_LowS$residuals)
+shapiro.test(AA_LowS$residuals)
+```
+
+--------------------------------------------------------------------------------
+
+## 3.5 Final Model and Fit Checking
+
+According to the model diagostic result from sectiion 3.4, we could reach to our final model of:
+
+<center>$(1-0.9979B^{12})((1-B)Log(Log(Y_{n})) - \mu) = (1-0.4943B)*(1-0.9327B^{12})*Log(Log(\epsilon_{n})))$</center> 
+
+Moreover, we could also fit the model and compare with the original time series(**Figure 19**). Here the red line denotes the original time series, and the blue line denotes the model fitting results. We could see that our model fitts pretty well with the original model.
+
+```{R,warning=FALSE,echo = FALSE,message=FALSE,fig.align='center',fig.cap="Figure 19: Model Fitting SARMA(0,1)(1,1)_12 vs Original Data"}
+model = arima(crimeDF$CrimeCounts,order = c(0,0,1), seasonal = list(ordero = c(1L, 0L, 1L), period = 12))
+plot(crimeDF$CrimeCounts, col="red", type="l", xlab = "Time", ylab = "Crime number", main = "SARMA Model Fit Result vs Original Data")
+lines(fitted(model),col="blue")
+```
+
+While it might not be interesting to only look at the fitted value for SARMA model. We could compare the fit with a simple linear regression. Again, here the red line is the original data set, while the blue straight line is the linear regression fitted value. We could see our SARMA model could extract much more information from the time series comapring to some simple statistical models like simple linear regression (The mean squared error for Linear model is much bigger than SARIMA model).
+
+```{R,warning=FALSE,echo = FALSE,message=FALSE,fig.align='center',fig.cap="Figure 19: Model Fitting SARMA(0,1)(1,1)_12 vs Original Data"}
+LMmodel = lm(crimeDF$CrimeCounts~date1)
+plot(crimeDF$CrimeCounts, col="red", type="l", xlab = "Time", ylab = "Crime number", main = "SARMA Model Fit Result vs Original Data")
+lines(fitted(LMmodel),col="blue")
+```
+
+```{r,warning=FALSE,echo = FALSE,message=FALSE}
+paste("The mean squared error for SARMA Model is: ",mean(model$residuals^2))
+paste("The mean squared error for Simple Linear Regression Model is: ",mean(LMmodel$residuals^2))
+```
+
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+# 4.Conclusion and Limitations
+
+## 4.1 Conclusion
+
+To put it into a nutshell, we could arrive at these conclusion from our analysis and answer the Questions raised in section 1.1:
+
+* Question1: Does the monthly crimes in Seattle from 2008 to 2018 has an increasing trend?
+
+By conducting spectral analysis in frequency domian, we could extract the long term trend (low frequency component) from our crime numbers per month in Seattle's time series. There are increasing trend in general, and especially from Year 2013 to 2018. However, during year 2008 to 2012, the crime numbers are pretty stable with no clear upwarding or downwarding trend. Hence, it is important for Seattle Police Department to put more resources on controlling the increasing crime numebers which might carry on to this year. 
+
+* Question2: Does the monthly crimes in Seattle from 2008 to 2018 has any time-related patterns that could be explained by ARIMA or SARIMA models?
+
+By fitting Seasonal ARMA model $SARMA(0,1)X(1,1)_{12}$, we dervied a good model (It is indicated in Section 3.5) that could capture the seasonality, Autoregression, and Moving Average part for the time series and its residuals. Again, the model finalized as:
+
+<center>$(1-0.9979B^{12})((1-B)Log(Log(Y_{n})) - \mu) = (1-0.4943B)*(1-0.9327B^{12})*Log(Log(\epsilon_{n})))$</center> 
+
+From the model, we could see that (a) the non-seasonal moving average compnent indicates the one-month-lagged observation incorporates the dependency between an observation and its residual error. (b) The seaonsal AR part indicates that the Crime number has correlation with the Crime number 12 months ago. (c) Similarly, the crime number's residual error has deencency with the crime number's residual error 12 months ago. The Seaonal part of the $SARMA(0,1)X(1,1)_{12}$ model shows the one year periodical patterns that Seattle Police Department could pay attention to. In other words, we could see from the original data points that the warm weathers (around summer) are higher than cold weathers (around winter), and this pattern carries on year by year. (It does not necessarily casued by the weather, but by common sense, they are certainly have some correlation with each other). The findings of 12-month pattern correspond to the result from smoothed periodogram ,which indicates there might be a cycle of 12.27 months existing for the crime numbers. All in all, in general, the $SARMA(0,1)X(1,1)_{12}$ did a good job in explain the information carried by the crime numbers time series.
+
+--------------------------------------------------------------------------------
+
+## 4.2 Limitations
+
+The data collected by [Seattle Police Department](https://www.seattle.gov/police/information-and-data/seastat#2020slides) might change periodically accroding to yearly renewal, hence 2019 data is not used in our scope due to the version control. We might be able to get to know more about the data if we have 2019 data.
+
+The $SARMA(0,1)X(1,1)_{12}$ model might suffer from overfitting. Even though it looks like a good fit for the data we have, it might not be able to generalized in the future data.
+
+The spectral analysis and ARIMA are pointing to different seasonal patterns. Even though it is not necessary for them to converage, it would still be interesting if we could find the relationship in between them in the future.
+
+The future investigation in between the correlation of climate/weather and crime numbers would be interesting to perform.
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+# 5.Sources
+
+## 5.1 Packages
+
+All packages used are from [cran.r-project.org](https://cran.r-project.org/web/packages/available_packages_by_nam) 
+
+[MASS](https://cran.r-project.org/web/packages/MASS/index.html)
+
+[foreign](https://cran.r-project.org/web/packages/foreign/index.html)
+
+[datasets](https://cran.r-project.org/web/packages/datasets.load/index.html)
+
+[dplyr](https://cran.r-project.org/web/packages/dbplyr/index.html)
+
+[tidyr](https://cran.r-project.org/web/packages/tidyr/index.html)
+
+[ggplot2](https://cran.r-project.org/web/packages/ggplot2/index.html)
+
+[ISLR](https://cran.r-project.org/web/packages/ISLR/index.html)
+
+[gam](https://cran.r-project.org/web/packages/gam/index.html)
+
+[forecast](https://cran.r-project.org/web/packages/forecast/index.html)
+
+[xts](https://cran.r-project.org/web/packages/xts/index.html)
+
+[zoo](https://cran.r-project.org/web/packages/zoo/index.html)
+
+[fma](https://cran.r-project.org/web/packages/fma/index.html)
+
+[expsmooth](https://cran.r-project.org/web/packages/expsmooth/index.html)
+
+[lmtest](https://cran.r-project.org/web/packages/lmtest/index.html)
+
+[tseries](https://cran.r-project.org/web/packages/tseries/index.html)
+
+[knitr](https://cran.r-project.org/web/packages/knitr/index.html)
+
+[ggpubr](https://cran.r-project.org/web/packages/ggpubr/index.html)
+
+[simEd](https://cran.r-project.org/web/packages/simEd/index.html)
+
+[bibtex](https://cran.r-project.org/web/packages/bibtex/index.html)
+
+[knitcitations](https://cran.r-project.org/web/packages/knitcitations/index.html)
+
+--------------------------------------------------------------------------------
+
+## 5.2 In-Class References
+
+[STATS 531 Class Notes](https://ionides.github.io/531w20/)
+
+[STATS 531 Past Projects](https://ionides.github.io/531w18/midterm_project/)
+
+--------------------------------------------------------------------------------
+
+## 5.3 Data
+
+The data set is obtained from [Seattle Police Department](https://www.seattle.gov/police/information-and-data)
+
+--------------------------------------------------------------------------------
+
+## 5.4 Out-Class References
+
+```{r echo=FALSE, warning=FALSE,message=FALSE, error=FALSE} 
+  write.bibtex(file="references.bib")
+```
+

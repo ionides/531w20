@@ -1,0 +1,287 @@
+---
+title: "Association between Unemployment Rate and CPI of Alcoholic Beverages "
+subtitle: "STATS 531 Winter 2019 Midterm Project"
+date: "`r format.Date(Sys.Date(), '%B %d, %Y')`"
+geometry: "left = 2cm, right = 2cm, top = 2cm, bottom = 2cm"
+output: 
+  html_document:
+    toc: yes
+    theme: flatly
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE, echo = FALSE, result = "asis", 
+                      fig.align = "center")
+library(tidyverse)
+#setwd("/Users/mingchlu/Downloads/mid_proj")
+#setwd("mid_proj")
+
+# Read in data
+unrate = read.csv("unrate.csv")
+alcohol = read.csv("alcohol.csv")
+start_tm = 1978
+unemp = ts(unrate[-c(1:360),2], st = c(start_tm, 1), end = c(2020, 1), fr = 12)
+alc = ts(alcohol[,2], st = c(start_tm, 1), end = c(2020, 1), fr = 12)
+time = seq(start_tm, 2020, by = 1/12)
+```
+
+## Introduction
+
+- The unemployment rate is the number of people who are unemployed as a percentage of the labour force. 
+
+- The Consumer Price Index(CPI) is a frequently used statistics for identifying periods of inflation or deflation and the changes in the CPI can be used to assess price changes associated with the cost of living.
+
+- I'm curious to know whether people tend to buy more alcohol when being unemployed or just the opposite? The question motivated me to look for the two common economic indicators -- the unemployment rate and the CPI for alcoholic beverage. Are these two indicators having a positive association or a negative association?
+
+## Data Exploration
+Both data are downloaded from the U.S. Bureau of Larbor Statistics.
+
+- [Unemployment Rate](https://fred.stlouisfed.org/series/UNRATE)
+
+- [Consumer Price Index for All Urban Consumers: Alcoholic Beverages in U.S. City Average (CUSR0000SAF116)](https://fred.stlouisfed.org/series/CUSR0000SAF116)
+
+### Time Plot
+We first look at the time plot of two series from January 1, 1978 to January 1, 2020.
+
+```{r time plot}
+left = unemp
+right = alc
+l_ylab = "Unemployment Rate(%)"
+r_ylab = "CPI for Alcohol Beverages"
+
+par(mar = c(5, 4, 5, 5) + 0.1)
+plot(left, ylab = l_ylab, main = "Percent Unemployment and CPI of Alcoholic Beverages in U.S.")
+par(new=T)
+plot(right, col="blue", ylab = "", axes = "F")
+axis(side = 4, col = "blue")
+mtext(r_ylab, col = "blue", side = 4, line = 3)
+```
+
+- The blue line shows the CPI for all urban consumers on alcoholic beverages increases with time.
+
+- Compared to CPI, the black line, unemployment rate, is more wiggly and exhibiting several spikes. We can know that the two spikes in 2001 and 2008 indicate the U.S. recession periods.
+
+- To examine the relationship between these two series, we need to decompose the trend, noise and business cycles and assess if the cycles match. The movement of business cycles may comtain low-frequency trends and high-frequency noise, here we use Loess smoothing to extract the trends, noise, and cycles component.
+
+### Decomposition
+
+```{r decompose, echo = T}
+# Function to decompose
+decomp_loess = function(response, time, start_time, freq = 12){
+  low = ts(loess(response ~ time, span = .5)$fitted, start = start_time,
+           frequency = freq)
+  high = ts(response - loess(response ~ time, span = .1)$fitted, 
+            start = start_time, frequency = freq)
+  cycles = ts(response - low - high, start = start_time, frequency = freq)
+  ts = ts.union(response, low, high, cycles)
+  colnames(ts) = c("Observed", "Trend", "Noise", "Cycles")
+  return(list(cycles, ts))
+}
+
+# Decompose CPI for alcoholic beverages
+decomp_alc = decomp_loess(alc, time, 1978, freq = 12)
+plot(decomp_alc[[2]], main = "Decomposition of CPI as trend + noise + cycles")
+
+# Decompose unemployment rate
+decomp_unemp = decomp_loess(unemp, time, 1978, freq = 12)
+plot(decomp_unemp[[2]], main = "Decomposition of unemployment as trend + noise + cycles")
+```
+
+We combine the cycle components of CPI for alcoholic beverages and unemployment rate into the same plot.
+
+```{r cycles plot}
+# Combine cycles into the same plot
+par(mar=c(5, 4, 4, 5))
+plot(time, decomp_unemp[[1]], type = "l", xlab = "", ylab = l_ylab,
+     main = "Cycles components of CPI of Alcoholic Beverages 
+     and Unemplyment Rate")
+par(new = TRUE)
+plot(time, decomp_alc[[1]], type = "l", col = "blue", xlab = "", ylab = "", axes = F)
+axis(side = 4, col = "blue")
+mtext(r_ylab, col = "blue", side = 4, line = 3)
+```
+
+The figure suggests that he detrended unemployment rate and the detrended CPI for alcoholic beverages cycle together. 
+
+## Model
+
+To confirm this hypothesis, we further analyze the $A_{1:N}$ using a regression with ARMA errors model, $$A_n = \alpha + \beta u_n + \epsilon_n$$, where {$\epsilon_n$} is a Gausian ARMA process.
+
+### AIC Table
+
+We will use the AIC table to choose the parameters $p$, $q$ of ARMA(p,q) model.
+
+```{r AIC table, echo = T, warning = FALSE}
+# Function for AIC table
+aic_table = function(data, p, q, xreg=NULL){
+  table = matrix(NA, p+1, q+1)
+  for(p in 0:p) {
+    for(q in 0:q) {
+      table[p+1,q+1] = arima(data, order = c(p,0,q), xreg = xreg)$aic
+    }
+  }
+  dimnames(table) = list(paste("AR", 0:p, sep = ""), paste("MA", 0:q, sep = ""))
+  return(table)
+}
+
+# AIC
+aic_tbl = aic_table(decomp_alc[[1]], 3, 3, xreg = decomp_unemp[[1]])
+```
+
+```{r aic}
+aic_tbl
+```
+
+The AIC table shows that ARMA(3,3) has the lowest AIC value followed by ARMA(3,2). Since smaller model is less likely to encounter issues like parameter redundancy, causality, and invertibility. We will leave out ARMA(3,3) and consider ARMA(3,2) for further discussion.
+
+### ARMA(3,2)
+
+```{r arma model, echo = T}
+alcohol_cycles = decomp_alc[[1]]
+unemploy_cycles = decomp_unemp[[1]]
+arma32 = arima(alcohol_cycles, xreg = unemploy_cycles, order = c(3,0,2))
+cat("Polyroot for AR Coefficient: ", abs(polyroot(c(1,-arma32$coef[1:3]))),
+    "\nPolyroot for MA Coefficient: ", abs(polyroot(c(1,arma32$coef[4:5]))))
+```
+
+The result shows that ARMA(3,2) is causality and invertibility.
+
+```{r arma result}
+arma32
+```
+The standard errors suggest a statistically significant association between cyclical variation in unemployment and CPI for alcoholic beverages.
+
+### Likelihood Ratio Test
+We can also test the significance of coefficients from the likelihood ratio test. Suppose we have two nested hypotheses
+$$
+\begin{eqnarray*}
+H^{\langle 0\rangle} &:& \theta\in \Theta^{\langle 0\rangle},
+\\
+H^{\langle 1\rangle} &:& \theta\in \Theta^{\langle 1\rangle},
+\end{eqnarray*}
+$$
+defined via two nested parameter subspaces, $\Theta^{\langle 0\rangle}\subset \Theta^{\langle 1\rangle}$, with respective dimensions $D^{\langle 0\rangle}< D^{\langle 1\rangle}\le D$.
+
+We consider the log likelihood maximized over each of the hypotheses,
+$$
+\begin{eqnarray*}
+\ell^{\langle 0\rangle} &=& \sup_{\theta\in \Theta^{\langle 0\rangle}} \ell(\theta),
+\\
+\ell^{\langle 1\rangle} &=& \sup_{\theta\in \Theta^{\langle 1\rangle}} \ell(\theta).
+\end{eqnarray*}
+$$
+A useful approximation asserts that, under the hypothesis $H^{\langle 0\rangle}$,
+$$ 
+\ell^{\langle 1\rangle} - \ell^{\langle 0\rangle} \approx (1/2) \chi^2_{D^{\langle 1\rangle}- D^{\langle 0\rangle}},
+$$
+where $\chi^2_d$ is a chi-squared random variable on $d$ degrees of freedom and $d$ = 1 in our case.
+
+We now test whether $\alpha$ = 0 or not.
+
+```{r log likelihood alpha, echo = T}
+# test alpha
+loglik = as.numeric(
+  logLik(arima(decomp_alc[[1]], xreg = decomp_unemp[[1]], order = c(3,0,2))) 
+  - logLik(arima(decomp_alc[[1]], xreg = decomp_unemp[[1]], order = c(3,0,2),
+                 include.mean = FALSE))
+)
+cat("P-value: ", 1 - pchisq(2*loglik, df = 1))
+```
+The p-value of 0.9817706 suggests that we can not reject the null hypothesis. Hence, $\alpha$ should be 0.
+
+We also test whether $\beta$ = 0 or not.
+
+``````{r log likelihood beta, echo = T}
+# test beta
+loglik = as.numeric(
+  logLik(arima(decomp_alc[[1]], xreg = decomp_unemp[[1]], order = c(3,0,2))) 
+  - logLik(arima(decomp_alc[[1]], order = c(3,0,2))))
+
+# p-value
+cat("P-value: ", 1 - pchisq(2*loglik, df = 1))
+```
+The p-value of 0 suggests that we can reject the null hypothesis at level $\alpha=.05$ and suggest that $\beta \neq 0$.
+
+### ARMA(3,2) with α = 0
+Based on the result, we adjust our model to $A_n = \alpha + \beta u_n + \epsilon_n$, where {$\epsilon_n$} is a Gausian ARMA(3,2) process.
+
+```{r arma model adjusted, echo = T}
+arma32_adj = arima(alcohol_cycles, xreg = unemploy_cycles, order = c(3,0,2),
+                   include.mean = FALSE)
+```
+
+```{r arma adj}
+arma32_adj
+cat("Polyroot for AR Coefficient: ", abs(polyroot(c(1,-arma32$coef[1:3]))),
+    "\nPolyroot for MA Coefficient: ", abs(polyroot(c(1,arma32$coef[4:5]))))
+```
+
+All the coefficients are significant and the model remains causal and invertible.
+
+## Diagnostic
+We proceed to check the residuals for the fitted model and inspect their sample autocorrelation.
+
+```{r diag}
+forecast::checkresiduals(arma32_adj)
+```
+
+- The residuals appear to have the issue of heteroskedasticity due to the large fluctuations around 1990.
+
+- The ACF plot indicates sample autocorrelation since several lags are outside the dashed line.
+
+- According to Ljung-Box test, the residuals are significantly different from white noise at level $\alpha = .05$.
+
+## Bootstrap Simulation
+```{r boot, echo = T, warning = F}
+# set up
+B = 500
+ar = c(2.5016252, -2.0328500, 0.5282242)
+ma = c(1.0684262, 0.2117450)
+xreg_coef = 0.8669930
+sigma = sqrt(arma32_adj$sigma2)
+
+theta = matrix(NA, nrow = B, ncol = 6, 
+               dimnames = list(NULL, names(coef(arma32_adj))))
+s = rep(NA, B)
+
+# Bootstrap B times
+for(b in 1:B){
+  x = ts(arima.sim(list(ar, ma), n = length(alcohol_cycles), sd = sigma),
+         start = start_tm, frequency = 12) + xreg_coef*unemploy_cycles
+  mod = arima(x, order = c(3, 0, 2), xreg = unemploy_cycles, include.mean = F)
+  theta[b, ] = coef(mod)
+  s[b] = var(mod$residuals)
+}
+
+# s.e.
+sqrt(diag(var(theta)))
+```
+
+```{r ci}
+cat("Bootstrap Confidence Interval: ")
+t(apply(theta, 2, quantile, c(.025, .975)))
+
+se = sqrt(diag(arma32_adj$var.coef))
+fisher_info = cbind(arma32_adj$coef - 1.96*se, arma32_adj$coef + 1.96*se)
+colnames(fisher_info) = c("2.5%", "97.5%")
+cat("Fisher Information: ")
+fisher_info
+```
+
+Unfortunately, the result is not robust.
+
+## Conclusion
+- Based on the summary table of the model, we know that the unemployment rate and the CPI of alcoholic beverages have a positive relationship. People tend to purchase more alcohols when being unemployed.
+
+- However, we have to be cautious about the exsitence of confounding variables, meaning that the unemployment rate may not directly cause the CPI of alcoholic beverages to increase since it is likely to have a third variable such as social status or mental health that is omitted from this analysis.
+
+- We only look at the association of two indicators from the mid-range frequency, the cycle components, of the data. At this point, the model doesnot pass the Gaussian white noise assumption. I think the possible reasons include large variation from the economic recession period and the remaining seasonality. Thus, other filters or more complicated model should be considered in the future analysis to improve the goodness of fit.
+
+## Reference
+- Ionides, E. (n.d.). Stats 531 (Winter 2020) “Analysis of Time Series”. Retrieved from https://ionides.github.io/531w20/
+- Hyndman, R.J., & Athanasopoulos, G. (2018) Forecasting: principles and practice, 2nd edition, OTexts: Melbourne, Australia. OTexts.com/fpp2. https://otexts.com/fpp2/
+- Ganong, P., & Noel, P. (2015). How does unemployment affect consumer spending?. Unpublished manuscript, Harvard Univ., Cambridge, MA. http://scholar. harvard. edu/files/ganong/files/ganongmpnemploymentpending. pdf Article Location.
+- Estrella, A. (2007). Extracting business cycle fluctuations: what do time series filters really do?. FRB of New York Staff Report, (289).
+- The Association Between Home Purchase Prices and Effective Interest Rates. Retrieved from https://ionides.github.io/531w18/midterm_project/project21/midterm_project.html#forecasted-value-versus-the-original-value
+- Midterm Project. Retrieved from https://ionides.github.io/531w18/midterm_project/project42/Midterm_Project.html
+- Case study: An association between unemployment and mortality? Retrieved from http://ionides.github.io/531w16/notes10/notes10.html

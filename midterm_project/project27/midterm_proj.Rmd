@@ -1,0 +1,242 @@
+---
+title: "Time Series Analysis of NO2 Concentration in Dongcheng District, Beijing"
+date: "March, 7, 2020"
+output: 
+  html_document:
+    toc: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(ggplot2)
+library(knitr)
+library(dplyr)
+```
+
+
+## 1 Introduction
+
+### 1.1 Background
+Nitrogen dioxide ($NO_2$) is a poisonous gas, contributing to the chemical reactions that make ozone. Increasing atmospheric $NO_2$ concentrations can threat the ecological environment and adversely impact human. The $NO_2$ concentrations is one of the most important indicators of air pollution. In this project, we are going to do a time series analysis of $NO_2$ concentration in Dongcheng District, Beijing. All data reflecting the air quality in Dongcheng District are retrieved from Tiantan air-quality monitoring site.
+
+### 1.2 Goals
+We have three main goals in this project. The first one is to find a relatively better ARIMA model fitting the hourly $NO_2 concentration$ data. The second one is to figure out whether some environmental factors can affect $NO_2$ concentration. The last one is to check whether there are any seasonalities.
+
+### 1.3 Data Description
+The raw data set comes from [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/index.php). It actually includes hourly air pollutants data from 12 nationally-controlled air-quality monitoring sites. The time ranges from March 1st, 2013 to February 28th, 2017. This project aims at focusing on the data from Feburary 1st, 2015 to Feburary 28th, 2015, which has 672 observations (24 hours $\times$ 28 days). The variables we are concerned with are hourly $NO_2$ concentration $(ug/m^3)$, temperature (degree Celsius), precipitation $(mm)$ and wind speed $(m/s)$. Below shows the summary of the data briefly.
+
+
+```{r import_data}
+dat = read.csv('PRSA_Data_Tiantan_20130301-20170228.csv', header = TRUE)
+mydata = dat %>% filter(year == 2017 & month == 2) %>% select(NO2, TEMP, PRES, RAIN, WSPM)
+mydata[which(is.na(mydata$RAIN)), 2:4] = mydata[which(is.na(mydata$RAIN))-24, 2:4]
+mydata[which(is.na(mydata$NO2)), 1] = mydata[which(is.na(mydata$NO2))-24, 1]
+show_data = mydata[,-3]
+colnames(show_data) = c('NO2', 'Temperature', 'Precipitation','Wind Speed')
+print(summary(show_data))
+```
+
+
+
+## 2 Exploratory Data Analysis
+```{r time_series_plot, fig.width = 12}
+plot(mydata$NO2, type = 'l', ylab = expression(paste( NO[2], ' Concentration')),
+     main = expression(paste('Time Series of ', NO[2], ' Concentration')))
+```
+
+In order to make the data less skewed, we take log transformation first. Then, we draw the spectrum plot and ACF of plot for the transfromed data.
+
+```{r spectrum_acf_plot, fig.width = 12}
+no2_log = log(mydata$NO2)
+par(mfrow=c(1,2))
+spec = spectrum(no2_log, spans = c(10,10,10))
+abline(v = c(spec$freq[c(55, 114, 187)]), lty = 3, col = 'red')
+# print(spec$freq[c(55, 114, 187)])
+# print(1/spec$freq[c(55, 114, 187)])
+acf(no2_log, main = expression(paste('log(',NO[2],'concentration)')))
+```
+
+From the spectrum plot, we find this is no obvious dominant frequencies but some small peaks marked by the dotted red line. They correspond to frequencies of 0.081, 0.17 and 0.28 cycles per hour, or about 12.27, 5.92 and 3.61 hours per cycle. There are also roughly two bumps at lags of 12 and 24 from the ACF plot. We'll check its seasonality later by fitting data in a seasonal model.
+
+
+## 3 Time Series Analysis
+
+### 3.1 ARMA Model
+Let's get started with ARMA model. What we do first is to decide where to start in terms of values of p and q. Thus, we tabulate AIC tables below.
+```{r ARMA_aic}
+ARMA_aic = function(data,P,Q){
+  set.seed(22)
+  aic = matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      aic[p+1,q+1] = arima(data,order=c(p,0,q), optim.control = list(maxit = 1000))$aic
+    }
+  }
+  dimnames(aic) = list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  return(aic)
+}
+ARMA_table = ARMA_aic(no2_log, 5, 5)
+kable(ARMA_table)
+```
+
+From the AIC table, we prefer to choose ARMA(1,1) with the lowest AIC value 503.1098. Besides, ARMA(1,1) is a relative simple model among these optional models. We refit to the data in ARMA(1,1) and obtain the value of each parameter.
+
+```{r ARMA_model, fig.width = 12}
+set.seed(22)
+arma_model = arima(no2_log,order=c(1,0,1), optim.control = list(maxit = 1000))
+arma_model$coef
+```
+
+To evalute the goodness of fit of this model, I can consider the sample ACF plot and QQ plot of residuals. When looking at the sample ACF plot below, there are slight oscillations at specific lags, like multiples of 3, that indicate the dependence in errors is not being modeled sufficiently well. From the QQ-plot, heavier tails of residuals than normal distribution occur on both sides.
+```{r evalue_ARMA, fig.width = 12}
+par(mfrow=c(1,2))
+acf(arma_model$residual, main = 'ACF of Residuals From ARMA(1,1)')
+qqnorm(arma_model$residual)
+qqline(arma_model$residual)
+```
+
+
+
+### 3.2 Linear Regression with ARMA Errors
+In order to explain the pattern of $NO_2$ concentration more precisely, we hope to include some covariates in our model. Currently, we have three different environmental covariates, temperature(TEMP), precipitation(RAIN) and wind speed (WSPM). The model and AIC table are shown below.
+$$\phi(B)(Y_n - \mu - \beta_1 \times TEMP - \beta_2 \times RAIN - \beta_3 \times WSPM) =  \psi(B)\epsilon_n$$
+Where
+$$\phi(x) = 1-\phi_1 x - \cdots -\phi_p x^p$$
+$$\psi(x) = 1+\psi_1 x + \cdots +\psi_q x^q$$
+$B$ is the backshift operator, $\{\epsilon_n\}$ is an independent Gaussian white noise process.
+
+```{r xreg, echo=FALSE}
+covariates = c('TEMP', 'RAIN', 'WSPM')
+xreg_aic = function(data,P,Q){
+  set.seed(22)
+  aic = matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      aic[p+1,q+1] = arima(data,order=c(p,0,q), xreg=mydata[,covariates], optim.control = list(maxit = 10000))$aic
+    }
+  }
+  dimnames(aic) = list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  return(aic)
+}
+
+
+xreg_table = xreg_aic(no2_log, 5, 4)
+kable(xreg_table)
+```
+
+ARMA(5,4) has the smallest AIC but it is way more complex. We know that a model with slightly larger AIC is acceptable if it is simpler. ARMA(1,1) is the one that satisfies the conditions. Refit to data into linear regression with error model and get values of these parameters. Looking at the values, we find that two ARMA parameters are somewhat equivalent to those of previous model indicating that the enviromental factors can only affect the global trend for $NO_2$ concentration. In addition, the parameters of three factors are all negative, which means the smaller precipitation and wind speed and the lower temperature lead to higher $NO_2$ concentration.
+
+
+```{r xreg_model, fig.width=12}
+xreg_model = arima(no2_log,order=c(1,0,1), xreg=mydata[,covariates], optim.control = list(maxit = 10000))
+xreg_model$coef
+```
+
+```{r evalute_xreg, fig.width=12}
+par(mfrow=c(1,2))
+acf(xreg_model$residual, main = 'ACF of Residuals From error ARMA(1,1)')
+qqnorm(xreg_model$residual)
+qqline(xreg_model$residual)
+```
+From the ACF plot of residuals, the oscillatory component for 3-lagged variation might suggest there should be a seasonal trend. Likelihood Ratio Test(LRT) is also carried out as follows:
+$$H_0: \beta_1 = \beta_2 = \beta_3 = 0$$ 
+$$H_a:\mbox{not all } \beta 's \mbox{ equal zero}$$ .
+
+The LRT statistic is calculated as 
+$$2[logL(\theta_a)−logL(\theta_0)]=2(-232.59−(-247.55))=29.93 > \chi^2_{3, 0.95}$$ 
+We will reject the null hypothesis because LRT Statistic is larger than the $\chi^2_{3, 0.95}$ cutoff, which means the enviromental factors are somewhat inevitable in the model. 
+
+```{r xreg_test, echo=FALSE}
+log_lik_ratio = as.numeric(logLik(xreg_model) - logLik(arma_model))
+pval = 1 - pchisq(2*log_lik_ratio, df = 3)
+```
+
+### 3.3 Linear Regression with SARIMA Errors
+Based on the spectrum plot before and the acf plot of the residuals above, we find the period of 3 hours is reasonble. Other period candidates are roughly the harmonic of period of 3 hours, which means it is the base of periods of 6, 12, and 24 hours. For simplicity, we fix ARIMA part as ARIMA(1,0,1) first and then study the seasonality part. 
+
+$$\Phi(B^3)\phi(B)(Y_n - \mu - \beta_1 \times TEMP - \beta_2 \times RAIN - \beta_3 \times WSPM) =  \Psi(B^3)\psi(B)\epsilon_n$$
+Where 
+$$\phi(x) = 1-\phi_1 x$$
+$$\psi(x) = 1+\psi_1 x$$
+$$\Phi(x) = 1-\Phi_1 x - \cdots -\Phi_p x^p$$
+$$\Psi(x) = 1+\Psi_1 x + \cdots +\Psi_q x^q$$
+$B$ is the backshift operator, $\{\epsilon_n\}$ is an independent Gaussian white noise process.
+
+After then, we create AIC table with respect to seasonality part. we find model SARIMA$(1,0,1)\times(2,0,2)_3$ with the lowest AIC.
+```{r SARIMA_aic}
+SARIMA_aic = function(data,P,Q){
+  set.seed(22)
+  aic = matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      aic[p+1,q+1] = arima(data,order=c(1,0,1), seasonal=list(order=c(p,0,q), period=3), xreg=mydata[,covariates],
+                              optim.control = list(maxit = 10000))$aic
+    }
+  }
+  dimnames(aic) = list(paste("<b> SAR",0:P, "</b>", sep=""),paste("SMA",0:Q,sep=""))
+  return(aic)
+}
+SARIMA_table = SARIMA_aic(no2_log, 4, 4)
+kable(SARIMA_table)
+```
+
+
+From the sample ACF plot below, we notice that autocorrelations are much smaller than those in above two ACF plots but there is still a non-negligible autocorrelation at a lag of about 11 and heavy tailes still exist.
+```{r SARIMA_model, fig.width=12}
+set.seed(22)
+sarima_model = arima(no2_log,order=c(1, 0, 1), seasonal=list(order=c(2,0,2), period=5.5), xreg=mydata[,covariates],
+                     optim.control = list(maxit = 10000))
+```
+
+
+```{r evaluate_SARIMA, fig.width=12}
+par(mfrow=c(1,2))
+acf(sarima_model$residual, main = 'ACF of Residuals From error SARIMA(1,0,1)X(2,0,2)')
+qqnorm(sarima_model$residual)
+qqline(sarima_model$residual)
+```
+
+```{r sarima_test, echo=FALSE}
+log_lik_ratio = as.numeric(logLik(sarima_model) - logLik(xreg_model))
+pval = 1 - pchisq(2*log_lik_ratio, df = 4)
+```
+
+The hypothesis is shown as follows:
+$$H_0: \Phi_1 = \Phi_2 = \Psi_1 = \Psi_2 = 0$$ 
+$$H_a: \mbox{They are not all zero}.$$
+
+The LRT statistic is calculated as 
+$$2[logL(\theta_a)−logL(\theta_0)]=2(-228.17−(-233.80))=11.23 > \chi^2_{4, 0.95}$$
+Since the statistic is greater than $\chi^2_{4, 0.95}$, we conclude the null hypothese should be rejected at 0.05 level. 
+
+## 4 Conclusion
+In this project, we take a look at the hourly $NO_2$ concentration in Feburary monitored in Tiantan air-quality monitoring site. After a sequence of model selections and evaluations, we finally think the linear regresson with SARIMA$(1,0,1)\times(2,0,2)_3$ error model for this dataset is more reasonable to use due to having all the variables being significant. The error part has seasonal tread and the global trend can be explained by three environmental factors, which are all negative-correlated with $NO_2$ concentrartion. The details of the final model are shown as follows
+
+$$\Phi(B^3)\phi(B)(Y_n - 3.98 + 0.03 \times TEMP + 0.58 \times RAIN + 0.06 \times WSPM) =  \Psi(B^3)\psi(B)\epsilon_n$$
+Where 
+$$\phi(x) = 1-0.93 x$$
+$$\psi(x) = 1-0.29 x$$
+$$\Phi(x) = 1+1.21 x + 0.56 x^2$$
+$$\Psi(x) = 1+1.11 x + 0.46 x^2$$
+${\epsilon_n} \sim N(0, 0.1152)$.
+
+However, residuals are more heavy-tailed than normal distribution on both sides. In addition, the period of 3 hours is harder to interpret within one day. If we enlarge the dataset and extend the time range, the period of 12 hours (half of a day) or 24 hours (one day) might be the more reasonable one, maybe the non-negligible autocorrelation at a lag of about 11 is also can be removed.
+
+
+
+## 5 Reference 
+[1] Data resource from https://archive.ics.uci.edu/ml/machine-learning-databases/00501/
+
+[2] Previous projects from https://ionides.github.io/531w18/midterm_project/
+
+[3] Course notes https://ionides.github.io/531w20/
+
+[4] Zhang, S., Guo, B., Dong, A., He, J., Xu, Z. and Chen, S.X. (2017) Cautionary Tales on Air-Quality Improvement in Beijing. Proceedings of the Royal Society A, Volume 473, No. 2205, Pages 20170457.
+
+[5] Nianliang Cheng, Yunting Li, el, Ground-Level NO2 in Urban Beijing: Trends, Distribution, and Effects of
+Emission Reduction Measures 
+
+
+
+

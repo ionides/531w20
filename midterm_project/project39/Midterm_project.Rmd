@@ -1,0 +1,318 @@
+---
+title: "Stats531 Midterm Project"
+subtitle: "Time Series Analysis of US industrial production: electric and gas utilities"
+date: "03/07/2020"
+ouput: 
+   html_document:
+    toc: yes
+    theme: flatly
+---
+
+---
+
+### 1. Introduction 
+
+In the United States,  electricity and gas are the two most important energies which are delivered and supplied people's energy. The production of electric and gas utilities can reflect the energy use by residents. This report will analyze US industrial electric and gas utilities production through time series analysis. And I am trying to find some patterns of energy use over the last 20 years.
+
+The data I used is monthly data from 2000 to 2019. Actually, the index of 2010 is given by 100, and the data of the other years are relative.
+
+```{r, echo = FALSE, eval = TRUE, message=FALSE}
+# https://fred.stlouisfed.org/series/IPG2211A2N #
+#https://www.globalspec.com/learnmore/specialized_industrial_services/utility_services/electric_gas_utilities#
+eleDat <- read.csv(file="2000_2019_Electric_Production.csv",header=1)
+eleDat=na.omit(eleDat)
+eleDat$Date <- strptime(eleDat$DATE,"%m/%d/%Y")
+
+eleDat$year <- as.numeric(format(eleDat$Date, format="%Y"))
+eleDat$month <- as.numeric(format(eleDat$Date, format="%m"))
+
+eleDat$time = eleDat$year + (eleDat$month-1)/12
+ElecDat=data.frame(time=eleDat$time,ele=eleDat$IPG2211A2N )
+```
+
+#### Summary of the data
+
+```{r, echo = FALSE, eval = TRUE, message=FALSE}
+summary(ElecDat$ele)
+```
+
+We can see from the summary that the maximum and minimum of the data are 128.91 and 81.67, respectively. And there are no missing values. To see the data more intuitively, we made the time series plot as follows. 
+
+#### Local regression and smoothing
+
+At first glance, the data fluctuates regularly and there is a slightly increasing trend. To see clearly the general trend of the data, we first made a local regression, which is displaied below. From the local regression, we know there is indeed a increasing trend. 
+
+```{r, echo = FALSE, eval = TRUE, message=FALSE}
+library(ggplot2)
+qplot(x = time, y = ele, data = ElecDat, xlab = 'time', ylab = 'Electric and gas utilities', main = 'Industrial Production: Electric and gas utilities')+
+  geom_line()+
+  theme(text = element_text(size=15))+
+  stat_smooth(span =1, geom = "smooth")
+```
+
+### 2. Trend and Seasonality 
+
+#### Decomposition of the time series
+
+To make the trend feature more convincing, I used decomposite the data series into high-frequency series, low-frequency series and mid-range frequency series. As we all know, high frequency variation might be considered “noise” and low frequency variation might be considered trend$^{[1]}$. After decomposition, we can say, with more confidence, that the time series has an increasing trend.  
+
+```{r, ,echo = FALSE, eval = TRUE, warning=FALSE}
+n = seq(1,length(ElecDat$ele))
+ele_Prod = ElecDat$ele
+Trend = ts(loess(ele_Prod~n,span=0.5)$fitted,start=1985,frequency=12)
+Noise = ts(ele_Prod-loess(ele_Prod~n,span=0.1)$fitted,start=1985,frequency=12)
+Cycles = ele_Prod - Trend - Noise
+plot(ts.union(ele_Prod,Trend,Noise,Cycles),main="Decomposition of Industrial Production as Trend + Noise + Cycles",xlab="Year")
+```
+
+#### Check Seasonality
+
+We also checked the seasonality or the periodicity. To begin with, I made the ACF plot as follows. It is easy to find the periodicity feature of the data since positive large autocorrelation function appears at lag 6, 12, and 18 and the negative large autocorrelation function appears at lag 3, 9, 15, and 21. In other words, data are strongly autocorrelated every six months. This situation is an indicator of seasonality. 
+
+```{r, echo = FALSE, eval = TRUE, message=FALSE}
+acf(ElecDat$ele,main='ACF plot of Industrial Production: Electric and gas utilities')
+```
+
+Next, we used frequency domain to analyze the series' spectral density. The left and right plots are unsmoothed and smoothed periodogram respectively. Obviously, there is a significant peak in the smoothed periodogram. After calculating, we found that the highest frequency is 0.16667, which corresponds to half a year(six months). This phenomenon agrees with the conclusion we discussed in the ACF plot. In fact, it make sense that the period is six month. This is because people usually use more electricity or gas in summer and winter. For example, air conditioning and heating are often used in summer and winter.
+
+```{r, echo = FALSE, eval = TRUE, message=FALSE, fig.width=15, fig.height=5}
+par(mfrow=c(1,2))
+spectrum(ElecDat$ele,main="Unsmoothed Periodogram")
+smoothed_periodogram = spectrum(ElecDat$ele,method="pgram",spans=c(5,5),main="Smoothed Periodogram")
+highest_freq=smoothed_periodogram$freq[which.max(smoothed_periodogram$spec)]
+abline(v=smoothed_periodogram$freq[which.max(smoothed_periodogram$spec)], lty="dotted",col='red',lwd=2)
+paste("The highest frequency", round(highest_freq,5))
+paste("1/0.16667=",round(1/0.1667,4) )
+```
+
+#### Keep stationary via differentiation
+
+Because the data series has a trend, as we discussed above, we use differencing, one of the popular method to keep the series mean stationary. 
+
+```{r, echo = FALSE, eval = TRUE, warning=FALSE}
+ElecDiff=diff(ElecDat$ele)
+qplot(x = ElecDat$time[-1], y = ElecDiff,  xlab = 'time', ylab = 'diff of Electric and gas utilities', main = 'Industrial Production: Electric and gas utilities')+
+  geom_line()+
+  theme(text = element_text(size=15)) 
+```
+
+After differentiation, the data looks more stationary, as the plot shows above.
+
+
+```{r, echo = FALSE, eval = TRUE, warning=FALSE}
+n = seq(1,length(ElecDiff))
+ele_ProdDiff = ElecDiff
+Trend = ts(loess(ele_ProdDiff~n,span=0.5)$fitted,start=1985,frequency=12)
+Noise = ts(ele_ProdDiff-loess(ele_ProdDiff~n,span=0.1)$fitted,start=1985,frequency=12)
+Cycles = ele_ProdDiff - Trend - Noise
+plot(ts.union(ele_ProdDiff,Trend,Noise,Cycles),main="Decomposition of differential data as Trend + Noise + Cycles",xlab="Year")
+```
+
+If we decomposite the differential data in the same way as we did before, we notice that the trend composition is quite horizontal in the middle, which indicates that the differential data is mean stationary. 
+
+```{r, echo = FALSE, eval = TRUE, warning=FALSE, fig.width=15, fig.height=5}
+par(mfrow=c(1,2))
+spectrum(ElecDiff,main="Unsmoothed Periodogram of differential data")
+smoothed_periodogram = spectrum(ElecDiff,method="pgram",spans=c(5,5),main="Smoothed Periodogram of differential data")
+highest_freq=smoothed_periodogram$freq[which.max(smoothed_periodogram$spec)]
+abline(v=smoothed_periodogram$freq[which.max(smoothed_periodogram$spec)], lty="dotted",col='red',lwd=2)
+paste("The highest frequency", round(highest_freq,4))
+```
+
+We also check the periodogram of the differential data by frequency domain and find that the seasonality does not change. Like the spectral density of raw data series, the main peak in the smoothed periodogram plot of differential data is also appears at frequency 0.16667. 
+
+
+### 3. ARIMA model 
+
+To fit the data, in this chapter, we fitted an ARIMA model, which does not directly add seasonality parameter. In next chapter, we will fit a SARIMA model, which add a seasonality item. Then, we will compare the two models. 
+
+The general Integrated autoregressive moving average model ARIMA(p,1,q) with intercept $\mu$ for $Y_{1:N}$ can be expressed as:
+$$\phi(B)((1-B)Y_n -\mu)= \psi(B) \epsilon_n  $$
+Where
+$$\phi(x)=1-\phi_1x-\phi_2x^2-...-\phi_px^p$$
+$$\psi(x)= 1+\psi_1x+\psi_2x^2+...+\psi_qx^q  $$
+$\{\epsilon_n\}$ is a white process and $B$ is a backshift operator. 
+
+It is worth noting that p and q are parameters we need to choose. An appropriate pair of (p,q) can help us fit the data better. However, there are no fixed criteria to choose p and q. Here, I first used the Akaike information criterion(AIC) as an informal method to get some candidate parameters. 
+$$ACI= -2 l(\theta) +2D$$
+
+Where $l(\theta)$ is the maximized log likelihood and $D$ is the number of parameters.
+
+I calculated the AIC values of the model for different p and q. Both p and q are ranged from 0 to 4. The results are displayed in the table below:  
+
+```{r, echo = FALSE, eval = TRUE, warning=FALSE}
+library(knitr)
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,1,q),  method = "ML")$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""), paste("MA",0:Q,sep=""))
+  table
+}
+
+eleProd_table <- aic_table(ElecDat$ele,4,4)
+
+require(knitr)
+kable(eleProd_table,digits=2)
+```
+
+If we choose the model with the minimal AIC, ARIMA(4,1,4) is the best choice. However, we need to check causality and invertibility. The model is causal only if the AR polynomial has its roots outside the unit circle. The model is invertible only if the MA polynomial has its roots outside the unit circle. Besides, we need to check the model's reducibility. This  means the model can be simplified if the AR polynomial and MA polynomial share the same roots. 
+
+We calculated all the roots of AR and MA polynomials of all 25 ARIMA(p,1,q) models from (p,q)=(0,0) to (p,q)=(4,4). We only keep models which are causal, invertible, and irreducible. These are candidate models. Then, we chose the model with minimum AIC from the candidate models. Finally, the ARIMA(2,1,3) model beated other candidate models. 
+
+```{r, echo = FALSE, eval = FALSE, warning=FALSE}
+ar=c('ar1','ar2','ar3','ar4')
+ma=c('ma1','ma2','ma3','ma4')
+for (ari in 0:4){
+  for (maj in 0:4){
+    arimai1j=arima(x = ElecDat$ele, order = c(ari, 1, maj), method = "ML")
+    ar_root=polyroot(c(1,-coef(arimai1j)[ar[0:ari]]))
+    ma_root=polyroot(c(1, coef(arimai1j)[ma[0:maj]]))
+    print(paste(c('AR=','MA='),c(ari,maj),collapse=','))
+    print(ar_root)
+    print(ma_root)
+    print("---------------------")
+  }
+}
+```
+
+
+### 4. SARIMA model 
+
+As we discussed before, the data series actually has a seasonality. So in this chapter, we will fit a SARIMA model, which include a season parameter.
+
+The Seasonal Integrated Autoregressive Moving Average Model SARIMA(p,d,q)*(P,D,Q) for monthly data can be expressed as:
+$$ \phi(B)\Phi(B^{12})((1-B)^d(1-B^{12})^D Y_n -\mu)= \psi(B)\Psi(B^{12}) \epsilon_n   $$
+Where 
+
+$$\phi(x)=1-\phi_1x-\phi_2x^2-...-\phi_px^p$$
+$$\psi(x)= 1+\psi_1x+\psi_2x^2+...+\psi_qx^q$$
+$$\Phi(x)=1-\Phi_1x-\Phi_2x^2-...-\Phi_px^p$$
+$$\Psi(x)= 1+\Psi_1x+\Psi_2x^2+...+\Psi_qx^q$$
+$\{\epsilon_n\}$ is a white process and $B$ is a backshift operator. The intercept $\mu$ is the mean of the differenced process $\{(1-B)^d(1-B^{12})^DY_n\}$ To choose the model as simple as possible, we set $d=1$, $P=1$, $D=0$ and $Q=0$. For parameter $p$ and $q$, we used AIC criteria to choose. 
+
+Same as before, I calculated the AIC values for different p and q. Both p and q are ranged from 0 to 4. The results are displayed in the table below:  
+
+```{r, echo = FALSE, eval = TRUE}
+library(knitr)
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,1,q),seasonal = list(order = c(1, 0, 0), period = 12))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""), paste("MA",0:Q,sep=""))
+  table
+}
+
+eleProd_table <- aic_table(ElecDat$ele,4,4)
+
+require(knitr)
+kable(eleProd_table,digits=2)
+```
+
+```{r, echo = FALSE, eval = FALSE,warning=TRUE}
+ar=c('ar1','ar2','ar3','ar4')
+ma=c('ma1','ma2','ma3','ma4')
+for (ari in 0:4){
+  for (maj in 0:4){
+    arimai1j=arima(x = ElecDat$ele, order = c(ari, 1, maj), seasonal = list(order = c(1, 0, 0), period = 12))
+    ar_root=polyroot(c(1,-coef(arimai1j)[ar[0:ari]]))
+    ma_root=polyroot(c(1, coef(arimai1j)[ma[0:maj]]))
+    print(paste(c('AR=','MA='),c(ari,maj),collapse=','))
+    print(ar_root)
+    print(ma_root)
+    print("---------------------")
+  }
+}
+```
+
+For all the possible (p,q), I calculated the roots of AR and MA polynomials and found that all the roots were outside the unit circle in the complex plane. This means all the possible (p,q) can make the model invertible and causal. But I also noticed that the model with (p,q) = (3,3),(3,4),(4,3),(4,4) are reducible since the roots of its AR and MA polynomial are similar. After removing these four models, I chose the model with minimal AIC and finally acquired the model with p=2, q=2. Thus, the SARIMA model here is SARIMA(2,1,2)*(1,0,0).
+
+#### Compare the two models above
+
+So far, we got two candidate models: in chapter 3, we got ARIMA(2,1,3) model and in chapter 4, we got SARIMA(2,1,2)$\times$(1,0,0) model. Now, we compare the two models by likelihood value. As we all know, the larger the likelihood, the better the model fitted. The comparing result is that the likelihood of SARIMA model is 33.63 larger than that of ARIMA model. Thus, we finally chose SARIMA(2,1,2)$\times$(1,0,0) model to fit the data.
+
+```{r, echo = FALSE, eval = TRUE}
+arima213= arima(x = ElecDat$ele, order = c(2, 1,3), method = "ML")
+sarima212=arima(x = ElecDat$ele, order = c(2, 1,2), seasonal = list(order = c(1, 0, 0), period = 12), method = "ML")
+print(paste(c('sarima212$loglik - arima213$loglik:'), sarima212$loglik - arima213$loglik))
+```
+
+
+#### Fit the data and make the prediction
+
+Now, we use SARIMA(2,1,2)$\times$(1,0,0) model to fit the data and make some predictions. As the plot shown below, the black line is the original data, the red line is the fitted values and the blue line is the predicted value in the following 12 periods. Obviously, the fitted line matches the original line very well. In this sense, the model we built is suitable.  
+
+```{r, echo = FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+library(forecast)
+fore_h<-forecast(sarima212, h=12)
+plot(fore_h)
+lines(fitted(sarima212),col="red")
+legend('topleft',legend=c("original data", "fitted value", "predicted value"), col=c("black", "red","blue"),lty=1)
+```
+
+### 5. Residual Analysis 
+
+#### Time series plot
+
+After we built a model and fitted the data. We need to do some residual analysis to check the correctness of the model. We hope the residuals are normal white noise, which follows the normal distribution with mean zero. First, we plotted the time plot of the residuals, the result is shown below. The residuals indeed look like stationary process with mean zero. 
+
+```{r, echo = FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+sarima212res=data.frame(res=sarima212$residuals,time=ElecDat$time)
+qplot(x = time, y = res, data=sarima212res, xlab = 'time', ylab = 'residuals')+
+  geom_line()+
+  theme(text = element_text(size=15))   
+```
+
+#### ACF plot
+
+Next, we made an ACF plot of the residuals. The ACF drops to small value quickly and most of the ACFs are between the dashed lines. This indicates the residuals are uncorrelated.
+
+```{r,echo = FALSE, eval = TRUE}
+acf(sarima212$residuals, na.action = na.pass, main="ACF of residuals in model arima(2,1,2)" )
+```
+
+#### Histogram 
+
+The histogram of the residuals shows that the residuals approximately follow a normal distribution. The blue line is the density curve of the residuals and the red line is the density curve of normal distribution. The two lines almost coincide. 
+```{r,echo = FALSE, eval = TRUE,message=FALSE}
+ggplot(data = data.frame(sarima212$residuals), aes(x = sarima212$residuals)) +
+  geom_histogram(aes(y = ..density..), color = "black", binwidth=2, fill = "grey", alpha = 1)+
+  geom_density(aes(color = "Residual"))+
+  stat_function(aes(color = "Normal"), fun = dnorm, args = list(mean =  mean(sarima212$residuals) , sd = sd(sarima212$residuals)))+
+  labs(title = "Histogram of residuals in model sarima(2,1,2)", x = 'residual of SARIMA(2,1,2)')   
+```
+
+#### QQ plot
+
+Finally, the qqplot also shows that the residuals approximately follow a normal distribution.
+
+```{r,echo = FALSE, eval = TRUE}
+qqnorm(sarima212$residuals, main="QQ plot of residuals in model sarima(2,1,2)")
+qqline(sarima212$residuals, col=2, lwd=2)
+```
+
+### 6. Conclusion
+*(1)* This report focuses on the time series of US industrial electric and gas utilities production from 2000 to 2019. 
+
+*(2)* The data series has a six-month seasonality. The reason for this phenomenon may be the seasonality of usage of electricity and gas. To be specific, residents usually use more electricity and gas in hot summer and cold winter.
+
+*(3)*  There are several models we can choose to fit the data. In this project, we used ARIMA and SARIMA models. What need be known is that we should choose the invertible and causal model and try not to choose reduceable model. In this report, the SARIMA model is better than the ARIMA model under the criterion of the likelihood.
+
+*(4)* The residual analysis showed that the residuals of our SARIMA(2,1,2)$\times$(1,0,0) model approximately follows the normal distribution. This is an indicator of a good fit. 
+
+
+### 7. Reference
+[1] Class notes https://ionides.github.io/531w20/08/notes08-annotated.pdf 
+
+[2] Data Source https://fred.stlouisfed.org/series/IPG2211A2N 
+
+[3] Introduction of Electric and Gas Utilities https://www.globalspec.com/learnmore/specialized_industrial_services/utility_services/electric_gas_utilities 
+
+[4] previous projects http://ionides.github.io/531w16/midterm_project/
+

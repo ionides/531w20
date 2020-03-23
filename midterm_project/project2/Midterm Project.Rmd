@@ -1,0 +1,164 @@
+---
+title: "Analysis on PM2.5 concentration during spring in Xuhui District, Shanghai, China"
+output:
+  html_document:
+    toc: yes
+    theme: flatly
+  
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Introduction
+
+PM2.5 refers to atmospheric particulate matter (PM) that have a diameter of less than 2.5 micrometers. Studies have found a close link between exposure to PM2.5 and premature death from heart and lung disease. In this project, we want to fit a time series model for the PM2.5 concentration data during the spring season of Xuhui District of Shanghai City, China.
+
+# 2. Data Selection and Prepocessing
+
+First, we read the data file into R and pick out the columns and rows that are of our interest.
+
+```{r}
+ShanghaiPM<-read.csv(file="ShanghaiPM20100101_20151231.csv",header=TRUE)
+XuhuiPM<-ShanghaiPM[,c("No","year","month","day","hour","season","PM_Xuhui")]
+XuhuiPM_2015Spring<-XuhuiPM[which((XuhuiPM$year==2015)&((XuhuiPM$month==3)|(XuhuiPM$month==4)|(XuhuiPM$month==5))), ]
+```
+
+It is worth noting that there are several unobserved values in our data. Based on common sense, we suspect that the data should follow a daily pattern.(For example, the PM2.5 concentration may be related to factory emissions, commuting activities and plant photosynthesis, which are typically on a daily basis). As a result, we use the PM2.5 concentration data of the corresponding time of the previous day to fill the missing data.
+
+```{r}
+#pick out the NA values
+list_NA<-which(is.na(XuhuiPM_2015Spring$PM_Xuhui)>0)
+
+#use the data of the corresponding time of the previous day to fill the missing data 
+XuhuiPM_2015Spring[list_NA,]$PM_Xuhui=XuhuiPM_2015Spring[list_NA-24,]$PM_Xuhui
+
+#set the x-axis unit to be daily and plot the data
+dat=ts(data=XuhuiPM_2015Spring$PM_Xuhui,frequency=24)
+plot(dat,xlab="Time(Days)")
+acf(dat,xlab="Lag(Days)")
+```
+
+By looking at the ACF plot, we find that the PM2.5 concentration appears strong correlation with the previous data, suggesting that we should take difference of the data into account in our model.  
+
+# 3. Model Fitting and Selection
+
+We may try to fit an ARIMA model for the original data first, although it will be shown later that the ARIMA model for the logarithm transformed data would be more appropriate. We 
+
+```{r}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,1,q),include.mean=TRUE)$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+PM_aic_table <- aic_table(dat,4,5)
+PM_aic_table
+```
+
+We pick the model $ARIMA(3,1,2)$ for the original data since it has the smallest AIC value. The fitted parameters and ACF plot of the residuals are as follows.
+
+```{r}
+PM_arima312 <- arima(dat,order=c(3,1,2),include.mean=TRUE)
+PM_arima312
+```
+```{r}
+acf(PM_arima312$residuals,lag.max=48,xlab="Lag(Days)")
+```
+
+There seems to be a seasonal pattern in the ACF plot of the residuals. Meanwhile, we suspect that fitting an ARIMA model for the original data may be inappropriate since it may not reflect the very sharp peaks we observed in the data plot. Next, we do a simulation study based on $ARIMA(3,1,2)$ to verify our idea.
+
+```{r}
+Nt<-length(dat)
+sim<-rep(0,Nt)
+set.seed(1)
+w<-rnorm(Nt,m=0,sd=sqrt(PM_arima312$sigma2))
+for(nt in 5:Nt){
+sim[nt]<-(1+PM_arima312$coef["ar1"])*sim[nt-1]-(PM_arima312$coef["ar1"]-PM_arima312$coef["ar2"])*sim[nt-2]-(PM_arima312$coef["ar2"]-PM_arima312$coef["ar3"])*sim[nt-3]-PM_arima312$coef["ar3"]*sim[nt-4]+PM_arima312$coef["ma1"]*w[nt-1]+PM_arima312$coef["ma2"]*w[nt-2]+w[nt]
+}
+sim<-sim+mean(dat)
+sim_dat=ts(data=sim,frequency=24)
+plot(sim_dat,xlab="Time(Days)",ylab="Simulation results from ARIMA(3,1,2)")
+```
+
+The simulation above shows that the ARIMA(3,1,2) model does not reflect the data quite well. There are many negative values, and we do not see sharp peaks. We may try to do a logarithm transformation of the data first and then fit an ARMIMA model.
+
+
+```{r}
+log_PM_aic_table <- aic_table(log(dat),3,3)
+log_PM_aic_table
+```
+
+We pick the model ARIMA(2,1,2) for the transformed data based on least AIC criterion. The fitted parameters and ACF plot of the residuals are as follows. 
+
+```{r}
+log_PM_arima212 <- arima(log(dat),order=c(2,1,2))
+log_PM_arima212
+```
+```{r}
+acf(log_PM_arima212$residuals,lag.max=48,xlab="Lag(Days)")
+```
+
+It appears that there could be a seasonal oscillating pattern in the ACF plot. Meanwhile, the ACF value at lag $0.833$ days is relatively high. It may help to add a seasonal term in our ARIMA model, for example, we will try $SARIMA(2,1,2)\times(1,0,1)_{24}$ as follows. Formally, the $SARIMA(2,1,2)\times(1,0,1)_{24}$ after logarithm transformation is stated as follows:
+
+$(1-\phi_1B-\phi_2B^2)(1-\Phi_1B^{12})(1-B)\log(Y_n)=(1+\psi_1B+\psi_2B^2)(1+\Psi_1B^{12})\epsilon_n$, where $\epsilon_n \sim iid\quad N[0,\sigma^2]$
+
+
+```{r}
+log_PM_sarima212101<-arima(x =log(dat) , order = c(2, 1, 2), seasonal = list(order = c(1, 0, 1), period = 24))
+log_PM_sarima212101
+```
+
+We do a profile likihood hypothesis test on the joint statistical significance of parameters $\Phi_1$ and $\Psi_1$.
+
+Null Hypothesis: $H_0: \Phi_1=\Psi_1=0$
+
+Alternative Hypothesis: $H_1:$ At least one of $\Phi_1$ and $\Psi_1$ is nonzero.
+
+```{r}
+log_PM_arima212<-arima(x =log(dat) , order = c(2, 1, 2))
+log_PM_sarima212101$loglik-log_PM_arima212$loglik
+```
+
+The $\chi^2$ statistic 0.8449<$\chi_{0.95}^2(2)/2$=2.996. Hence, we fail to reject the null hypothesis $H_0$.
+
+The ACF plot of the residuals of $SARIMA(2,1,2)\times(1,0,1)_{24}$ is as follows.
+
+```{r}
+acf(log_PM_sarima212101$residuals,lag.max=48,xlab="Lag(Days)")
+```
+
+It is shown from the ACF plot of the residuals of $SARIMA(2,1,2)\times(1,0,1)_{24}$ that adding a seasonal term does not help with the ACF value at lag $0.833$ day. Let's do a simulation study with the first 15 data points identical to the logarithm of the original data and generated by our fitted $SARIMA(2,1,2)\times(1,0,1)_{24}$ process.
+
+```{r}
+Nt<-length(dat)
+sim<-rep(0,Nt)
+sim[1:15]=log(dat)[1:15]
+set.seed(101)
+w<-rnorm(Nt,m=0,sd=sqrt(log_PM_sarima212101$sigma2))
+for(nt in 16:Nt){
+sim[nt]<-(1+log_PM_sarima212101$coef["ar1"])*sim[nt-1]-(log_PM_sarima212101$coef["ar1"]-log_PM_sarima212101$coef["ar2"])*sim[nt-2]-log_PM_sarima212101$coef["ar2"]*sim[nt-3]+log_PM_sarima212101$coef["sar1"]*sim[nt-12]-(log_PM_sarima212101$coef["sar1"]+log_PM_sarima212101$coef["ar1"]*log_PM_sarima212101$coef["sar1"])*sim[nt-13]-(log_PM_sarima212101$coef["ar2"]*log_PM_sarima212101$coef["sar1"]-log_PM_sarima212101$coef["ar1"]*log_PM_sarima212101$coef["sar1"])*sim[nt-14]+log_PM_sarima212101$coef["ar2"]*log_PM_sarima212101$coef["sar1"]*sim[nt-15]+log_PM_sarima212101$coef["sma1"]*w[nt-12]+log_PM_sarima212101$coef["ma1"]*w[nt-1]+log_PM_sarima212101$coef["ma1"]*log_PM_sarima212101$coef["sar1"]*w[nt-13]+log_PM_sarima212101$coef["ma2"]*w[nt-2]+log_PM_sarima212101$coef["ma2"]*log_PM_sarima212101$coef["sma1"]*w[nt-14]+w[nt]
+}
+sim_dat=ts(data=exp(sim[840:960]),frequency=24)
+plot(sim_dat,xlab="Time(Days)",ylab="Simulation results from ARIMA(3,1,2)")
+```
+
+The simulation shows that the PM2.5 concentration explodes to the magnitude of $10^{11}$ after the beginning of April, which obviously violates the original data. Hence, we conclude to reject the $SARIMA(2,1,2)\times(1,0,1)_{24}$ model and will go with $ARIMA(2,1,2)$ model for the logarithm transformed data.  
+
+# 4.Conclusion
+
+From the data analysis above, we final model is $(1-0.2342B+0.6597B^2)(1-B)\log(Y_n)=(1-0.4679B-0.5321B^2)\epsilon_n$, where $\epsilon_n \sim iid\quad N[0,0.0508]$. Neither the hypothesis test nor the simulation study shows the necessity of adding a seasonal term, which suggests that the daily pattern of PM2.5 concentration is insignificant.  
+
+# 5. Reference
+[1] UCI Machine Learning Repository. https://archive.ics.uci.edu/ml/datasets/PM2.5+Data+of+Five+Chinese+Cities
+
+[2] STATS 531 Winter, 2018 Midterm Exam. Retrieved from https://ionides.github.io/531w20/exam/w18/mt531w18sol.pdf
+
+[3] Time Series Analysis and Its Applications. Robert H.Shumway, David S.Stoffer. 
+
