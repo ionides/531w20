@@ -486,7 +486,7 @@ where $Z_1,Z_2,\dots$ is a sequence of independent standard normal random variab
 
 \bi
 
-\item A useful method to deal with positivity constraints is to use Gamma noise rather than Brownian noise [@bhadra11,@laneri10]. SDEs driven by Gamma noise can be investigated by Euler solutions simply by replacing the Gaussian noise by an appropriate Gamma distribution.
+\item A useful method to deal with positivity constraints is to use Gamma noise rather than Brownian noise \citep{bhadra11,laneri10}. SDEs driven by Gamma noise can be investigated by Euler solutions simply by replacing the Gaussian noise by an appropriate Gamma distribution.
 
 \ei
 
@@ -516,7 +516,7 @@ methods. These are closely related to Euler's approach. Is it reasonable to call
 
 \frametitle{Compartmental models in \package{pomp}}
 
-As an example that we can probe in some depth, we look at an isolated outbreak of influenza that occurred in a boarding school for boys in England [@anonymous78]. 
+As an example that we can probe in some depth, we look at an isolated outbreak of influenza that occurred in a boarding school for boys in England \citep{anonymous78}. 
 Let's examine the data:
 <<flu-data1>>=
 bsflu <- read.table("bsflu_data.txt")
@@ -822,7 +822,7 @@ Obtain some ballpark estimates of the parameters and simulate to see if you can 
 \item Produced with R version \Sexpr{ getRversion()} and \package{pomp} version \Sexpr{ packageVersion("pomp")}.
 
 \item These notes build on previous versions at \url{ionides.github.io/531w16} and \url{ionides.github.io/531w18}. 
-\item Those notes draw on material developed for a short course on Simulation-based Inference for Epidemiological Dynamics (\url{http://kingaa.github.io/sbied/}) by Aaron King and Edward Ionides, taught at the University of Washington Summer Institute in Statistics and Modeling in Infectious Diseases, from 2015 through 2018.
+\item Those notes draw on material developed for a short course on Simulation-based Inference for Epidemiological Dynamics (\url{http://kingaa.github.io/sbied/}) by Aaron King and Edward Ionides, taught at the University of Washington Summer Institute in Statistics and Modeling in Infectious Diseases, from 2015 through 2019.
 \item
 Licensed under the Creative Commons attribution-noncommercial license, \url{http://creativecommons.org/licenses/by-nc/3.0/}.
 Please share and remix noncommercially, mentioning its origin.  
