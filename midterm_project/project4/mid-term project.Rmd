@@ -1,0 +1,192 @@
+---
+title: "STATS 531 Mid-term Project"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+fontsize: 16pt
+---
+\def\blank{\medskip\hrule\medskip}
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\usepackage{enumitem}
+
+```{r setup, include=FALSE}
+library(knitr)
+library(dplyr)
+library(kableExtra)
+
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+```
+
+-----------
+
+**<big>Introduction</big>**.
+
+In this report, we want to apply time series technique to analyzing the Russell 2000 Index data.The Russell 2000 Index is a small-cap stock market index of the smallest 2,000 stocks in the Russell 3000 Index. It was started by the Frank Russell Company in 1984. The index is maintained by FTSE Russell, a subsidiary of the London Stock Exchange Group.
+The Russell 2000 is by far the most common benchmark for mutual funds that identify themselves as "small-cap", while the S&P 500 index is used primarily for large capitalization stocks. It is the most widely quoted measure of the overall performance of the small-cap to mid-cap company shares. [$from\ wikipedia$ https://en.wikipedia.org/wiki/Russell_2000_Index]
+
+**<big>Data Exploration</big>**.
+
+Firstly, we import the data of Russell 2000 index between 01/01/2018 - 12/31-2019, which gives us 502 observations with 7 variables. We only focus the Adj.Close variable in the following.
+
+```{r read_data}
+data_Russ<- read.csv("Russ2000_Jan1_2018-Dec31_2019.csv")
+t<-as.character(data_Russ$Date)
+t<-as.Date(t, "%m/%d/%Y")
+plot(t,data_Russ$Adj.Close,type = "l",main = "Russell 2000 Index", xlab = "Year",ylab = "Index")
+```
+
+From the plot above, we can see that the history Adj.close price of Russell 2000 experienced a sharp decline at the end of 2018, and then started to increase. It seems that it fluctuated around 1550 for most of 2019. 
+It is a common practice to model the log return of index/stock price in financial territory. Hence, we can take a look at the daily log return of Russell 2000 index.
+
+```{r}
+log_returns = diff(log(data_Russ$Adj.Close), lag=1)
+plot(t[2:length(t)],log_returns,type="l",xlab="Year",ylab= "log_returns",main = "History log_returns Plot")
+summary(log_returns)
+```
+
+As for the log_returns plot, we can see that Russell 2000 recorded the highest return around the very beginning of 2019. In addition, the log_returns seems that it fluctuated around 0 for the observed period
+without obvious trend feature.
+
+Then we check the the sample acf of log_returns.
+```{r}
+acf(log_returns)
+```
+
+From the result above, we can see that almost all acf values are within the dashed line area,however, the acf of lag 14 and 16 are a littl bit large. Thus,We may suspect that the log_returns series present some white noise series feature but also consider the possibility of high order MA model(16 in this case).
+
+**<big> Model Selection </big>**.
+
+First we can try model log_returns series by ARMA(P,Q) model and present the AIC table as follows.
+
+```{r}
+# test if log_returns is white noise
+#Box.test(log_returns, type="Ljung-Box")
+#Box.test(log_returns, type="Ljung-Box",lag = 14/16/log(length(log_returns)))
+#all of the result indicates that it is a white noise series
+```
+
+```{r}
+aic_table <- function(data, P, Q) {
+  table = matrix(NA, (P + 1), (Q + 1))
+  for (p in 0:P) {
+    for (q in 0:Q) {
+      table[p + 1, q + 1] = arima(data, order = c(p, 0, q))$aic
+    }
+  }
+  dimnames(table) = list(paste("**AR", 0:P, "**", sep = ""),
+                         paste("MA", 0:Q, sep = ""))
+  table
+}
+log_aic_table <- aic_table(log_returns,4,4)
+require(knitr)
+kable(log_aic_table, "html", digits=2) %>%
+  kable_styling(position = "center")
+```
+
+We can see that ARMA(2,2) records the lowest AIC. Note that ARMA(0,0) also could be great candidate in terms of low AIC and simplicity, so we may want to take it into account as well. In addition, as we discussed above, we also want to consider the possibility of high order MA model(16 in this case). To sum up, we can try 3 models as follows and select the best one.
+Denote log_returns by $\{X_n\}$, we have:
+
+* Model (1) ARMA(0,0)
+$$X_n = \mu + \epsilon_n$$
+* Model (2) ARMA(2,2)
+$$X_n = \phi_1X_{n-1} + \phi_2X_{n-2} + \epsilon_n + \theta_1\epsilon_{n-1}+\theta_2\epsilon_{n-2}$$
+* Model (3) MA(16)
+$$X_n =  \epsilon_n + \sum_{q=1}^{16}\theta_q\epsilon_{n-q}$$
+
+where we assume $\{\epsilon_n\}$ is assumed as Gaussian white noise in all 3 models.
+Firstly, we fit the ARMA(0,0) model and check the fit result.
+
+```{r,echo=TRUE}
+arma00<-arima(x = log_returns, order = c(0, 0, 0))
+arma00
+```
+
+It seems that both the estimate and its standard error of intercept are very closed to 0.Thus, we may treat log_returns as just a white noise series if we select this model.
+Then we try ARMA(2,2) model.
+
+```{r,echo=TRUE}
+arma22<-arima(x = log_returns, order = c(2, 0, 2))
+arma22
+abs(polyroot(c(1,-arma22$coef[1:2])))
+abs(polyroot(c(1,arma22$coef[3:4])))
+```
+
+According to the results above, we could find that all the coefficients of ARMA model are significant with almost zero intercept term. However, the root of AR and MA polynomial are very closed to 1. Hence we may suspect the causality and invertibility of this model.
+Finally, we check the model of MA(16).
+
+
+```{r,echo=TRUE}
+ma16<- arima(x = log_returns, order = c(0, 0, 16))
+ma16
+abs(polyroot(c(1,ma16$coef[1:16])))
+```
+
+Accroding to the result, we can see that the MA polynomial has all its roots outside the unit circle in the complext plane, which is a desirable result.
+From the discussion above, we may want to proceed with ARMA(0,0) and MA(16). Let's take a look at the acf of their residuals.
+
+```{r}
+#acf ARMA(0,0)
+acf(arma00$residuals)
+#acf MA(16)
+acf(ma16$residuals)
+```
+
+We can see that for ARMA(0,0) model, there is still relatively large acf on lag of 14 and 16. By contrast, MA(16) support the uncorrelation assumption very clearly. Hence, we want to select MA(16) as our final model and move to the diagnosis part.
+
+**<big>Diagnosis</big>**.
+
+In previous part, we already check the uncorrelation assumption of the drive noise of MA(16). In the following, we continue to perform other diagnosis of this model.
+
+***<big>Normality</big>***
+
+First we check the normality of the residuals.
+
+```{r}
+qqnorm(ma16$resid)
+qqline(ma16$resid,probs = c(0.25,0.75))
+```
+
+It seems that residuals have heavy tail feature compared to normal distribution. Thus, we may want to consider other distribution, such as t - distribution. We can choose degree of freedom of 5 and plot the QQ-plot for t-distribution of residuals as follows.
+
+```{r}
+N = length(ma16$resid)
+quantv = (1/N)*seq(.5,N-.5,1)
+nuest = 5
+qqplot(sort(ma16$resid),qt(quantv,nuest),main="QQ plot for t-dist, df = 5") 
+abline(lm(qt(c(.25,.75),nuest)~quantile(ma16$resid,c(.25,.75))))
+```
+
+Here we can see, t-distribution fits the residuals much better than normal-distribution.
+
+
+***<big>Seasonality</big>***
+
+Now we check the Seasonality and plot the periodogram as follows.
+
+```{r}
+a<-ts(log_returns,frequency=250)
+result_unsmoothed = spectrum(a, main ="Unsmoothed periodogram")
+```
+
+Setting 250 trade days per year, we have the plot with unit of cycle per year as above. It seems that no frequency has very significant power than others, so we can take accpet the assumption that there is no Seasonality for this dataset.
+
+**<big>Conclusion and Discussion</big>**.
+
+In this report, we apply some time series techniques to a financial dataset - Russell 2000 Index data. We firstly explore the sample data and get some intuition of its feature. Then, we try 3 time series model, ARMA(0,0), ARMA(2,2) and MA(16) and select the best one to perform the diagnosis. The result shows that the MA(16) model with t-distribution assumption of drive noise can fit the data reasonably well.
+
+The advantage of this report is that it almost covers every classical step in analyzing a financial time series dataset and give a good example of how to modify the assumtion in order to get a good fit. However, all models we choose and compare are within the ARMA framework. Yet, there are still plenty of other models, such as ARCH, GARCH,etc, that may have a better fit to this dataset.
+
+**<big>Reference</big>**.
+
+* Dataset is used as teaching material and  provided by Mr.Brian Thelen, University of Michigan.
+* Reference books include: 
+<br>Ruppert, David. 2011. Statistics and data analysis for financial engineering. New York: Springer.
+<br>Shumway, Robert H., and David S. Stoffer. 2017. Time series analysis and its applications: with R examples.

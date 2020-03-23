@@ -1,0 +1,338 @@
+---
+title: "Association between the Unemployment Rate and the Inflation"
+date: "3/7/2020"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    number_sections: true
+    toc_depth: 2
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+# Introduction
+
+Unemployment and Inflation are both significant indicators measuring conditions of an economy. In 1958, based on the empirical statistics of the unemployment rate and the rate of change in monetary wages in the United Kningdom from 1867 to 1957, Phillips proposed a curve showing the alternating realtionship between the rate of unemployment and the rate of change in monetary wages. This curve shows that: when the unemployment rate is low, the growth rate of money wages is high; conversely, when then unemployment rate is high, the growth rate of money wages is low, or even negative. According to cost-driven inflation theory, monetary wages can represent the rate of inflation. Therefore, this curve can represent the alternating relationship between the unemployment rate and the inflation rate. That is, a high unemployment rate indicates that the economy is in a depression phase, when wages and price are low, and thus the inflation rate is low. On the contrary,a low unemployment rate indicates that the economy is in a prosperous phase, when wages and prices are high, so inflation is also high. There is a reverse relationship between unemployment and inflation.    
+
+
+In my paper, I selected the relevant data on the US economy from 1960 to 2000 and tried to confirm whether the relationship is consistent with the Phillips Curve or not from the time series perspective.
+
+
+# Data Description
+
+I use the data from SOCR website.
+Data source: [SOCR Data MonetaryBaseStocksInterest1959 2009](http://wiki.socr.umich.edu/index.php?title=SOCR_Data_MonetaryBaseStocksInterest1959_2009&oldid=16419)
+
++ `DATE`: Monthly data from 01/01/1959 to 10/01/2009 (Format: YYYY-MM-DD).
+
++ `SAVINGSL`: The savings deposits component of M2 consists of passbook-type savings deposits as well as MMDAs at banks and thrifts.
+
++ `M2SL`: M2 includes a broader set of financial assets held principally by households. M2 consists of M1 plus: (1) savings deposits; (2) small-denomination time ; and (3) balances in retail money market mutual funds. Seasonally adjusted.
+
++ `M1NS`: Ml includes funds that are readily accessible for spending. M1 consists of: (1) currency outside the U.S. Treasury, Federal Reserve Banks; (2) traveler's checks of nonbank issuers; (3) demand deposits; and (4) other checkable deposits. Seasonally adjusted.
+
++ `BOGAMBSL`: Board of Governors Monetary Base, Adjusted for Changes in Reserve Requirements.
+
++ `TRARR`: Board of Governors Total Reserves, Adjusted for Changes in Reserve Requirements.
+
++ `BORROW`: Total Borrowings of Depository Institutions from the Federal Reserve.
+
++ `CURRCIR`: Currency in Circulation.
+
++ `PercentDeficit`: Percent Federal Budget Deficit.
+
++ `Unemployment`: Average monthly unemployment.
+
++ `Inflation`: Average monthly inflation.
+ 
++ `SP_Comp_Index`: S&P Composite Index.
+
++ `Dividend`: Average dividend.
+
++ `Earnings`: Average earnings.
+
++ `CPI`: Consumer Price Index.
+
++ `HPI`: House Price Index, a measure of the movement of single-family house prices in the U.S. which serves as an indicator of house price trends, relative to 1890 (HPI=100).
+
++ `InterestRate`: Long Interest Rate.
+
++ `RealPrice`: average Real stock price.
+
++ `RealDividend`: real Average dividend.
+
++ `RealEarnings`: real Average earnings.
+
++ `PriceEarningsRatio`: Average Price per Earnings Ratio (P/E).
+
+
+# Preliminary data analysis
+
+
+##  Data preprocessing
+
+
+```{r message=FALSE,warning=FALSE}
+library(rvest)
+data_url = read_html("http://wiki.socr.umich.edu/index.php?title=SOCR_Data_MonetaryBaseStocksInterest1959_2009&oldid=16419")
+data_531 = html_table(html_nodes(data_url, "table")[[1]])
+data_531 = data_531[13:504,]
+data_531$DATE = as.Date(data_531$DATE)
+data_531$year = as.numeric(format(data_531$DATE,format = "%Y"))
+data_531$month = as.numeric(format(data_531$DATE,format = "%m"))
+head(data_531)
+```
+
+
+## Correlations
+```{r message=FALSE,warning=FALSE}
+library(corrplot)
+M = cor(data_531[,-1])
+corrplot(M, method="circle", title="Correlations", tl.cex=0.5, tl.col='black', mar=c(1, 1, 1, 1))
+```
+
+
+
+
+## Time plot of Unemployment Rate and Inflation
+
+
+```{r message=FALSE,warning=FALSE}
+Unem = data_531$Unemployment
+Infl = data_531$Inflation
+time = data_531$year + data_531$month/12
+par(mar=c(5,4,4,6) + 0.1)
+plot(time,Unem,col ="black",ylab = "Unemployment Rate-percentile",col.lab = "black",type = "l",main = "Time Plot of Unemployment Rate and Inflation")
+par(new = T)
+plot(time, Infl, col = "red",ylab = "",axes="F",type = "l")
+axis(side = 4, col = "red")
+mtext("Inflation",col = "red",side = 4,line = 3)
+```
+
+
+From the time plot above, we could see that there exists an apparent reverse relationship between unemployment rate and inflation. Almost all peaks of unemployment rate correspond to the troughs of inflation,respectively.And obviously, inflation lags unemployment rate.
+
+
+In the U.S., the common range of unemployment rate is from 4% to 8%. We could see that most of the time from 1960 to 2000, the US unemployment rate and inflation are in a reasonable range. However, from 1980 to 1990, there exists extreme situation that low inflation and high unemploymnet rate. Too low an inflation rate will still have serious side effects, the economy becomes more fragile, the unemployment rate becomes higher and the ability of the central bank to deal with the next crisis will be weakened.
+
+From 1990 to 2000, the US economy returned to normal and even showed good signs of development.
+
+
+The above phenomena are consistent with the history. In the 1970s, the energy crisis severely impacted traditional American manufacturing and the US economy stalled. Facing the difficult domestic situation and the increasingly fierce international competition, the focus of the US government's macro policy in the early 1980s shifted from expanding effective demand to anti-inflation, and at the same time, it implemented a shift from demand management policy to supply management policy, of which industrial policy actively promoted science and technology and successfully achieve economic transformation.
+
+
+# Further analysis
+
+
+## Decomposition to obtain trend + noise + cycles
+
+
+For economic indicators, we usually focus on their cycle components to find the certain fluctuation law. So we extract the cycle components of unemployment rate and inflation, respectively to prepare for further analysis.
+
+
+High frequency variation might be considered "noise" and low frequency variation might be considered trend. A band of mid-range frequencies might be considered to correspond to the business cycle.
+
+
+### Decomposition of unemployment rate as trend + noise + cycles
+
+```{r message=FALSE,warning=FALSE}
+Unem_low = ts(loess(Unem ~time,span = 0.5)$fitted,start=1960,frequency = 12)
+Unem_high = ts(Unem-loess(Unem~time,span = 0.1)$fitted,start=1960,frequency = 12)
+Unem_cycles = Unem - Unem_high - Unem_low
+u1 = ts.union(Unem, Unem_low,Unem_high,Unem_cycles)
+colnames(u1) = c("Value","Trend","Noise","Cycles")
+plot(u1,main = "Decomposition of unemployment rate as trend + noise + cycles")
+```
+
+
+### Decomposition of inflation as trend + noise + cycles
+
+```{r message=FALSE,warning=FALSE}
+Infl_low = ts(loess(Infl ~time,span = 0.5)$fitted,start = 1960,frequency = 12)
+Infl_high = ts(Infl-loess(Infl~time,span = 0.1)$fitted,start = 1960,frequency = 12)
+Infl_cycles = Infl - Infl_high - Infl_low
+i1 = ts.union(Infl, Infl_low,Infl_high,Infl_cycles)
+colnames(i1) = c("Value","Trend","Noise","Cycles")
+plot(i1,main = "Decomposition of Inflation as trend + noise + cycles")
+```
+
+
+### Comparaing the cycle components of unemployment rate and inflation
+
+```{r message=FALSE,warning=FALSE}
+par(mar=c(5,4,4,6)+0.1)
+plot(time,Unem_cycles,col = "black",main = "Cycle components of Unemployment Rate and Inflation",ylab = "Unemployment Rate Cycle",col.lab = "black",type = "l")
+par(new = T)
+plot(time, Infl_cycles,col = "red",main = "",xlab = "Time",ylab = "",axes = F,type = "l")
+axis(side = 4,col = "red")
+mtext("Inflation Cycle",col = "red",side = 4,line = 3)
+```
+
+
+From the results above, we may conclude that unemployment rate and inflation fluctuate almost reversely after we eliminate the trend and noise but only focus on cycle components.
+
+
+
+## Model Construction
+
+### Theoretical Form
+
+To guarantee the stability, I adopt the method of first order differentiation to process the cycle components of data.
+
+
+Denoting the first order differentiation of cycle components of unemployment rate and inflation at $t_{n}$ as $U^{dc}_{n}$ and $I^{dc}_{n}$, respectively.
+
+We try to construct a linear regression model with ARMA errors as following:
+
+$U^{dc}_{n}$ = $\alpha$ + $\beta I^{dc}_{n}$ + $w_{n}$
+
+where {$w_{n}$} is the Gaussian ARMA process.
+
+
+### Model Operation
+
+#### Constructing the AIC Table to select a suitable ARMA model for errors.
+
+```{r message=FALSE,warning=FALSE}
+aic_table <- function(data,P,Q,xreg=NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q),xreg = xreg)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b>AR",0:P, "</b>",sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+UnIf_aic_table <- aic_table(diff(Unem_cycles),5,5,xreg=diff(Infl_cycles))
+require(knitr)
+kable(UnIf_aic_table,digits=2)
+```
+
+
+From the AIC Table above, we could find that ARMA(3,4), ARMA(3,5) and ARMA(4,5) have similarly lowest values. Actually ,we would like smaller models, however, we need to check the redundancy, causality and invertibility to confirm our models' reasonality.
+
+
+#### Checking the causality, invertibility and redundancy of relavant models.
+
+```{r message=FALSE,warning=FALSE}
+arma34 = arima(diff(Unem_cycles),xreg = diff(Infl_cycles),order = c(3,0,4))
+abs(polyroot(c(1,-arma34$coef[1:3])))
+abs(polyroot(c(1,arma34$coef[7])))
+
+arma35 = arima(diff(Unem_cycles),xreg = diff(Infl_cycles),order = c(3,0,5))
+abs(polyroot(c(1,-arma35$coef[1:3])))
+abs(polyroot(c(1,arma35$coef[8])))
+
+arma45 = arima(diff(Unem_cycles),xreg = diff(Infl_cycles),order = c(4,0,5))
+abs(polyroot(c(1,-arma34$coef[1:4])))
+abs(polyroot(c(1,arma34$coef[9])))
+
+arma34
+```
+
+
+From results above, we finally decide to use ARMA(3,4) since its low AIC and small number of parameters.
+
+
+## Diagnostic Analysis
+
+### Significance Test
+
+
+We adopt the likelihood ratio test for the coefficients of ARMA error model to check whether the $\alpha$ and $\beta$ are zero or not in a 95% confidence level.
+
+
+
+```{r message=FALSE,warning=FALSE}
+log_lik_ratio_alpha = as.numeric(logLik(arima(diff(Unem_cycles),xreg = diff(Infl_cycles),order = c(3,0,4))) - logLik(arima(diff(Unem_cycles),xreg = diff(Infl_cycles),order = c(3,0,4),include.mean = FALSE)))
+pvalue_alpha = 1-pchisq(2*log_lik_ratio_alpha,df=1)
+pvalue_alpha
+
+log_lik_ratio_beta = as.numeric(logLik(arima(diff(Unem_cycles),xreg = diff(Infl_cycles),order = c(3,0,4))) - logLik(arima(diff(Unem_cycles),order = c(3,0,4))))
+pvalue_beta = 1-pchisq(2*log_lik_ratio_beta,df=1)
+pvalue_beta
+
+model = arima(diff(Unem_cycles),xreg = diff(Infl_cycles),order = c(3,0,4),include.mean = FALSE)
+model
+abs(polyroot(c(1,-model$coef[1:3])))
+abs(polyroot(c(1,model$coef[7])))
+```
+
+
+From the results above, we should not reject the null hypothesis that $\alpha$ = 0 and reject the null hypothesis that $\beta$ = 0 in a 95% confidence level.
+
+And our final model is: 
+
+$U^{dc}_{n}$ = $\beta I^{dc}_{n}$ + $w_{n}$
+
+where {$w_{n}$} is the Gaussian ARMA(3,4) process.
+
+
+### Residual Analysis
+
+```{r message=FALSE,warning=FALSE}
+plot(model$residuals,ylab="Residuals",main="Residuals for the ARMA(3,4) errors model")
+require(lmtest)
+m1 = lm(diff(Unem_cycles)~ diff(Infl_cycles))
+bptest(m1)$p.value
+```
+
+
+From the above plot, we may think there exists heteroskedasticity. The residuals fluctuates severely during 1975 and 1985. However, we use the bptest as a numerically measurable method to check the heteroskedasticity, we find that the heteroskedasticity is not significant.
+
+
+```{r message=FALSE, warning=FALSE}
+acf(model$residuals,main="ACF Plot of Residuals")
+```
+
+We find there exists significant correlations at some lags from the ACF plot.
+
+
+### Normality Analysis
+
+
+```{r message=FALSE,warning=FALSE}
+qqnorm(model$residuals)
+qqline(model$residuals)
+```
+
+
+The qq plot shows a heavy-tailed distribution of the residuals.
+
+
+The above results from ACF plot and qq plot le us cast doubt on our assumption that {$w_{n}$} is a Gaussian ARMA process. Seasonal varation or other factors may lead to this phenomenon and we need follow-up learning to obtain richer means for further exploration.
+
+
+
+# Conclusion
+
+We confirm that unemployment rate and inflation have the reverse relationship as the Phillips Curve shows.
+
+After decomposition of trend, noise and cycle, we could construct a linear model with ARMA errors to use first order differentiation of inflation cycle to predict the first order differentiation of unemployment rate cycle. However, we need to be clear that there are many other factors influencing the unemployment rate as we know from preliminary data analysis.
+
+There exist some irrationals about the Gaussian ARMA error assumption so we need further analysis for this part.
+
+We just construct the linear model for unemployment rate and inflation. We may add more predictors and try other models such as polynomial models in the future.
+
+
+# References
+
+[1] 2016 midterm projects ("http://ionides.github.io/531w16/midterm_project/")
+
+[2] 2018 midterm projects ("http://ionides.github.io/531w18/midterm_project/")
+
+[3] What is the Problem With Low Inflation ("https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=10&ved=2ahUKEwiVuoLr8Y3oAhXMLc0KHYOTCmEQFjAJegQIAxAB&url=https%3A%2F%2Feconofact.org%2Fwhats-the-problem-with-low-inflation&usg=AOvVaw2RZxE6yKJswdy_ZAouqpTu")
+
+[4] Phillips Curve ("https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=26&ved=2ahUKEwji8IWi8o3oAhXXB80KHf5BA5UQFjAZegQIAhAB&url=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FPhillips_curve&usg=AOvVaw0UTE7lVmyw2k2ZkUJ6Ow7K")
+
+[5] The 1980s American Economy ("https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&ved=2ahUKEwiZgbbS8o3oAhUaa80KHb0KBpcQFjAAegQIAhAB&url=https%3A%2F%2Fwww.thoughtco.com%2Fus-economy-in-the-1980s-1148148&usg=AOvVaw0giDu4gWFsEWF2tRJSFc5j")
+
+[6] Breusch-Pagan Test ("https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=3&cad=rja&uact=8&ved=2ahUKEwjJjt_d9I3oAhUZa80KHUwYB5IQFjACegQICRAB&url=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FBreusch%25E2%2580%2593Pagan_test&usg=AOvVaw1xf3sK8I4Il9_kXZoRWiWO")
+
+
+
+

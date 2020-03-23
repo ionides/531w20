@@ -1,0 +1,274 @@
+---
+title: "stats531 midterm project: A Study on Accumulated Cyclone Energy of North Atlantic Hurricane"
+date: "3/8/2020"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+csl: ecology.csl
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(forecast)
+```
+
+------
+
+## 1 Introduction
+
+### Background
+
+A hurricane is a kind of tropical cyclone that occurs in the Atlantic Ocean and northeastern Pacific Ocean, which is a rapidly rotating storm system characterized by a low-pressure center, a closed low-level atmospheric circulation, strong winds, and a spiral arrangement of thunderstorms that produce heavy rain or squalls.$^{[1]}$ As a kind of natural disaster, hurricane seriously threatens people's lives and property, and causes great impact on people's livelihood, agriculture and economy in coastal areas. As a typical hurricane-plagued country, the United States has suffered many hurricanes that caused heavy casualties in its history. Thus, people have been studying the causes and nature of hurricanes for years, hoping to get a handle on them.
+
+**Accumulated cyclone energy (ACE)** is a measure to express the activity of individual tropical cyclones and entire tropical cyclone seasons. It uses an approximation of the wind energy used by a tropical system over its lifetime and is calculated every six hours. The ACE of a season is the sum of the ACEs for each storm and takes into account the number, strength, and duration of all the tropical storms in the season.$^{[2]}$ The greater the ACE value, the more active and energetic a hurricane is. What's more, the primary energy source for these storms is warm ocean waters. So there are reasons to suspect that changes in sea surface temperature(SST) can affect hurricane formation and its energy levels.
+
+Here, we consider the measured north Atlantic hurricane ACE values over the past 150 years, hoping to find some rules of hurricane phenomena and the relationships between the factors that influence it.
+
+### objective
+
+(a) Finding a better time series model that can fit historic annual ACE values of hurricanes effectively.
+
+(b) Hoping to find the relationship between the ACE value of hurricane and SST. Can we use the change of SST to estimate the change of ACE?
+
+(c) Using the well-fitted model above to estimate ACE values of North Atlantic hurricanes over the next few years.
+
+## 2 Explore the data
+
+### Loading in the data
+
+Our dataset of ACE of North Atlantic hurricanes is from 
+[Our World in Data](https://ourworldindata.org/grapher/ace-north-atlantic-hurricanes). And the dataset of SST is from [KNMI Climate Explorer](http://climexp.knmi.nl/select.cgi?field=hadsst4) , which is operating on Ensemble-median sea-surface temperature anomalies from the HadSST.4.0.0.0 data set, averaging anomalies over region lon=(-360.000,0.000), lat=(-90.000,90.000), tos [K] Sea water temperature anomaly at a depth of 20cm.
+
+After simply processing the data, we got the ACE values of North Atlantic hurricanes and the corresponding SST values for the 142 years from 1876 to 2017.
+
+```{r,echo=FALSE}
+ace <- read.csv("ace-north-atlantic-hurricanes.csv")
+tem <- read.table("ihadsst4_0-360E_-90-90N_n.dat.txt")
+head(ace)
+summary(ace$ACE)
+```
+
+From the summary of the data, the mean of ACE is 93.78, which is in the classification of 'Near Normal'.
+
+```{r,include=FALSE}
+tem <- tem[11:152,]
+tem[tem==-999.9] <- NA
+tem <- apply(tem[,2:13],1,mean,na.rm=TRUE)
+sst <- ts(tem,start = 1876, frequency = 1)
+```
+
+Then, we look at the time plot and the acf plot to get a overall state of the data.
+
+### Stationarity analysis
+
+```{r,echo=FALSE}
+ACE <- ts(ace$ACE,start = 1876,frequency = 1)
+plot.ts(ACE)
+acf(ACE,lag.max = 100)
+```
+
+From the time plot, we cannot see obvious trend and instability directly. It seems that the time series is stationary. But in order to obtain more accurate statistical results, we now use Augmented Dickey-Fuller test$^{[3]}$ to judge the stability of time series.
+
+```{r,include=FALSE}
+library(tseries)
+```
+
+```{r}
+adf.test(ACE)
+```
+
+The p-value = 0.03 < 0.05, so we reject the null hypothesis and conclude that the time series is stationary. Therefore, we can continue to analyze the data with ARMA models under the assumption that the time series is stationary.
+
+### Frequency domain analysis
+
+Let's briefly analyze the frequency domain of the time series to see if there is any significant periodicity.
+
+```{r}
+spec = spectrum(ACE,span=c(5,3))
+```
+
+```{r,include=FALSE}
+spec$freq[which.max(spec$spec)]
+1/spec$freq[which.max(spec$spec)]
+```
+
+Actually, we cannot find the dominant frequency from the periodogram, which means that the time series doesn't have obvious seasonal oscillation. While we can still find that the largest peak occurs at a frequency of 0.021, which corresponds to a period of 48 years. In the subsequent model analysis, we can try to add this seasonal variation to see if it can improve the model.
+
+### Trend relationship with SST
+
+In order to find if the values of SST have influence on the values of ACE, we decompose the trend of ACE and SST by loess.
+
+```{r}
+ace_low <- ts(loess(ACE~ace$Year,span = 0.5)$fitted,start = 1876,frequency = 1)
+sst_low <- ts(loess(sst~ace$Year,span = 0.5)$fitted,start = 1876,frequency = 1)
+plot(ts.union(ACE,ace_low,sst,sst_low))
+```
+
+The plot shows that these two dataset have similar trend behaviors. So in the next analysis we will consider that if SST can help us fit the ACE model well.
+
+## 3 Modeling
+
+### ARIMA model of ACE without SST
+
+From the analysis and assumption above, we can first try to fit a a stationary Gaussian ARIMA(p,0,q) model with no trend:
+
+$$
+\phi(B)(Y_n-\mu)=\psi(B)\epsilon_n,
+$$
+where 
+$$\mu=\mathbb{E}[Y_n]$$
+$$\phi(x)=1-\phi_1x-\phi_2x^2-\cdots-\phi_px^p$$
+$$\psi(x)=1+\psi_1x+\psi_2x^2+\cdots+\psi_qx^q$$
+$$\epsilon_n\sim iid N(0,\sigma^2)$$
+and this model has the parameter vector$\theta=(\phi_{1:p},\psi_{1:q},\mu,\sigma^2)$.
+
+In order to find a proper parameters $p$ and $q$ for ARIMA model, we use AIC as a reference and get the following AIC table.
+
+```{r,echo=FALSE}
+library(knitr)
+
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) { 
+    for(q in 0:Q) { 
+      table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic 
+      } 
+    } 
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep="")) 
+  table 
+} 
+
+ace_aic_table <- aic_table(ACE,4,4) 
+require(knitr) 
+kable(ace_aic_table,digits=2)
+```
+
+The lowest AIC is from ARIMA(1,0,1) model. And we also consider about ARIMA(2,0,1) models with smaller AIC values. Then using likelihood ratio test to check these two models. We consider ARIMA(1,0,1) model as null hypothesis $H_0$ and ARIMA(2,0,1) model as alternative hypothesis $H_1$. Remember that under the hypothesis $H_0$, the formula of Wilks Approximation is $2(\ell^{(1)}-\ell^{(0)})\approx \chi^2_{D^1-D^0}$, where $D^1$ and $D^0$ is the number of parameters of hypothesis $H^1$ and $H^0$, respectively.
+
+```{r,include=FALSE}
+arma11 <- arima(ACE,order = c(1,0,1))
+arma21 <- arima(ACE,order = c(2,0,1))
+```
+
+```{r}
+2*(arma21$loglik-arma11$loglik)
+qchisq(0.95,1)
+```
+
+0.61 < 3.84, so we can't reject $H_0$ and continue to choose ARIMA(1,0,1) model for ACE values.
+
+### ARIMA model of ACE with SST
+
+Let's fit a model using linear regression first, and fit an ARMA error model.
+
+```{r}
+linear <- lm(ACE~sst)
+summary(linear)
+```
+
+The coefficient is significant. Thus, the univariate linear regression applies to this model.
+
+Also, we use AIC as a reference and get the following AIC table.
+
+```{r,echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) { 
+    for(q in 0:Q) { 
+      table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic 
+      } 
+    } 
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep="")) 
+  table 
+} 
+
+ace_aic_table <- aic_table(linear$residuals,4,4) 
+require(knitr) 
+kable(ace_aic_table,digits=2)
+```
+
+The table also shows that ARIMA(1,0,1) model has the smallest AIC. And comparing these two models, ARMA error model is better with lower AIC.
+
+```{r,include=FALSE}
+library(ggplot2)
+library(forecast)
+library(tseries)
+```
+
+
+```{r}
+a <- Arima(ACE,order = c(1,0,1),xreg = sst)
+a
+```
+
+Also, we can use likelihood ratio test to check it.
+
+```{r}
+2*(a$loglik-arma11$loglik)
+```
+
+5.74 > 3.84, so we reject null hypothesis and choose the linear regression with ARMA error model.
+
+### SARIMA model of ACE with SST
+
+We now consider to add seasonality property into the model.
+
+```{r}
+as <- arima(ACE,order = c(1,0,1),xreg = sst,seasonal = list(order = c(1,0,0),period = 48))
+as
+```
+
+$AIC_a < AIC_{as}$, so the seasonality cannot improve the model and we still to choose ARIMA(1,0,1) error model.
+
+## 4 Diagnosis
+
+```{r}
+checkresiduals(a)
+```
+
+From the Ljung-Box test, the p-value = 0.2907 > 0.05, so the series is uncorrelated and we can think the residuals as a white noise.
+
+So far, we get the final fitted model:
+
+$$Y_n=94.45+38.61X_n+\eta_n$$
+$$\eta_n=-0.90\eta_{n-1}+\epsilon_n+\epsilon_{n-1}$$
+
+$$\epsilon_n \thicksim iid N(0,2777)$$
+
+where $Y_n$ is ACE value time series of north Atlantic hurricane, and $X_n$ is the time series of corresponding SST values.
+
+## 5 Prediction
+
+When we use the regression model with ARIMA error terms for prediction, we need to predict both the linear regression model part and the ARIMA model part, and then combine the two results to get the final model prediction result. Here, the future value of predictive variable is needed. So we try to make prediction of ACE value in 2018 since we have SST value of year 2018, which is 0.64.
+
+```{r}
+fcast <- forecast(a, xreg=c(0.64))
+autoplot(fcast) + xlab("Year") + ylab("ACE")+
+  theme(text = element_text(family = "STHeiti"))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+fcast
+```
+
+## 6 Conclusion
+
+1. After the analysis above, we get the final model of the ACE values of north Atlantic hurricanes. It follows a linear regression with ARMA(1,1) error model. 
+
+2. The value of SST can help us to assess and predict the value of ACE, which means that the increase of hurricane activity is closely related to the increase of sea surface temperature. It is worth reflecting that the global warming caused by human activities in recent years, and the harm of which is also fed back to human society through natural disasters.
+
+3. This model also has some disadvantages. Notice that the MA root of this model is at the edge of the unit circle, which will cause numerical instability. So the model is needed to improve more.
+
+## 7 Reference
+
+[1] Wikipedia:Hurricane. https://en.wikipedia.org/wiki/Tropical_cyclone
+
+[2] Wikipedia:Accumulated cyclone energy. https://en.wikipedia.org/wiki/Accumulated_cyclone_energy
+
+[3] Knowledge resource: Augmented Dickey-Fuller test. https://nwfsc-timeseries.github.io/atsa-labs/sec-boxjenkins-aug-dickey-fuller.html
+
+Knowledge resource: Dynamic regression models. https://blog.csdn.net/bea_tree/article/details/51228721
+
+Knowledge resource: Forecasting. https://otexts.com/fppcn/forecasting.html
+
+Knowledge resource: Box-Ljung test. https://nwfsc-timeseries.github.io/atsa-labs/sec-boxjenkins-check-resids.html

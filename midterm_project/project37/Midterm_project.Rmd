@@ -1,0 +1,221 @@
+---
+title: "Monthly Air Passengers(1949 - 1960) Time Series Analysis and Modelling"
+date: "March 7, 2020"
+output: 
+   html_document:
+    toc: yes
+    theme: flatly
+---
+
+## Introduction
+
+In this project, I want to check if the air passenger data is seasonal, which can help with developing future bussiness strategies for companies serving the tourism industry. Next, with further data analysis I tested several ARMA, ARIMA and SARIMA models and determined the best fit. Last, I predicted a full cycle of data with the final SARIMA model.
+
+## Data Overview
+
+The dataset is obtained on Kaggle, containing monthly records of number of air passengers from the year 1949 to 1960.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+data <- read.csv("AirPassengers.csv")
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+names(data)[names(data) == "X.Passengers"] <- "passengers"
+str(data)
+plot(ts(data['passengers'],
+          start=c(1949, 1), end=c(1960, 12),
+          frequency=12),
+          ylab = 'passengers', xlab = 'year')
+```
+
+First, we ploted the time series of the passengers of 144 successive months from 1949 to 1960. There seems to have a seasonal variation every year. Specifically, a clear peak appears around the middle of every year.
+
+## Decomposing Time Series
+
+Usually, time series can be decomposed into three components: trend components and random components, and seasonal components.
+
+A simple, additive decomposition model for a time series can be written as:
+$$
+Y_t = m_t+s_t+e_t
+$$
+where $m_t$ is the trend, $s_t$is the seasonality, and $e_t$ is the random component.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+passengers_ts =  ts(data$passengers,, frequency = 12, start = c(1949, 1))
+passengers_comp = decompose(passengers_ts,"multiplicative")
+plot(passengers_comp)
+```
+
+From the decomposition plot, we can observe a clear increasing trend, which verifies the pattern detected in the previous exploration process. Next, there exist obvious seasonality. Last but not least, variation in the early and late years is high, indicating non-stationary variance.
+
+Next, we tried log transformation and difference on the original data to see if the non-stationary patterns can be effectively adjusted.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+plot(ts(log(data['passengers']),
+          start=c(1949, 1), end=c(1960, 12),
+          frequency=12),
+          ylab = 'passengers', xlab = 'year',
+          main = "Log Transformed data")
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+log_passengers= log(data$passengers)
+diff1 <- diff(log_passengers, differences=1)
+plot.ts(diff1,ylab = "number of passengers", main = "Log Transformed data after 1 differences")
+```
+
+From the above plot, we can see that the variation is getting closer to the state of stationary after the log-transformation and first difference.
+
+## Spectral Analysis
+
+It is often to see periodic behavior in time series. However, sometimes the periodic behavior can be more complex than what we assume it to be. Spectral analylsis is a technique commonly used to detect underlying periodicities. 
+
+As an inconsistent estimator of the spectral density, which means the error term does not vanish as N gets large, let us first try the unsmoothed periodogram,
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+spectrum(log_passengers, main = "Unsmoothed periodogram")
+```
+
+Usually, smoothed spectrum will be far more interpretable. Here, we first try the default method.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+default_smooth = spectrum(log_passengers, spans=c(3,5,3), main = "Smoothed periodogram")
+```
+
+We can observe that the most powerful peak appears before 0.1 frequency.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+peak_value = default_smooth$freq[which.max(default_smooth$spec)]
+period = 1/ peak_value
+
+pptable <- matrix(c(peak_value,period),ncol=2,byrow=TRUE)
+colnames(pptable) <- c("frequency","period")
+rownames(pptable) <- c("peak")
+pptable <- as.table(pptable)
+pptable
+```
+
+Since frequency is measured in cycles per time, and by definition, the period of an oscillation is the time for one cycle, we have 12-months period as result.  
+
+
+## Modelling
+
+By fitting the AR(1) models we can double check whether there is a trend.
+
+$$
+(1-\phi_1B)(Y_n-\mu-\beta t_n = \epsilon_n)
+$$
+where {$\epsilon_n$} is Gaussian white noise with variance $\sigma^2$. Therefore, the null hypothesis is $H_{0}:\beta = 0$ and the alternative hypothesis is $H_1:\beta \neq 0$
+
+```{r}
+fit0 <- arima(log_passengers,order=c(1,0,0))
+fit0
+
+fit1 <- arima(log_passengers,order=c(1,0,0),xreg=seq(1,144))
+fit1
+```
+
+
+Based on the likelihood ratio test, the difference in log likelihood = 129.69 - 117.07 > 1.92, the cutoff for a test at 5% size. Therefore, we reject the null hypothesis, which is to say we accept $\beta \neq 0$.
+
+
+```{r echo=FALSE,warning=FALSE,message=FALSE}
+aic_table <- function(data,P,Q){
+table <- matrix(NA,(P+1),(Q+1))
+for(p in 0:P) {
+for(q in 0:Q) {
+table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+}
+}
+dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+table
+}
+require(knitr)
+kable(aic_table(diff1,5,5),digits=2)
+```
+
+Here, we compared the AIC values with various choices of AR and MA on the differenced time series, ARMA(0,1,0) has the lowest AIC values. And ARMA(1,1,0) and ARMA(0,1,1) has the second and third lowest AIC respectively. Therefore, we have 3 candidates.
+
+```{r}
+fit3 <- arima(log_passengers,order=c(0,1,0))
+fit3
+
+fit4 <- arima(log_passengers,order=c(1,1,0))
+fit4
+
+fit5 <- arima(log_passengers,order=c(0,1,1))
+fit5
+```
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+par( mfrow = c(2,3), oma = c( 0, 0, 2, 0 ) )
+plot(residuals(fit3),ylab="residuals", xlab = "Month", main = "residual plot of ARIMA(0,1,0)")
+plot(residuals(fit4),ylab="residuals", xlab = "Month", main = "residual plot of ARIMA(1,1,0)")
+plot(residuals(fit5),ylab="residuals", xlab = "Month", main = "residual plot of ARIMA(0,1,1)")
+acf(fit3$residuals, main = "ACF plot of ARIMA(0,1,0)")
+
+acf(fit4$residuals, main = "ACF plot of ARIMA(1,1,0)")
+
+acf(fit5$residuals, main = "ACF plot of ARIMA(0,1,1)")
+```
+
+The residual plots of all three ARIMA models share similar patterns. However, from the ACF plots, the significant spike at lag 1 suggests a non-seasonal MA(1) component, and the significant spike at lag 12 suggests a seasonal MA(1) component. Moreover, the ACF values of ARIMA(0,0,1) are closer to 0, verifying the MA(1) component is a good choice. 
+
+A seasonal ARIMA model is formed by including additional seasonal terms (P,D,Q)$_m$ where m = number of observations per year.  
+
+Considering the seasonality, we tried to fit SARIMA(0,0,1)(0,1,1)$_{12}$ model. Since both trend and seasonality are present, we implemented both a non-seasonal first difference and a seasonal difference. That is to let d=D=1. Additionally, since our span of the periodic seasonal behavior is one year, we specify period as 12 (months per year). 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+fit6 = arima(x=log_passengers, order=c(0,1,1), seasonal=list(order=c(0,1,1), period=12))
+fit6
+par(mfrow=c(1,2), oma=c(2,0,2,0))
+plot(residuals(fit6),ylab="residuals", xlab = "Month", main = "SARIMA(0,1,1)(0,1,1) residuals")
+acf(fit6$residuals, main = "SARIMA(0,1,1)(0,1,1) ACF")
+```
+
+Generally speaking, there is no obvious trends in the residual plot. But the scale of residuals varys over time. Also, the ACF plot of SARIMA(0,1,1)(0,1,1)$_{12}$ residuals shows no autocorrelation.  All spikes are within the 95% confidence boundaries. In conclusion, SARIMA(0,1,1)(0,1,1)$_{12}$ should be a good fit.
+
+To check if there is any invalid model assumptions, we can take a look at the normality of the time series by looking at the QQ-plot.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+qqnorm(data$passengers)
+qqline(data$passengers)
+```
+
+Looking at the QQ-plot, we can see that the majority of points are close to the line. But it is note-worthy that points to the left form a long tail. Therefore, we need to double check by Shapiro-Wilk test, which states $H_0: Y_{1:N}\sim N(\mu,\sigma^2)$ and $H_1: Y_{1:N}$ does not follow $N(\mu,\sigma^2)$.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+shapiro.test(data$passengers)
+```
+
+From the results above, we cannot reject H_0 because the p-value is small. In the other words, we can conclude that the normality assumption of data is valid.
+
+## Forecasting using SARIMA model
+
+Here, let us use the SARIMA model for a predictive goal for a full-cycle of future air passengers. We can use forecast package in R to achieve that. Specifying the number of periods for forecasting as h = 12 with confidence level 99.5%.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library("forecast")
+futurVal = forecast(fit6, h=12, level=c(99.5))
+plot(futurVal)
+```
+
+The blue line attached at the end represents the forecasts, with the 95% prediction intervals as grey shaded area. It is clear that the predictive cycle follows the same trend as those observed records. 
+
+## Conclusion
+For the non-stationary monthly airpassenger data, we fit a SARIMA(0,1,1)(0,1,1)$_{12}$  model, which can be written as: 
+$$
+\phi(B)\Phi(B^{12})((1-B)^d(1-B^{12})^DY_n-\mu) = \psi(B)\Psi(B^{12})\epsilon_n \\
+(1-B)(1-B^{12})Y_n-\mu = (1-0.40B)(1-0.56B)\epsilon_n
+$$
+where $\epsilon_n$ is a white noise process.
+
+## Reference
+* Class Note
+* [Data source](https://www.kaggle.com/abhishekmamidi/air-passengers/kernels)
+* [Spectral Analysis](http://web.stanford.edu/class/earthsys214/notes/series.html)
+* [Online coding tutorial](https://a-little-book-of-r-for-time-series.readthedocs.io/en/latest/src/timeseries.html)
+* [Decomposition of time series](https://nwfsc-timeseries.github.io/atsa-labs/sec-tslab-decomposition-of-time-series.html)
+* [Seasonal ARIMA models](https://online.stat.psu.edu/stat510/lesson/4/4.1)
+* [Seasonal ARIMA models](https://otexts.com/fpp2/seasonal-arima.html)

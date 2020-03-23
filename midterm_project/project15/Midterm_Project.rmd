@@ -1,0 +1,242 @@
+---
+title: "Weekly Butter Prices from 2012 to 2017"
+date: "March 2020"
+output: 
+  html_document:
+    toc: yes
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+if(!require('lubridate')){install.packages('lubridate')}
+if(!require('dplyr')){install.packages('dplyr', dependencies = TRUE)}
+if(!require('ggplot2')){install.packages('ggplot2')}
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+```
+
+
+# Introduction
+Keeping track of the food price on industrial scale is an important measure to regulate the food market. [The Mandatory Price Reporting Act of 2010](https://www.congress.gov/111/plaws/publ239/PLAW-111publ239.pdf) requires the USDA to release dairy product sales information on or before Wednesday at 3:00 pm EST (unless affected by a Federal Holiday). This weekly reported price information offers insight into time trend of several dairy products in the past few years.
+
+The data is collected from [Kaggle](https://www.kaggle.com/sohier/weekly-dairy-product-prices) and belongs to [USDA](https://mpr.datamart.ams.usda.gov/menu.do?path=\Products\Dairy). The data contain prices (dollars per pound) of five different kinds of dairy products from March 2012 to December 2017. This project zooms in on the price of butter alone. 
+
+# Data Cleaning and Exploration
+
+The data cleaning addresses three issues with the raw data. The first issue is duplicate entries in the dataset that need to be removed. The second issue is multiple entries of prices taken on the same day. A plausible solution is to aggregate these prices and take the average. The third issue is that some adjacent time points don't differ by 7 days. A simple approach is to only retain those time points whose date differs from the very first day in the dataset (2012/03/03) by multiples of 7.
+
+```{r, echo=FALSE}
+butter = read.csv("https://raw.githubusercontent.com/skybullbobby/Weekly-Dairy-Product-Time-Series-Analysis/master/weekly-dairy-product-prices/Butter.csv")
+```
+
+```{r, echo=FALSE}
+data_process = function(rawdata){
+  # fix the date time formats of three columns
+  rawdata$Week.Ending.Date = as.Date(rawdata$Week.Ending.Date, format='%m/%d/%Y')
+  rawdata$Report.Date = as.Date(rawdata$Report.Date, format='%m/%d/%Y')
+  rawdata$Date = as.Date(rawdata$Date, format='%m/%d')
+  year(rawdata$Date) = year(rawdata$Week.Ending.Date)
+  # only need the date and weighted prices
+  subsetdata = rawdata[,c("Date","Weighted.Prices")]
+  # remove duplicate values
+  removeduplicates = unique(subsetdata)
+  rankeddata = removeduplicates[order(removeduplicates$Date),]
+  # there are some values collected at the same date, so I aggregate them by averaging them
+  summarized_rankeddata = aggregate(rankeddata$Weighted.Prices,list(rankeddata$Date), mean)
+  colnames(summarized_rankeddata) = c("Date", "Price")
+  return(summarized_rankeddata)
+}
+processed_butter = data_process(butter)
+```
+
+
+```{r, echo=FALSE}
+dateranges = seq(processed_butter$Date[1], by="week", length = nrow(processed_butter))
+butterprice = processed_butter %>% filter(Date %in% dateranges)
+```
+
+Data processing retains 286 weekly data points from 2012/03/03 to 2017/08/19. The points are plotted below
+
+```{r, echo=FALSE, fig.width=9, fig.height=6}
+ggplot(butterprice, aes(x=Date, y=Price))+geom_line()+ggtitle("Butter Price (dollar per pound)")
+```
+
+The line plot shows strong trend in the data (not simply white noise). There are large short term fluctuations together with a seemingly increasing trend on a global scale.
+
+# Methodology
+
+Based on the plot of the raw prices above, I decide to first decompose the price trend into a long term trend, a short term trend and noise using loess smoothing with two different spans. For the short term trend, I plan to carry out spectral analysis and identify potential significant frequencies. For the long term trend, I plan to use ARMA models and their derivatives(SARMA, regression with ARMA errors) to explain the time series trend parametrically.
+
+
+
+# Results
+
+## Spectral Analysis for Short Term Trend
+
+First the signal is separated into long term trend, short term trend and noise. The long term trend is acquired by loess smoothing at a span of 0.5. The noise is acquired by subtracting the original signal by the signal after loess smoothing at a span of 0.1. The choices of the spans follow the practice in [class](https://ionides.github.io/531w20/08/notes08.pdf).  The short term signal is calculated by subtracting the original signal by both the long term trend and the noise.
+
+
+```{r, echo=FALSE, fig.width=6, fig.height=9}
+date = seq(1,length(butterprice$Price))
+raw =ts(butterprice$Price, start=decimal_date(ymd("2012-03-03")), frequency = 365.25/7)
+long_term <- ts(loess(butterprice$Price~date,span=0.5)$fitted,
+                 start=decimal_date(ymd("2012-03-03")), frequency = 365.25/7)
+noise <- ts(butterprice$Price - loess(butterprice$Price~date,span=0.1)$fitted,
+                start=decimal_date(ymd("2012-03-03")), frequency = 365.25/7)
+short_term <- raw - long_term - noise
+
+plot(ts.union(raw, long_term, short_term, noise), main="Butter price trend(Dollar per Pound)")
+```
+
+The spectrum of the short term signal is plotted below with the period set to be a year (52 weeks). A red threshold line at $5\times 10^{-3}$ is added for reference given that the smallest unit of price is one cent.
+
+```{r, echo=FALSE}
+bspectrum = spectrum(short_term, spans=c(3,5,3), main="Smoothed Spectrum for Short Term Butter Prices Fluctuation", xlab="Cycles per Year")
+abline(h=0.5e-2,lty="dashed",col="red")
+```
+
+On this spectrum, the peak of the spectrum has a density of `r round(max(bspectrum$spec), digits=3)` at `r round(bspectrum$freq[which.max(bspectrum$spec)], digits=3)` cycles per year. It indicates that there is a notable periodicity of one cycle per year.
+
+## ARMA Models for Long Term Trend
+
+The long term trend is already plotted in the previous section. Based on the shape of the line, a linear model is worth trying. In the plot below, the X axis is the week number with the first observation in the data on 2012/03/03 set as one.
+
+```{r}
+long_term = as.vector(long_term)
+slr = lm(long_term~date)
+plot(x=date, y=long_term, type="l", xlab="Week Number", ylab="Dollars Per Pound", main="Long Term Butter Price with Linear Regression Estimate")
+abline(slr,col="red", lty="dashed")
+```
+
+The linear model generates a visually good fit. The summary statistic of the model confirms our guess with high R-square value.
+```{r}
+summary(slr)
+```
+
+
+Although the R square is very high, the scatterplot and the autocorrelation plot of the residuals tell us that the residuals violate the constant variance and independence assumption.
+
+
+```{r}
+slrresiduals = slr$residuals
+plot(slrresiduals, main="Residual Scatter Plot", pch=20, xlab="Week Number", ylab="Residual")
+```
+
+
+
+```{r}
+acf(slr$residuals, lag.max=100, main="Autocorrelation of Residuals from Linear Regression")
+```
+
+Given that the autocorrelation at small lags are very large, ARMA models on differences of adjacent residuals could be helpful for stablizing the autocorrelation. I carry out a grid search for ideal AR components and MA components of a candidate ARIMA model, as taught in [class](https://ionides.github.io/531w20/05/notes05.pdf). 
+
+```{r, message=FALSE}
+aic_table <- function(data ,P, Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1, q+1] <- arima(data,order=c(p,1,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+
+# search for optimal parameter
+butter_long_aic <- aic_table(slrresiduals, 4, 5)
+knitr::kable(butter_long_aic)
+```
+
+The table tells us that ARIMA(2,1,1) model is the strongest candidate. The model formula is laid out below (written in lag operators). $\{Y_{n}\}$ are the residuals from the linear model and $\{\epsilon_{n}\}$ are assumed to be white noise.
+
+$$(1-\phi_{1}B-\phi_{2}B^{2})[(1-B)Y_{n}]=(1+\psi_{1}B)\epsilon_{n}$$
+
+
+```{r}
+model <- arima(slrresiduals, order=c(2,1,1))
+model
+```
+
+Fill in the paramters for the model
+
+$$(1-1.828B+0.842B^{2})[(1-B)Y_{n}]=(1+0.941B)\epsilon_{n}$$
+ in which $\{\epsilon_{n}\}$ are a series of normal white noise with a variance of $5.62\times 10^{-8}$.
+ 
+ 
+```{r}
+ar_coef = -model$coef[1:2]
+ma_coef = model$coef[3]
+ar_root_mod = Mod(polyroot(c(1, ar_coef)))
+ma_root_mod = Mod(polyroot(c(1, ma_coef)))
+```
+
+
+The modulus of the two AR component roots are `r round(ar_root_mod[1], digits=3)` and the modulus of the MA component root is `r round(ma_root_mod, digits=3)`. Since all the roots fall outside the unit circle, the fitted model is both causal and invertible. 
+
+```{r}
+fitted_residuals = slrresiduals - model$residuals
+ARIMA_fits = predict(slr) + fitted_residuals
+plot(x=date, y=long_term, type="l", xlab="Week Number", ylab="Dollars Per Pound", main="Long Term Butter Price with Linear Regression + ARIMA Errors")
+lines(x=date, y=ARIMA_fits,col="red", lty="dashed")
+```
+
+The original time series(black) and the fitted data(red dashed line) almost overlap, which indicates that it is a good fit.
+
+The autocorrelation of the residuals from the model is plotted below.
+
+```{r}
+model_acf =acf(model$residuals, lag.max=80, main="Residuals of ARMA(2,1,1) Model")
+```
+
+There are significant correlations at lag 18, 36, 54 and 72. This phenomenon indicates that adding a SARMA term of lag 18 could possibly help. Given that the sign of correlation is different for lag 18 and lag 36, a seasonal AR(2) term is added $SARIMA(2,1,1)\times (2,0,0)$. The model specification is
+
+$$(1-\phi_{1}B-\phi_{2}B^{2})(1-\phi_{3}B^{18}-\phi_{4}B^{36})[(1-B)Y_{n}]=(1+\psi_{1}B)\epsilon_{n}$$
+
+```{r}
+model2 <- arima(slrresiduals, order=c(2,1,1),
+  seasonal=list(order=c(2,0,0), period=18))
+model2
+```
+
+According to the output, the model is
+
+$$(1-1.7731B+0.7864B^{2})(1-0.3332B^{18}+0.5243B^{36})[(1-B)Y_{n}]=(1+0.9243B)\epsilon_{n}$$
+
+
+```{r}
+ar_coef = -model2$coef[1:2]
+ma_coef = model2$coef[3]
+sar_coef = -model2$coef[4:5]
+
+ar_mod = Mod(polyroot(c(1, ar_coef)))
+ma_mod = Mod(polyroot(c(1, ma_coef)))
+sar_mod = Mod(polyroot(c(1, sar_coef)))
+```
+
+The AR component has two roots with modulus `r round(ar_mod[1], digits=3)`. The MA component has two roots with modulus `r round(ma_mod, digits=3)`. The SAR component has two roots with modulus `r round(sar_mod[1], digits=3)`. All the AR, SAR and MA roots are outside the unit circle, confirming that the model is causal and invertible.
+
+
+In the autocorrelation plot, we can see that the autocorrelation at lag 18, 36, 54 and 72 are reduced by some amount, but lag 36 and 54 are still significant. Overall this is not a big improvement. There has to be more intricate measures to handle this seasonality, but they are beyond my planned time devoted to this project.
+
+```{r}
+m2_acf = acf(model2$residuals, lag.max=80, main="Residuals of SARIMA(2,1,1)*(2,0,0) Model")
+```
+
+# Conclusion
+
+This project focuses on the weekly butter price collected on a time span of over five years. There is significant time series trend in the data. The data is decomposed into short term and long term trend. The short term trend presents a periodicity of one cycle per year with an amplitude of about 1.3 cents. The long term trend can be mostly summarized to be a linear trend. The linear trend indicates that the butter price has been increasing at 0.17 dollars per year in the past 5 years. Even though the linear model captures most of the trend in the data, the residuals after fitting the linear model show an oscillating trend. This perturbation can be explained well by an ARIMA(2,1,1) model. Even though ARIMA(2,1,1) model offers a good fit to the data, the autocorrelation plot raises a seasonal trend at a lag of 18 weeks. The seasonality trend is worth looking into, but needs extra efforts beyond the SARIMA(2,1,1)*(2,0,0) model tried in this project. 
+
+# References
+[1] Data source from Kaggle, uploaded by Sohier Dane [https://www.kaggle.com/sohier/weekly-dairy-product-prices]
+
+[2] Data source from USDA [https://mpr.datamart.ams.usda.gov/menu.do?path=%5CProducts%5CDairy]
+
+[3] The Mandatory Price Reporting Act of 2010 [https://www.congress.gov/111/plaws/publ239/PLAW-111publ239.pdf]
+
+[4] STATS 531 Lecture Note 5, compiled by Professor Edward Ionides[https://ionides.github.io/531w20/05/notes05.pdf]
+
+[5] STATS 531 Lecture Note 8,  compiled by Professor Edward Ionides [https://ionides.github.io/531w20/08/notes08.pdf]
+
+

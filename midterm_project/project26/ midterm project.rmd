@@ -1,0 +1,235 @@
+---
+title: "midterm project"
+date: "March 2, 2020"
+output:
+  html_document:
+    toc: yes
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Studying the effect of flu is so important: it is spread widely among all states of the US and caused thousands of people dead. Directly quoting from CDC, the "Centers for Disease Control and Prevention," CDC claimed that "CDC estimates that influenza has resulted in between 9 million - 45 million illnesses, between 140,000 - 810,000 hospitalizations and between 12,000 - 61,000 deaths annually since 2010."$^{[2]}$ Since flu have some seasonal trends, and I believe it is worth studying about it with some time series analysis skills I learned so far. There are some questions I want to know about: Are there any trends for the number of people get infected? Are there any cycles? What's the period for each cycle? If possible, what will the number look like for 2018 - 2019 years? (remember the data only contained information until 2017 - 2018) Which model will do a better job of predicting those numbers? Which model will simulate a similar pattern compared to our original data?
+
+This dataset is from the CDC, which contains the number of patients who had flu from the year 1997 to 2018. The dataset has information for each week. Hence we have 52 data points per year. However, some of the data were missing. We could easily address this issue by either find N/As in the data set or search for 0's in the dataset. The way I chose is to sum the case for 0 patients together and see how many cases with total patients of 0 occurred. In this case, total patients mean the total number of patients nationwide who had flu at a certain week of a certain year. In the dataset, this "total patient" I defined is coded as "ILITOTAL," and we need to distinguish 1that with another variable in the dataset, which is "TOTAL.PATIENTS"
+
+Since the data is nationwide, therefore, it will be very unlikely that there was 0 patients in a certain week all across the United States. Therefore, before we actually fit the data using time series models, let's get more information about this dataset and define the appropriate data to study.
+
+
+```{r echo=FALSE}
+dt <- read.csv("US Influenza Surveillance Report (1).csv", header=TRUE)
+dt$YEAR_WEEK <- dt$YEAR + dt$WEEK/52
+plot(dt$YEAR_WEEK, dt$ILITOTAL, type = 'l',main = 'total patients over time')
+print("number of data with 0 values: ")
+print(sum(dt$ILITOTAL == 0))
+```
+
+From the plot above, there are definitely some cycles. I suspect the period is per year; in other words, the period is every 52 weeks. One thing that catches my eye is there are two big spikes near the year 2010 and the year 2018. From some online research, I found out that the reason there was a spike near the year 2010 was due to the "2009 flu pandemic"$^{[3]}$. According to Wikipedia, the reason why there are so many people who got flu is due to the H1N1 influenza virus. 11% - 21% of the global population got infected. That perfectly explained why there is a spike in the near year 2010. Similiar story holds for the year 2017 - 2018. This time the virus was H3N2. As stated in Wikipedia, "the distribution of influenza was indicated as widespread, including 32 states that had high flu activity." $^{[4]}$
+
+As we could see from the print statement, there are 95 cases that the number of patients nationwide is 0. Again, as I mentioned, it's a national data, and it's very unlikely that no one gets flu during a week. If we look back at the dataset, there are some N/A's that caused this to happen. We could also identify the issue by looking at the plot I plotted above. Around the year 2000, there are some flat bottom lines at 0. Since there are N/A's and missing values, I decided to remove them and directly to work with the data without N/A's. So the data I will work on is from the year 2002, week 40. 
+
+
+```{r echo=FALSE}
+dt_2002 <- dt[c(262:1080),c(1:14)]
+print("number of data with 0 values after year 2002 week 40")
+print(sum(dt_2002$ILITOTAL == 0))
+```
+
+This time, from the print statement, we could see that the total number of 0 patients is 0. It means we removed all the missing data and let's plot it and see how it looks like
+
+### Identify improper data 
+
+However, the dataset is really bad since CDC are switching around different strafications. For example, CDC was using age groups of 0-4, 5-24, 25-64 and 65+ from the beginning. However, in year 2009 week 40, they suddently switched age groups to 0-4, 5-24, 25-49, 50-64 and 65+. More interestingly, the data for age group 50-64 was completely missing until 2017, week 40. However, the total number of patients (column ILITOTAL) seems to be correct since I summed up columns without duplicate columns (for example, sum 25-64, 25-29, and 50-64 are duplicate columns) and the number matched the number of patients.Therefore, I believe I should plot the realtionship between time versus total patients, and time versus each age group to identify any potential pattern. The result was shown below:
+
+
+```{r echo=FALSE}
+dt_2002$YEAR_WEEK <- dt_2002$YEAR + dt_2002$WEEK/52
+plot(dt_2002$YEAR_WEEK, dt_2002$ILITOTAL, type='l', main='total patients overtime')
+plot(dt_2002$YEAR_WEEK, dt_2002$AGE.0.4, type='l', main='number of patients with age group 0-4 overtime')
+plot(dt_2002$YEAR_WEEK, dt_2002$AGE.5.24, type='l', main='number of patients with age group 5-24 overtime')
+plot(dt_2002$YEAR_WEEK, dt_2002$AGE.25.64, type='l', main='number of patients with age group 25-64 overtime')
+plot(dt_2002$YEAR_WEEK, dt_2002$AGE.25.49, type='l', main='number of patients with age group 25-49 overtime')
+plot(dt_2002$YEAR_WEEK, dt_2002$AGE.50.64, type='l', main='number of patients with age group 50-64 overtime')
+plot(dt_2002$YEAR_WEEK, dt_2002$AGE.65, type='l', main='number of patients with age group 65+ overtime')
+```
+
+There are several things we could notice from the first plot, which is the total patients over time. 
+
+Again, this is the issue I addressed before if we look at plots "number of patients with age group 25-64 overtime", "number of patients with age group 25-49 overtime", and "number of patients with age group 50-64 overtime", we could see that there are some discontinued data. Hence, I will only study the overall number of patients.
+
+## Data Analysis:
+
+### ACF plot
+
+```{r echo=FALSE}
+acf(dt_2002$ILITOTAL, lag.max = 150)
+```
+
+From the plot above, we could clearly observe that there was a cycle around week 52, then 104, that basically suggested that the period is once a year (or every 52 weeks). We could also identify more information by introducing the frequency domain
+
+### Data analysis using frequency domain
+
+```{r echo=FALSE}
+spectrum(dt_2002$ILITOTAL, main="Unsmoothed periodogram")
+abline(v = 1/52, col = 'red', lwd = 3, lty = 2)
+spectrum(dt_2002$ILITOTAL, spans=c(15,25,15), main="Smoothed periodogram")
+abline(v = 1/52, col = 'red', lwd = 3, lty = 2)
+```
+
+The red dotted line has the value 1/52, and we could see that the red dotted line matched the highest frequency. Therefore, we could know that the data has a period of 52 weeks. We could also do frequency decomposition to see if there is any more information we could get.
+
+### Decomposition of influnza as trend + noise + cycles
+
+```{r echo=FALSE}
+original <- as.matrix(dt_2002$ILITOTAL)
+trend <- ts(loess(original~as.matrix(dt_2002$YEAR_WEEK),span=0.5)$fitted, frequency=52)
+noise <- ts(as.matrix(dt_2002$ILITOTAL) - loess(as.matrix(dt_2002$ILITOTAL)~as.matrix(dt_2002$YEAR_WEEK),span=0.1)$fitted, frequency=52)
+cycles <- original - noise - trend
+plot(ts.union(original, trend,noise,cycles),
+main="Decomposition of unemployment as trend + noise + cycles")
+```
+
+As we could see from the decomposition plot above, we could see that there is an increasing trend for the number of people infected. Moreover, if we look at the part of the cycle, we could see that the cycle is about every year, in other words, every 52 weeks. This suggests us maybe we could fit a SARIMA model.
+
+## Model fitting
+
+### Linear Regression
+
+As always, we start with the easiest linear regression. We try to use time as the predictor and try to predict the number of people infected over time.
+```{r echo=FALSE}
+lm1 <- lm(dt_2002$ILITOTAL~dt_2002$YEAR_WEEK)
+summary(lm1)
+```
+
+We could see that the p-value is extremely small. However, even our p-value is small. Our $R^2$ value is also pretty small. To interpret this, I believe this is due to we only included one predictor, which cannot fully represent the variation in our $\hat{y}$, which is the number of patients. If we have more predictors, we will likely to solve this problem. However, right now, we don't have other predictors. Other variables are all highly correlated with our $\hat{y}$. Therefore, I will not modify the linear model and more. We could see how's the fitted line looks like below. 
+
+```{r echo=FALSE}
+plot(dt_2002$YEAR_WEEK, dt_2002$ILITOTAL, type='l', main='fitted line by linear regression')
+abline(lm(dt_2002$ILITOTAL~dt_2002$YEAR_WEEK), col = 'red', lwd = 3, lty = 2)
+```
+
+As we could see, the regression line indicates that there is an increasing trend. Also, the linear regression was failed to capture those large variations, such as the big spikes near the year 2010 and the year 2018.
+
+### ARMA Model:
+
+After tried to fit linear regression, I think I should try out the ARMA model and see whether or not it can outperform linear regression.
+
+Again, some information about ARMA model:
+In the mathematical formula, an ARMA{p,q} model is defined by $Y_n = \mu + \phi_1(Y_{n-1} - \mu) + \phi_2(Y_{n-2} - \mu) + ... + \phi_p(Y_{n-p} - \mu) + \epsilon_n + \psi_1\epsilon_{n-1} + ... + \psi_q\epsilon_{n-q}$  </br>
+
+The assumption for the ARMA model is stationary, and error term $\epsilon$ are idd, drawn from $N(0, \sigma^2)$  
+To choose the best ARMA(p,q) model, we could use Akaike information criteria (AIC) values to help us make that decision. Recall that lower AIC values mean better fits. Below are the AIC values from ARMA(0,0) to ARMA(5,5)
+
+```{r echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+AA_AIC_Table <- aic_table(dt_2002$ILITOTAL,5,5)
+require(knitr)
+kable(AA_AIC_Table,digits=2)
+```
+
+As we could see from the AIC table, the model with the lowest AIC is ARMA(4,5) with AIC value 14738.14. However, the AIC is still pretty high. Recall that we discovered some seasonal trends, so the best practice is to fit a SARIMA model and see how it works.
+
+### SARIMA Model:
+
+There are some basic setup for SARIMA model: 
+
+A general SARIMA(p,d,q)X$(P,D,Q)_{52}$ model for nonstationary weekly data, given by:  
+$\phi(B)\Phi(B^{52})((1-B)^d(1-B^{52})^{D}Y_n-\mu) = \psi(B)\Psi(B^{52})\epsilon_n$  
+Where {$\epsilon_n$} is a white noise process, the intercept $\mu$ is the mean of the differenced process {$(1-B)^d(1-B^{52})^{D}Y_n$}. Some other notations explained below:
+Here B is the backshift operator and $BY_n = Y_{n-1}$.</br>
+$\mu$ = E[$Y_n$] </br>
+$\phi(x) = 1 - \phi_1x - ... - \phi_px^p$ </br>
+$\psi(x) = 1 + \psi_1x - ... - \psi_qx^q$</br>
+$\Phi(x) = 1 - \Phi_1x - ... - \Phi_px^P$ </br>
+$\Psi(x) = 1 + \Psi_1x - ... - \Psi_qx^Q$</br>
+
+Due to the limited computation resource I have, I was unable to run all the combinations of p,q,P,Q. Hence I simplified the model to make it able to run on my personal laptop. 
+
+```{r echo=FALSE}
+aic_table2 <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,1,q),seasonal=list(order=c(p,1,q),period=52))$aic
+    }
+  }
+  dimnames(table) <- list(paste("p",0:P, sep=""),paste("q",0:Q,sep=""))
+  table
+}
+AIC_Table2 <- aic_table2(dt_2002$ILITOTAL,1,1)
+require(knitr)
+kable(AIC_Table2,digits=2)
+```
+
+As we could see above, the best model with the lowest AIC value is SARIMA(1,1,1)X$(1,1,1)_{52}$. It has an AIC value of 13918.58, which is a good improvement on the ARMA(4,5) with AIC value 14738.14. 
+
+## Evaluate Model fitting and forecasting
+
+Since we are very clear that the SARIMA model performed better than the ARMA model. However, sometimes we cannot just determine a model with AIC value. We also need to look at how the fitted time series looks. I will plot out the fitted line for both ARMA and SARIMA models and see which model fitted the data better. Then I'm going to make predictions for the year 2019 - 2020
+
+```{r echo=FALSE}
+#install.packages('lmtest')
+library(lmtest)
+fitARMA <- arima(dt_2002$ILITOTAL, order=c(4,0,5),method="ML")
+coeftest(fitARMA) 
+fitSARIMA <- arima(dt_2002$ILITOTAL, order=c(1,1,1),seasonal = list(order = c(1,1,1), period = 52),method="ML")
+coeftest(fitSARIMA) 
+fitSARIMA2 <- arima(dt_2002$ILITOTAL, order=c(1,1,0),seasonal = list(order = c(1,1,1), period = 52),method="ML")
+coeftest(fitSARIMA2)
+```
+
+From the fit, we could observe that for ARMA(4,5) model, all predictors are significant. However, for the SARIMA model, the MA1 coefficient is not significant. So basically, I would also like to propose an alternative SARIMA model: SARIMA(1,1,0)X$(1,1,1)_{52}$.
+
+### ACF plots
+
+```{r}
+acf(fitARMA$residuals)
+acf(fitSARIMA$residuals)
+acf(fitSARIMA2$residuals)
+
+```
+
+The ACF of the residuals for ARMA(4,5) shows no significant autocorrelations. However, for SARIMA(1,1,1)X$(1,1,1)_{52}$ and SARIMA(1,1,0)X$(1,1,1)_{52}$, both models showed there are significant autocorrelations at lag 4, lag 10 and lag 20. 
+
+### Forecasting
+
+```{r echo=FALSE}
+library('forecast')
+futurVal <- forecast(fitARMA,h=52, level=c(99.5))
+plot(futurVal)
+futurVal1 <- forecast(fitSARIMA,h=52, level=c(99.5))
+plot(futurVal1)
+futurVal2 <- forecast(fitSARIMA2,h=52, level=c(99.5))
+plot(futurVal2)
+```
+
+Basically, the three graphs above are using ARMA and SARIMA models to predict the year 2018 - 2019, which contains prediction information for 52 weeks. We could see why the SARIMA model is preferrable than the normal ARMA model: on the first plot, we applied the ARMA model, ARMA was failed at catching the seasonal factor. And ARMA(4,5) eventually become a flat line. However, for the two SARIMA models, we could clearly see the predicted values has a very similar pattern compare to the data we known. Therefore, we definitely want to use the SARIMA model to predict the number of patients infected. However, since we saw before that the MA1 component in the SARIMA model is not significant, and we didn't see any noticeable difference between SARIMA(1,1,0)X$(1,1,1)_{52}$ and SARIMA(1,1,1)X$(1,1,1)_{52}$. I think we should just use SARIMA(1,1,0)X$(1,1,1)_{52}$ for this dataset.
+
+## Conclusion:
+
+1. From the decomposition, we could clearly identify that there exists an increasing trend for the number of people who got flu over time. 
+
+2. From both the ACF plot and frequency plot, we could observe that there are cycles. And the period is about 52 weeks, as I have already explained in detail.
+
+3. SARIMA model outperformed the ARMA model on predicting the number of people infected. And we could saw a similar pattern generated by the SARIMA model (have similar cycles compare to our original data).
+
+
+## Reference
+1. I used sources from lecture slides from 1 - 8
+2. Quote from CDC: https://www.cdc.gov/flu/about/burden/index.html
+3. 2009 flu pandemic: https://en.wikipedia.org/wiki/2009_flu_pandemic
+4. 2017-18 United States Flu Season: https://en.wikipedia.org/wiki/2017%E2%80%9318_United_States_flu_season
+5. https://datascienceplus.com/time-series-analysis-using-arima-model-in-r/

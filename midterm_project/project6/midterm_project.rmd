@@ -1,0 +1,322 @@
+---
+title: "Analysis of Pneumonia-related Deaths in Michigan"
+date: "3/7/2020"
+output: 
+  html_document:
+    toc: yes
+    theme: flatly
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, eval = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Introduction
+
+```{r}
+library(forecast)
+```
+
+
+Influenza, which we nornally know as "the flu", is a contagious disease caused by an influenza virus. Though it may seem very common that a lot of people may get flu in so-called "flu seasons" and most of them will recover completely in about one to two weeks, but others will develop life-threatening complications (such as pneumonia)[2]. According to Centers for Disease Control and Prevention (CDC), common causes of viral pneumonia are influenza and respiratory syncytial virus (RSV) in the United States and by convention, CDC combine the mortality rate of the two diseases together[3]. In this study I would like to conduct a time series analysis for the mortality caused by pneumonia in the state of Michigan. 
+
+\newline
+
+The dataset was acquired from https://gis.cdc.gov/grasp/fluview/mortality.html and you may download a region-wise dataset of your interest. The dataset consists of 229 weekly records of deaths caused by influenza and by pneumonia and the proportion of deaths caused by the 2 diseases over all deaths, starting week 40 in 2015 to week 8 in 2020 for Michigan. Here we would only analyze the pneumonia data.
+
+```{r}
+MI_fludata = read.table(file = "State_Michigan_2015-20_Data.csv",header=TRUE, sep = ",")
+knitr::kable( head( MI_fludata[4:9] ) )
+```
+
+Below is the time series plot for Number of Deaths Caused by Flu (black) and by Pneumonia (Red). 
+```{r}
+
+# flu_data = read.table(file = "NCHSData09.csv",header=TRUE, sep = ",")
+
+
+
+
+
+# plot( ts (MI_fludata$NUM.INFLUENZA.DEATHS, frequency = 52, start = c(2015, 40))  )
+# plot( ts (MI_fludata$NUM.PNEUMONIA.DEATHS, frequency = 52, start = c(2015, 40))  )
+MI_FLU.Death = ts (MI_fludata$NUM.INFLUENZA.DEATHS, frequency = 52, start = c(2015, 40))
+
+MI_PNEUMONIA.Death =  ts (MI_fludata$NUM.PNEUMONIA.DEATHS, frequency = 52, start = c(2015, 40))
+
+
+ts.plot(MI_FLU.Death, MI_PNEUMONIA.Death, gpars = list(col = c("black", "red")), main = "Death Caused by Flu (black) and by Pneumonia (Red)")
+
+```
+
+# Exploratory data analysis.
+
+Though many people believe that there is no season for pneumonia, we can see from the plot that every year when there is an influenza outbreak, the nubmer of deaths caused by pneumonia would reach its peak. It is reasonable to assume that the period is about 1 year, or 52 weeks. To confirm its seasonality, we may make some plots to better understand this. 
+
+
+```{r}
+s1=spectrum(MI_fludata$NUM.PNEUMONIA.DEATHS,main="Unsmoothed periodogram")
+fre1=s1$freq[which.max(s1$spec)]
+
+cat("Period of a cycle: ", 1/fre1)
+
+
+s2=spectrum(MI_fludata$NUM.PNEUMONIA.DEATHS,spans=c(3,5,3), main="Smoothed periodogram")
+```
+
+First, we can make a spectral density plot. Moving the crossbar to each point in both unsmoothed and smoothed periodogram, one may notice the dominant frequency is 0.02083333, suggesting a period of 48. Looking at the ACF plot of the data, we can see a cycle in every 50 lags, which confirms the seasonality, too. 
+
+```{r}
+acf( MI_fludata$NUM.PNEUMONIA.DEATHS , main="Number of Deaths Caused by Pneumonia", lag.max = 110)
+```
+
+
+
+Decomposing the time series data into three parts: trend + seasonal + random, besides an obvious seasonality, we can also see a slight trend of the data. 
+
+```{r}
+decomposition <- decompose(MI_PNEUMONIA.Death)
+plot(decomposition)
+```
+
+
+
+# Fitting a model.
+
+## Mean + ARMA Model (signal plus noise)
+
+The plot of the original data suggests deaths could be modeled by a random process whose expected value $\mu_n$ is relatively stable with time. The variation around the mean can then be considered as a random process, and thus we can suppose $x_n-\mu_n$ is stationary, where $\mu_n$ is the expected value of the number of deaths. We can use local regression to estimate $\mu_n$.
+
+
+```{r}
+time = 1:229
+u1_loess <- loess(MI_PNEUMONIA.Death~time,span=0.2)
+plot(time,MI_PNEUMONIA.Death,type="l",col="red" )
+lines(u1_loess$x,u1_loess$fitted,type="l")
+```
+
+
+Then the autocorrelation plot and periodogram plot of the residul of local regression can help confirm that there is no trend nor seasonality of the residuals.
+
+
+```{r}
+acf( u1_loess$residuals, lag.max = 200 , main = "Autocorrelation of Residuals of Local Regression")
+spectrum(u1_loess$residuals,spans=c(3,5,3),main="Smoothed periodogram of Residuals of Local Regression")
+
+```
+
+
+### Model Assumption
+
+Now we can fit a stationary Gaussian ARMA(p,q) model with parameter vector $\theta=\left(\phi_{1: p}, \psi_{1: q}, \mu, \sigma^{2}\right)$ given by $$
+\phi(B)\left(Y_{n}-\mu\right)=\psi(B) \epsilon_{n}
+$$ where 
+
+$$
+\begin{aligned}
+Y_n &= x_n-\mu_n \\
+\mu &=\mathbb{E}\left[Y_{n}\right] \\
+\phi(x) &=1-\phi_{1} x-\cdots-\phi_{p} x^{p} \\
+\psi(x) &=1+\psi_{1} x+\cdots+\psi_{q} x^{q} \\
+\epsilon_{n} & \sim \operatorname{iid} N\left[0, \sigma^{2}\right]
+\end{aligned}
+$$
+
+
+
+
+
+```{r}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q), optim.control = list(maxit = 1000) )$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  return( table )
+}
+```
+
+
+### Model Fitting
+
+```{r}
+residuals_aic_table <- aic_table(u1_loess$residuals,5,5)
+
+
+knitr::kable(residuals_aic_table)
+```
+
+From the AIC table, one can see that ARMA(2,2) yields the lowest AIC value. Here is the output of ARMA(2,2):
+```{r}
+arma_22 = arima(u1_loess$residuals,order=c(2,0,2))
+arma_22
+```
+
+
+### Model Diagnostics
+
+Now we can do some model diagnostics.
+
+#### Parameter Redundancy Checking
+
+```{r}
+AR_roots <- polyroot(c(1,-coef(arma_22)[c("ar1","ar2")])) 
+cat("AR Roots: ", AR_roots)
+
+MA_roots <- polyroot(c(1,coef(arma_22)[c("ma1","ma2")]))
+cat("MA Roots: ", MA_roots)
+```
+
+Here we checked that there is no parameter redundancy since the AR roots ar not very close to the MA roots.
+
+#### Residual ACF Plot and Normality Checking
+
+```{r}
+acf( arma_22$residuals, lag.max = 100 )
+qqnorm(arma_22$residuals)
+qqline(arma_22$residuals)
+shapiro.test(arma_22$residuals)
+```
+
+Based on the QQ-plot as well as the result of shapiro test, we conclude that the distribution of the residuals is close to normal, which supports the normality assumption about $\omega_t$. Besides, the ACF plot of the residuals can help conclude that the residuals appear to be uncorrelated, though lag 10 and lag 83 slightly deviate from the interval. Hence, the Gaussian iid assumption is met.
+
+
+#### Fitted Values vs. Real Data and Residuals against Fitted Values Plots
+
+```{r}
+
+fitted =  fitted(arma_22, start = c(2015, 40) ) 
+ts.plot(ts(fitted+u1_loess$fitted, frequency = 52, start = c(2015, 40) ), 
+        MI_PNEUMONIA.Death, 
+        gpars = list(col = c("black", "red")), main = "Fitted(black) vs. Real Data")
+
+plot(x =  as.vector( fitted+u1_loess$fitted ), 
+     y = as.vector( MI_PNEUMONIA.Death) - as.vector( fitted+u1_loess$fitted ),
+     xlab = "fitted value",
+     ylab = "residual")
+```
+
+One can also align fitted value with real data, and we can see that the mean+ARMA(2,2) does a great job fitting the data, while the residual vs. fitted plot corroborates our conclusion.
+
+
+## Mean + SARMA Model (signal plus noise)
+
+### Model Assumption
+One can also seek to fit a sarma model to the detrended data to capture the seasonality of the deaths, as the trend can be model with local regression with a larger span (0.5).  The $SARMA(p,q)×(P,Q)_{52}$ model is $\phi(B) \Phi\left(B^{52}\right)\left(Y_{n}-\mu\right)=\psi(B) \Psi\left(B^{52}\right) \epsilon_{n}$, where $\epsilon_{n}$ is a white noise process and 
+$$
+\begin{aligned}
+\mu &=\mathbb{E}\left[Y_{n}\right] \\
+\phi(x) &=1-\phi_{1} x-\phi_{2} x^{2} \\
+\psi(x) &=1+\psi_{1} x+\psi_{2} x^{2} \\
+\Phi(x) &=1-\Phi_{1} x-\cdots-\Phi_{p} x^{P} \\
+\Psi(x) &=1+\Psi_{1} x+\cdots+\Psi_{q} x^{Q}
+\end{aligned}
+$$
+
+
+```{r}
+time = 1:229
+u1_loess_0.5 <- loess(MI_PNEUMONIA.Death~time,span=0.5)
+plot(time,MI_PNEUMONIA.Death,type="l",col="red" )
+lines(u1_loess_0.5$x,u1_loess_0.5$fitted,type="l")
+
+acf(u1_loess_0.5$residuals)
+```
+
+### Model Fitting
+
+
+This time, we only used local regression to model the general trend rather than seasonality. Hence, the ACF plot of residuals appear a strong seasonality and we would capture this with a SARMA model.
+
+
+
+```{r}
+knitr::kable( aic_table(u1_loess_0.5$residuals,8,8) )
+```
+
+
+As we see, ARMA(3,3) yields the lowest AIC value. Hence, we could compare different $SARMA(3,0,3)\times(P,0,Q)_{52}$ in the next step to capture the seasonality. Below are the outputs of $SARMA(3,0,3)\times(1,0,0)_{52}$, $SARMA(3,0,3)\times(0,0,1)_{52}$ and $SARMA(3,0,3)\times(1,0,1)_{52}$.
+
+
+```{r}
+sarma_303_100 = arima(u1_loess_0.5$residuals,order=c(3,0,3), seasonal=list(order=c(1,0,0),period=52))
+sarma_303_100
+sarma_303_001 = arima(u1_loess_0.5$residuals,order=c(3,0,3), seasonal=list(order=c(0,0,1),period=52))
+sarma_303_001
+sarma_303_101 = arima(u1_loess_0.5$residuals,order=c(3,0,3), seasonal=list(order=c(1,0,1),period=52))
+sarma_303_101
+```
+
+Since $SARMA(3,0,3)\times(1,0,0)_52$ has the lowest AIC value, we will use it to model the local regression residual data.
+
+### Model Diagnostics
+
+
+#### Residual ACF Plot and Normality Checking
+
+```{r}
+acf( sarma_303_100$residuals, lag.max = 200 )
+qqnorm(sarma_303_100$residuals)
+qqline(sarma_303_100$residuals)
+shapiro.test(sarma_303_100$residuals)
+```
+
+Similar as above, both autocorrelation and normality diagnosis suggests that our new mean+SARMA model fits the data well, too (although there are a few mild violations in the ACF plot). The 2 plots below confirms our finding. 
+
+
+#### Fitted Values vs. Real Data and Residuals against Fitted Values Plots
+
+```{r}
+fitted =  fitted(sarma_303_100, start = c(2015, 40) ) 
+ts.plot(ts(fitted+u1_loess_0.5$fitted, frequency = 52, start = c(2015, 40) ), 
+        MI_PNEUMONIA.Death, 
+        gpars = list(col = c("black", "red")), 
+        main = "SARIMA(303)*(100)_52 Fitted Deaths(black) vs. Real Data(red)")
+
+
+plot(x = as.vector( fitted+u1_loess_0.5$fitted ), 
+     y = as.vector( MI_PNEUMONIA.Death) - as.vector( fitted+u1_loess_0.5$fitted ),
+     xlab = "fitted value",
+     ylab = "residual")
+
+```
+
+
+
+
+
+
+
+
+# Conclusion
+
+In the report, we analyzed the Michigan Weekly Pneumonia Deaths time series. After the exploratory data analysis, models fitting and diagnostic analysis, we can get a few main conclusions:
+
+* 1.Though pneumonia can happen any time in the year, it does appear to have a strong seasonality and it has a cyple of roughly 1 year. 
+
+* 2.Both Mean+ARMA (signal plus noise) and Mean+SARMA (signal plus noise) models fit the time series data well, and the residuals appear to be gaussian. 
+
+
+
+
+\newline
+In the future, we may dig deeper on the relationship between flu and pneumonia and see how they are correlated and how one can predict deaths caused by pneumonia using flu data.
+
+
+
+
+# References:
+
+[1].Data source: https://gis.cdc.gov/grasp/fluview/mortality.html 
+
+[2].Wikipedia:Pneumonia. https://en.wikipedia.org/wiki/Pneumonia
+
+[3].Centers for Disease Control and Prevention (CDC): Causes of Pneumonia. https://www.cdc.gov/pneumonia/causes.html
+
+[4].All theorectical evidence can be found in notes from https://ionides.github.io/531w20/
+
+

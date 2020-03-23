@@ -1,0 +1,370 @@
+---
+title: "Adélie Penguin Population Arrival from 1991 to 2018"
+date: "Mar 5, 2020"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+  pdf_document:
+    toc: yes
+csl: ecology.csl
+---
+
+\newcommand\E{\mathbb{E}}
+
+## 1. Introduction
+
+### 1.1. Adélie Penguins
+Adélie penguins is a kind of penguin species that mainly lives along the Antarctic continent. They live on food and distribute on breeding colonies around costal areas, spending their winter time offshore in the seas around the Antarctic pack ice. Adélie penguins feed on tiny aquatic creatures like shrimp-like krill, and also eat fish and squid. During their breeding season in October, they migrate and live in large communities called colonies along rockly coastlines. The colonies become their major living space to have a better bredding environment.
+
+```{r penguin, echo=FALSE, out.width = '40%', fig.align="center", fig.cap=paste("Adélie penguins. Source: https://a-z-animals.com/animals/adelie-penguin/pictures/5320/")}
+knitr::include_graphics("https://yiruigao98.github.io/STATS531-WN2020/projects/midterm_project/adelie_penguin.jpg")
+```
+
+
+### 1.2. Population Arrival
+The arrival of adult Adélie penguins documented annually usually performs as ice and weather conditions permit. The number of adult penguins present provides a measure of the number of adults arriving daily at the breeding colonies, which serves as a metric to sense and control the environmental conditions such as sea ice extent during late winter and early spring. 
+
+### 1.2. Background & Motivation
+In recent years, the human behaviors throw more and more harm onto the Antarctic and the environment becomes worse and worse for those creatures. Lack of food and habitats that majorly consist of ice glacier are destroyed due to the constant global warming. Penguins, the animals that live on the Antartic annually, are grealty affected and placed at a dangerous situation. I happend to read a WeChat push in Chinese describing the bad situation of pengiuns the other day and was deeply motivated by this topic. I would like to take this chance to explore the how number of pengiuns are affected as time goes by in the past about 30 years and whether it brings some warnings to human beings about the situation of Antarctic creatures.
+
+
+
+
+## 2. Data
+
+### 2.1. Data Source
+The data source I found is a research on the <a href="https://oceaninformatics.ucsd.edu/datazoo/catalogs/pallter/datasets/92/datatables/92">ocean informatics study in UCSD</a>. The data consists observations of the number of population arrivial for Adélie penguins from October 20, 1991 to February 1, 2018 recorded at different islands and colonies in the Antarctic. The total number of records is 3,034. Here I show some sample data from the original dataset:
+```{r sampledata, echo=FALSE,message=FALSE, warning=FALSE}
+library(dplyr)
+library(kableExtra)
+require(knitr)
+
+orig.data <- read.table(file="https://yiruigao98.github.io/STATS531-WN2020/projects/midterm_project/penguin.csv", sep = ",", header=TRUE, stringsAsFactors = FALSE)
+orig.data$Date.GMT <- as.Date(as.character(orig.data$Date.GMT), format='%Y-%m-%d')
+kable_styling(kable(head(orig.data, 5), digits = 2), bootstrap_options = c("striped", "hover"))
+
+```
+
+
+
+### 2.2. Data Preprocessing
+Since the data is observed for different islands and colonies of Adélie penguins for each recorded date, and the record time only happens in winter hours including October to February data for each year. I intended to aggregate and group the data into monthly data for convinience. I extend and separate the data into evenly distributed time series data from the year 1991 to 2018 by calculating the mean of the population arrivial for each month. For each year, there is supposed to get 5 data points, representing the data in October to February correspondingly. In order to keep an evenly distributed time series, I fill in those monthly missing data in a year with the average values of known datat in that year. Therefore, I get 135 time points in the end as the project dataset. 
+
+```{r data, warning=FALSE,echo=FALSE, message=FALSE, fig.width=10}
+library(ggplot2)
+
+aggre.data <- data.frame(orig.data) %>% 
+            mutate(month = format(Date.GMT, "%m"), year = format(Date.GMT, "%Y")) %>%
+             group_by(year, month) %>% 
+             summarise_each(funs(mean))
+pop.arrivial <- seq(0)
+
+k = 4
+for (i in 1991:2018){
+  if (i == 1991){
+    pop.arrivial <- c(pop.arrivial,aggre.data[1:3,]$Adults)
+    next
+  }
+  if (i == 2018){
+    pop.arrivial <- c(pop.arrivial,aggre.data[122:123, ]$Adults)
+    break
+  }
+  for (j in c("01","02","10","11","12")){
+    if (aggre.data[k,]$year == as.character(i) && aggre.data[k,]$month == j){
+      pop.arrivial <- c(pop.arrivial,aggre.data[k,]$Adults )
+      k = k + 1
+    }
+    else{
+      pop.arrivial <- c(pop.arrivial, mean(aggre.data[aggre.data$year == as.character(i),]$Adults))
+    }
+  }
+}
+
+time <- seq(1991.6, 2018.4, by = 0.2)
+pop.arrivial <- pop.arrivial[3:137]
+ggplot() + geom_line(aes(x = time, y = pop.arrivial), color = "dark blue", size = .6) + labs(title="Time series of Adélie penguins population arrivials", 
+                                                    x = "Year", y = "Average Monthly Population Arrivials") + scale_x_continuous(breaks = seq(1991, 2019, 2)) + 
+                                                    theme( panel.background = element_rect(fill = "#E2E8EA", colour = "#91D0E5", size = 2, linetype = "solid")) + theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+
+```
+
+
+
+## 3. Analysis
+
+### 3.1. Data Transformation
+We can see that the data shows heavy non-stationarity with roughly exponential decrease and obvious seasonality, I decide to use logarithm transformation on the time series values. I transform the population arrivial by using a $log_{10}$ transformation. Since we can notice that in the original dataset, there exist some 0 values, which will cause the logarithm to be infinity, so I add 0.1 to each of the data before feeding into the logarithm:
+```{r logdata, warning=FALSE,echo=FALSE, message=FALSE, fig.width=10}
+log.pop.arrivial <- log10(pop.arrivial + 0.1)
+ggplot() + geom_line(aes(x = time, y = log.pop.arrivial), color = "dark blue", size = .6) + labs(title="Time series of Adélie penguins log population arrivials", 
+                                                    x = "Year", y = "Log10 of Average Monthly Population Arrivials") + scale_x_continuous(breaks = seq(1991, 2019, 2)) + 
+                                                    theme( panel.background = element_rect(fill = "#E2E8EA", colour = "#91D0E5", size = 2, linetype = "solid")) + theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
+Here since my plotted time series pattern shares some similar traits with the <a href="https://ionides.github.io/531w18/midterm_project/project1/midterm_project.html">project 1 in the past 2018 midterm project</a>, so I utiize some of the methods taken by this author. Therefore I would like to use regression with ARMA errors that separates the data into two considerations, one for depicting the trend for this series, while the other to depict the error terms using existing models learned in class. Since our main goal to fit a time series model is around ARMA models amd their derivatives like ARIMA and SARIMA models. To apply an ARMA model to the errors, we need to have the weak stationarity properties. So follow the method used by the referred project, we can first check the variance for each segments of points:
+
+```{r variance, warning=FALSE,echo=FALSE, message=FALSE}
+Var = matrix(NA,1,4)
+rownames(Var) <- c("Local variance")
+colnames(Var) <- c(" Point 1-30 "," Point 31-60 "," Point 61-90 "," Point 91-120 ")
+for (i in 1:4) {
+  Var[i] = var(log10(pop.arrivial+0.1)[(30*i-29):(30*i)])
+}
+kable(Var)%>%
+  kable_styling(position = "center")
+```
+
+We can see that although there exists some differences in the variance, we can for now, saying that we can try and use the ARMA models to fit the error terms.
+
+
+### 3.2. Data Decomposition
+We can first use ACF function and the periodogram to check the seasonality of the data. It is shown that a period with 5 can be clearly observed, which means that the population arrivial for Adélie penguins indicates a yearly cycle. 
+
+```{r acf_period, warning=FALSE,echo=FALSE, message=FALSE, fig.align="center"}
+acf(log.pop.arrivial)
+spectrum(log.pop.arrivial, spans = c(3,5,3), main="Smoothed Periodogram")
+```
+
+From the periodogram we can also perceive a peak at frequency 0.4, since the period for that frequency turns out to be 2.5, which is hard to interpret since the data are only for serveral months, not for each month in a year. So here I would like to explore more for the cycle of 5 data points, which is the peak at frequency 0.2 in the periodogram. 
+
+We can then see a decomposition of the series by showing the trend and the noise, which helps us determine which model we would like to use and specify the series of data. I use the lowest frequency 0.2 to extract the trend, and the highest seen frequency 0.5 to generate the noises.
+```{r decom, warning=FALSE,echo=FALSE, message=FALSE, fig.align="center"}
+trend <- ts(loess(log.pop.arrivial~time,span=0.2)$fitted,frequency=5)
+noise <- ts(log.pop.arrivial - loess(log.pop.arrivial~time,span=0.5)$fitted,frequency=5)
+cycle <- log.pop.arrivial - trend - noise
+plot(ts.union(log.pop.arrivial, trend, noise, cycle), main="Decomposition of fatalities: trend + noise + cycles", lwd = 1.5)
+```
+
+
+### 3.3. Regression Models for Trend
+As it shows some evidence for a decreasing trend, to model this trend, I try three regression models and compare their effects.The three models includes a linear regression model $y_n = \beta x_n + \mu$, a quadratic model $y_n = \beta_2 x_n^2 + \beta_1x_n + \mu$ and a cubic model $y_n = \beta_3 x_n^3 + \beta_2 x_n^2 + \beta_1x_n + \mu$, here $y_n$ represents the population arrivials and $x_n$ is the time series. The results for fitting them to the series output some R statistics for comparison:
+```{r trend, warning=FALSE,echo=FALSE, message=FALSE}
+regression1 <- lm(log.pop.arrivial ~ time)
+summary(regression1)
+regression2 <- lm(log.pop.arrivial ~ time + I(time^2))
+summary(regression2)
+regression3 <- lm(log.pop.arrivial ~ time + I(time^3))
+summary(regression3)
+```
+
+Comparing the above three R output results, we can notice that the p-values for the quadratic and cubic polynomial regression models are large, so I choose the linear regression model to fit the data, so we can describe the up-coming model as a composition of a linear regression model plus a error term:
+$$ y_n = -0.02667x_n + 54.84773 + error.$$
+
+We can also plot the estimated linear model and see whether it fits well:
+```{r linear, warning=FALSE,echo=FALSE, message=FALSE, fig.width=10}
+ggplot() + geom_line(aes(x = time, y = log.pop.arrivial), color = "dark blue", size = .6) + labs(title="Linear fit for the model", 
+                                                    x = "Year", y = "Log10 of Average Monthly Population Arrivials") + scale_x_continuous(breaks = seq(1991, 2019, 2)) + geom_line(aes(x = time, y = predict(regression1)), color = "darkred")+ 
+                                                    theme( panel.background = element_rect(fill = "#E2E8EA", colour = "#91D0E5", size = 2, linetype = "solid")) + theme(axis.text.x = element_text(angle = 60, hjust = 1)) 
+```
+
+Shown in the fitting model, we can know that there is a linear decresing trend for the series, considering the logarithm we take, we can see the number of population arrivial decreses in an exponential speed.
+
+
+
+### 3.4. SARMA error
+We have already figured out that the seasonality should be considered in this time series. So follow the procedures in the lecture slide, we can fit a Gaussian ARMA(p,q) model with seasonality term $SARMA(p,q)\times(P,Q)_5$, use $\epsilon_n$ to represent the error sequence, which can be written by:
+$$\begin{aligned}
+  \phi(B)\Phi(B^5)(\epsilon_n - \mu) = \psi(B)\Psi(B^5)w_n,
+\end{aligned}$$
+where 
+$$\begin{aligned}
+  \mu &= \E[\epsilon_n], \\
+  \phi(x) &= 1 - \phi_1x - \phi_2x^2 - ... - \phi_px^p, \\
+  \psi(x) &= 1 + \psi_1x + \psi_2x^2 + ... + \psi_qx^q, \\
+  \Phi(x) &= 1 - \Phi_1x - \Phi_2x^2 - ... - \Phi_px^P, \\
+  \Psi(x) &= 1 + \Psi_1x + \Psi_2x^2 + ... + \Psi_qx^Q. \\
+  w &\sim \textbf{i.i.d.} N[0, \sigma^2].
+\end{aligned}$$
+
+Like what we did in class, I would like to use AIC to help me choose a suitable ARMA model. For the seasonality term, I plan to use a simple $(1,0)_5$ model. So use the R code to generate an AIC table for the selection of $(p,q)$:
+```{r aic, echo = FALSE, warning=FALSE, message=FALSE}
+error <- regression1$residuals
+aic_table <- function(data, P, Q){
+  table <- matrix(NA, (P+1), (Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1, q+1] <- arima(data, order = c(p, 0, q), seasonal = list(order=c(1,0,0), period = 5))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR", 0:P, sep = ""), paste("MA", 0:Q, sep = ""))
+  table
+}
+
+temp_aic_table <- aic_table(error, 4, 5)
+kable_styling(kable(temp_aic_table, digits = 2), bootstrap_options = c("striped", "hover"))
+```
+
+We can see that the $SARMA(2,5)\times(1,0)_5$ gives the lowest AIC value 188.73. Another simpler candidate may be picked as $SARMA(0,5)\times(1,0)_5$ with AIC value 192.16. Output the statistics for the two models and compare:
+
+```{r sarma, echo = FALSE, warning=FALSE, message=FALSE}
+sarma25 <- arima(error, order = c(2, 0, 5), seasonal = list(order=c(1,0,0), period = 5))
+sarma25
+sarma05 <- arima(error, order = c(0, 0, 5), seasonal = list(order=c(1,0,0), period = 5))
+sarma05
+
+```
+
+From the output, I decide to choose $SARMA(2,5)\times(1,0)_5$ with a higher log likelihood and lower estimated $\sigma^2$ as my selected SARMA model for the errors. Now I can check its invertibility and casuality, which seems good to me.
+
+```{r casuality, echo = FALSE, warning=FALSE, message=FALSE}
+# check the casuality and invertibility:
+print("The AR roots:")
+polyroot(c(1, sarma25$coef['ar1'], sarma25$coef['ar2']))
+print("The MA roots:")
+polyroot(c(1, sarma25$coef['ma1'], sarma25$coef['ma2'], sarma25$coef['ma3'], sarma25$coef['ma4'], sarma25$coef['ma5']))
+
+```
+
+Now, the complete model is:
+$$\begin{aligned}
+Y_n = −0.02667x_n &+ 54.84773 + \epsilon_n, \\
+\phi(B)\Phi(B^5)(\epsilon_n−\mu) &= \psi(B)\Psi(B^5)w_n,
+\end{aligned}$$
+where 
+$$\begin{aligned}
+  \mu &= \E[\epsilon_n], \\
+  \phi(x) &= 1 - 0.0221x - 0.2392x^2, \\
+  \psi(x) &= 1 + 0.0510x - 0.1707x^2 + 0.0066x^3 - 0.0296x^4 - 0.8574x^5, \\
+  \Phi(x) &= 1 - 0.9788x, \\
+  \Psi(x) &= 1. \\
+  w &\sim \textbf{i.i.d.} N[0, 0.1934].
+\end{aligned}$$
+
+
+### 3.5. Model Diagnostic
+To stress the validity of the SARMA model for error term, we need to perform a diagnostic analysis:
+
+```{r diagnostic, echo = FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.width=10}
+par(mfrow=c(2,2))
+plot(time, sarma25$residuals, xlab = "Year", ylab = "Residuals", main = "Residual Plot")
+abline (a = 0, b = 0, lty = 2, col = " red ")
+plot(sarma25$residuals[-135], sarma25$residuals[-1], xlab = "Previous", ylab = "Residual", main = "Positive Serial Correlation")
+acf(sarma25$residuals, main = " Positive Serial Correlation ")
+qqnorm (sarma25$residuals)
+qqline (sarma25$residuals, col = "red")
+```
+
+The above generated diagnostic plots shows that there's no evidence to show the model with heteroskacity, and the correlation of residuals for the error term is not perceived by us. Th QQ plot looks basically credible to indicate the normality of the residuals. So we can draw a conclusion that $SARMA(2,5)\times(1,0)_5$ is a valid model. 
+
+
+
+
+### 3.6. Model Fitting
+We can fit the data with the acquired SARMA model:
+
+```{r completemodel, echo = FALSE, warning=FALSE, message=FALSE, fig.width=10}
+new_y <- predict(regression1) + regression1$residuals - sarma25$residuals
+ggplot() + geom_line(aes(x = time, y = log.pop.arrivial), color = "dark blue", size = .6) + labs(title="Linear Trend plus SARMA error fitting for the model", 
+                                                    x = "Year", y = "Log10 of Average Monthly Population Arrivials") + scale_x_continuous(breaks = seq(1991, 2019, 2)) + geom_line(aes(x = time, y = new_y), color = "red")+ 
+                                                    theme( panel.background = element_rect(fill = "#E2E8EA", colour = "#91D0E5", size = 2, linetype = "solid")) + theme(axis.text.x = element_text(angle = 60, hjust = 1)) 
+```
+
+We can see that the fitted model can roughly depict the decreasing trend and the seasonality of the series correctly. However, it fails to give an accurate displaying for the data at the beginning and also fails to display the low extremes up to -1. Remember that I fill up some non-recorded values with the mean for known valus for that year, some of the disability of the model may be possibly come from this extra computation and data augmentation. Roughly speaking, for the data that has 0 population arrivial for a specific time, the measurement might have some problems since it only gives the observed data in a colony in one day, the accident might be large in terms of the coming of Adélie penguins coming that day. So for this model and its final effect, I would say, it roughly captures the trait of the data, but due to some reason, including the data set and the way data is acquired, it shows obvious disability.
+
+
+
+## 4. Exploration: Differencing Model
+
+Inspired by  <a href="https://ionides.github.io/531w18/midterm_project/project1/midterm_project.html">project 1 in the past 2018 midterm project</a>, I decide to use the SARIMA model and try differencing term to see whether the trend can be depicted without using a regression model. With the model $SARIMA(p,1,q)\times(1,1,0)_5$ with the difference of $d=1$ and $D=1$, I need to reselect the $(p,q)$ values from AIC table:
+
+```{r aic2, echo = FALSE, warning=FALSE, message=FALSE}
+aic_table <- function(data, P, Q){
+  table <- matrix(NA, (P+1), (Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1, q+1] <- arima(data, order = c(p, 1, q), seasonal = list(order=c(1,1,0), period = 5))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR", 0:P, sep = ""), paste("MA", 0:Q, sep = ""))
+  table
+}
+
+temp_aic_table <- aic_table(log.pop.arrivial, 7, 7)
+kable_styling(kable(temp_aic_table, digits = 2), bootstrap_options = c("striped", "hover"))
+```
+
+Suggested by the AIC table, I select $SARIMA(0,1,6)\times(1,1,0)_5$ to represent my data:
+
+```{r sarima, echo = FALSE, warning=FALSE, message=FALSE}
+sarima06 <- arima(log.pop.arrivial, order = c(0, 0, 6), seasonal = list(order=c(1,1,0), period = 5))
+sarima06
+```
+
+The given model is then:
+$$\begin{aligned}
+Y_n = x_n - x_{n-1}, \\
+\phi(B)\Phi(B^5)((1-B)(1-B^{5})Y_n−\mu) &= \psi(B)\Psi(B^5)\epsilon_n,
+\end{aligned}$$
+where 
+$$\begin{aligned}
+  \mu &= \E[Y_n], \\
+  \phi(x) &= 1, \\
+  \psi(x) &= 1 + 0.1064x + 0.0464x^2 + 0.1520x^3 + 0.0654x^4 - 0.9008x^5 + 0.0266x^6, \\
+  \Phi(x) &= 1 - 0.1496x, \\
+  \Psi(x) &= 1. \\
+  \epsilon &\sim \textbf{i.i.d.} N[0, 0.1908].
+\end{aligned}$$
+
+
+And it is necessary to perform again, the diagnostic analysis:
+
+```{r diagnostic2, echo = FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.width=10}
+par(mfrow=c(2,2))
+plot(time, sarima06$residuals, xlab = "Year", ylab = "Residuals", main = "Residual Plot")
+abline (a = 0, b = 0, lty = 2, col = " red ")
+plot(sarima06$residuals[-135], sarima06$residuals[-1], xlab = "Previous", ylab = "Residual", main = "Positive Serial Correlation")
+acf(sarima06$residuals, main = " Positive Serial Correlation ")
+qqnorm (sarima06$residuals)
+qqline (sarima06$residuals, col = "red")
+```
+
+Similarly, to simulate and see the effect of the newly used $SARIMA(0,1,6)\times(1,1,0)_5$ model, we can together plot the original log-transformed data with two given fitted models:
+
+```{r completemodel2, echo = FALSE, warning=FALSE, message=FALSE, fig.width=10}
+colors <- c("Original log transformed data" = "dark blue", "SARMA fitting" = "red", "SARIMA fitting" = "orange")
+new_y2 <- log.pop.arrivial - sarima06$residuals
+ggplot() + geom_line(aes(x = time, y = log.pop.arrivial, color = "dark blue"), size = .6) + 
+          labs(title="Model Comparison", x = "Year", y = "Log10 of Average Monthly Population Arrivials") + scale_x_continuous(breaks = seq(1991, 2019, 2)) + geom_line(aes(x = time, y = new_y, color = "red"), size = .6) + geom_line(aes(x = time, y = new_y2, color = "orange"), size = .6)+ 
+                                                    theme( panel.background = element_rect(fill = "#E2E8EA", colour = "#91D0E5", size = 2, linetype = "solid")) + theme(axis.text.x = element_text(angle = 60, hjust = 1)) + scale_color_identity(name = "",
+                          breaks = c("dark blue", "red", "orange"),
+                          labels = c("Original log-transformed", "SARMA fitting", "SARIMA fitting"),
+                          guide = "legend")
+```
+
+As we can see in the above plot, comparing the newly added SARIMA model with the previous SARMA error model, the SARIMA model with differencing term can capture better trait at the beginning of the times series, and for the second half of the data, two models differ very little. The problems that discussed above about the $SARMA(2,5)\times(1,0)_5$ error model still exist on the $SARIMA(0,1,6)\times(1,1,0)_5$ model. But in the end, my choice would be the $SARIMA(0,1,6)\times(1,1,0)_5$ model since the slightly better performance.
+
+
+
+## 5. Conclusion
+
+### 5.1. Modeling Strategy
+For this time series data, it is a real-life measurement for Adélie penguins' living and the implicit showing of the environmental impacts. I carried my modeling job by first mapping the data points to 5 data points representing the average population arrivials in October, November, December, January and February in a year, and expanding the time series into an evenly distributed one. I saw the seasonality of a cycle 5 by plotting the data and an exponential decrease, so I decided to perform a logarithm transformation first and use SARMA model or SARIMA model.
+
+To find a suitable model, I first try regression with SARMA error by using linear regression to depict the trend. The strategy I used to get the fitted SARMA model is to use AIC table and select a model with small AIC values and passes model diagonostics. We can lastly, see that, the selected model can roughly represent the trend, but for many details, it fails to replicate.  
+
+Then I also tried to use SARIMA model directly without regression to get the trend. The results show that this model fit better for the beginning data, and roughly the same effect as the regression plus SARMA error model.
+
+
+
+### 5.2. Model Selection
+Stated above, I finally select the $SARIMA(0,1,6)\times(1,1,0)_5$ model for the log-transformed population arrivials to represent the time series.
+
+
+### 5.3. Real Thinking
+The main goal of this project is not just exploring a data series about Adélie penguins. We can see that the population arrivials for this creatures observed has been decreasing exponentially in the past 20 years, which is a very suprising speed. In recent years, the exponentially decreasing trend has been slower, but the number of population arrivials has reached a small one, which indicates the terrible situation for Adélie penguins. From this project, I would like to alert us human beings about the danger of Antarctic creatures and their living spaces.  
+
+
+
+## 6. Reference
+[1] Adélie pengiuns basic information: <a href="https://en.wikipedia.org/wiki/Ad%C3%A9lie_penguin">https://en.wikipedia.org/wiki/Ad%C3%A9lie_penguin</a> and <a href="https://www.nationalgeographic.com/animals/birds/a/adelie-penguin/">https://www.nationalgeographic.com/animals/birds/a/adelie-penguin/</a>.
+
+[2] Introduction to population arrivial: <a href="https://oceaninformatics.ucsd.edu/datazoo/catalogs/pallter/datasets/92">https://oceaninformatics.ucsd.edu/datazoo/catalogs/pallter/datasets/92</a>.
+
+[3] Data source and introduction: <a href="https://oceaninformatics.ucsd.edu/datazoo/catalogs/pallter/datasets/92/datatables/92">https://oceaninformatics.ucsd.edu/datazoo/catalogs/pallter/datasets/92/datatables/92</a>.
+
+[4] Majorly referred past midterm projects in 2018: <a href="https://github.com/ionides/531w18/blob/master/midterm_project/project1/midterm_project.Rmd">https://github.com/ionides/531w18/blob/master/midterm_project/project1/midterm_project.Rmd</a>.
+
+[5] Theory basis: STATS531 lecture notes from <a href="https://ionides.github.io/531w20/">https://ionides.github.io/531w20/</a>.
+

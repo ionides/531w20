@@ -1,0 +1,465 @@
+---
+title: "STATS 531. Midterm Project: Time Series Analysis of Exchange Rate of Euro-USD with respect to Brexit"
+date: "March 1, 2020"
+output: 
+  html_document:
+    theme: flatly
+    TOC: TRUE
+fontsize: 11pt
+---
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\data[1]{#1^}
+---
+```{r knitr-opts,include=FALSE,cache=FALSE,purl=FALSE}
+#library(pomp)
+library(knitr)
+library(ggplot2)
+library(mFilter)
+#library(astsa)
+library(forecast)
+prefix <- "intro"
+opts_chunk$set(
+  progress=TRUE,
+  prompt=FALSE,tidy=FALSE,highlight=TRUE,
+  strip.white=TRUE,
+  warning=FALSE,
+  message=FALSE,
+  error=FALSE,
+  echo=TRUE,
+  cache=TRUE,
+  cache_extra=rand_seed,
+  results='markup',
+  fig.show='asis',
+  size='small',
+  fig.lp="fig:",
+  fig.path=paste0("figure/",prefix,"-"),
+  cache.path=paste0("cache/",prefix,"-"),
+  fig.pos="h!",
+  fig.align='center',
+  fig.height=4,fig.width=6.83,
+  dpi=300,
+  dev='png',
+  dev.args=list(bg='transparent')
+)
+set.seed(2050320976)
+```
+```{r opts,include=FALSE,cache=FALSE}
+options(
+  keep.source=TRUE,
+  encoding="UTF-8"
+)
+```
+-------------------
+
+# 1. Summary
+The goal of this midterm project is to study the effect of Brexit in economy of Europe with the help of time series analysis of exchange rate between Euro and USD and comparing several models, including ARMA, SARMA, ARMA errors and ARIMA.
+
+For this project data from February 1 2010 to February 28 2020 is taken. The spectrum did not show obvious business cycle. So I tried fitting a stationary Gaussian ARMA(1,0) model selected by AIC. However, diagnostic performed showed the residuals have heavy tails and are not normally distributed. 
+
+To study the trend better, I calculate the monthly average rate based on the daily data. This spectrum also shows little evidence for cycle.I then tried to fit SARMA model and ARMA errors model, but some of the coefficients are not significant. After trying ARIMA(0,1,1) model with white noise, it was found that it fits best for this dataset. This can be infered that the differenced data can be estimated be a random walk model.
+
+Based on the ARIMA(0,1,1) model, forecast for the exchange rates in 2020 was performed, suggesting the value of Euro is decreasing in 2020 and US Dollar may become more valuable with respect to Euro. During the whole process of Time Series Analysis we see that Brexit implementation has adversely efftected the exchange rate of Euro.
+
+# 2. Introduction
+
+In economics, the exchange rate is the value of one currency in terms of another currency.Exchange rates are based on a regular daily concertation procedure between central banks worldwide. The exchange rates are determined by continuous currency trading in foreign exchange market[3],[4]. This project investigates how Brexit process has effected Euro-USD exchange rates. Brexit is the withdrawal of the United Kingdom (UK) from the European Union (EU).European Union is a political and economic union of 27 member states that are located primarily in Europe. Brexit stands for British Exit [9].
+
+The dataset I took has daily data for 10 years staring from February 2 2010 to February 28 2020.This time period is taken to study euro exchange rate before UK Referendum for Brexit that happened in June 2016. Also, this time period captures the changes caused during the time period of public referendum on Brexit to official Brexit in January 31 2020 and a month after that is Febrarury 28 2020. 
+
+#Time Series Data Analysis
+## 3.1 Exploratory data analysis
+The dataset is obtained from website of Europe Central Bank - "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html". Preprocessing of data was done in accordance to study Brexit effect on Euro exchange rate. This dataset with daily data has total 2581 observation and 2 variables: "Date" and "USD".  Second dataset is monthly data with 3 variables "Year","Month" and "USD" and 121 observation [2]."USD" tells exchage rate of Euro with respect to USD. For instance, the exchange rate of Euro-USD is 1.22, means that 1 Euro has value of 1.22 US Dollar. The larger it is, the more valuable Euro is with respect to USD.
+
+```{r,eval=TRUE,echo=FALSE}
+#Read dataset
+xr <- read.csv(file="exchange_rate.csv",header=TRUE)
+head(xr)
+#length(xr$USD)
+```
+```{r,eval=FALSE,echo=FALSE}
+#create dataset and display mean of exchange rates
+df <- as.data.frame(xr)
+mean_xr <- mean(xr$USD)
+#print(mean_xr)
+#plot the data on the original scale.
+ggplot(df,aes(Date,USD, group = 1))+geom_line(color="blue")+theme_bw()+ xlab("Year")+ylab("USD_$")+ggtitle("Euro-USD Exchange Rates")+theme(plot.title = element_text(lineheight=5, face="bold"))+geom_hline(yintercept = mean_xr,color="red")
+```
+
+```{r,eval=FALSE,echo=FALSE}
+##find maximum 
+#max_xr <- max(xr$USD)
+#max_xr
+```
+
+```{r,eval=FALSE,echo=FALSE}
+##find minimum
+#min_xr <- min(xr$USD)
+##min_xr
+```
+
+The blue line reflects the fluctuation in Euro-USD exchange rates and the red horizontal line shows mean 1.228994 over 10 years. The maximum value happens in mid 2011(1.4882). This is due to Europe Central Bank raised its key interest rate to 1.5%, which increased bank rates for anyone lending or saving in euros, thus raising the value of the Euro currency. The curve decreases sharply following 2016 after the Brexit vote recording minimum as 1.0364 in December 2016. I guess there might exist business cycles over time, so we study into the periodogram.
+
+## 3.2 Spectral Analysis
+I used the default non-parametric smoother in R to smooth the periodogram.
+
+```{r,eval=TRUE,echo=FALSE}
+# spectrum(xr$USD,main="periodogram")
+smooth <- spectrum(xr$USD,spans=c(31,31),main="Periodogram Smoothed ")
+freq_span <- smooth$freq[which.max(smooth$spec)]
+print(c(freq_span, 1/freq_span))
+```
+
+The dominant frequency is 0.0003858 cycles per day, corresponding to a period of about 2575 days. It approximates to the number of total observations which is 2581, indicating that the data may form a whole cycle. 
+
+Now I will apply parametric estimation method via AR model picked by AIC.
+
+```{r,eval=TRUE,echo=FALSE}
+ar_smooth <- spectrum(xr$USD, method = "ar", main = "AIC based AR Model: Spectrum Estimated")
+ar_freq<- ar_smooth$freq[which.max(ar_smooth$spec)]
+print(ar_freq)
+```
+Here frequency is 0, indicating there is no cycle.
+
+```{r,eval=TRUE,echo=FALSE}
+xr_ts <- ts(xr$USD, start=2005,frequency=256)
+xr_date <- seq(from=2005,length=2581,by=1/256)
+loess_smooth <- loess(xr_ts~xr_date,span=0.5)
+```
+## 3.3 Stationary Gaussian ARMA model
+### 3.3.1 AIC Choosen Model
+Now lets analyze the data with a stationary Gaussian ARMA(p,q) model. Null hypothesis is there is no trend. The hypothesis states that the exchange rates did not drastically changed over the last 10 years. 
+
+Lets find AIC values for a range of different choices of p and q. Goal is to select the reasonable model with the lowest AIC score, to minimizes the prediction error.
+
+
+```{r,eval=TRUE,echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] <- arima(data,order=c(p,0,q),optim.control=list(maxit = 1000))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>",sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+rates_aic_table <- aic_table(xr$USD,4,5)
+kable(rates_aic_table,digits=2)
+```
+
+
+AIC table shows that ARMA(4,3) has smallest AIC value -18456.04 and ARMA(1,0) has second smallest AIC value -18450.46. I would prefer the simpler model ARMA(1,0), because the difference in AIC is small and the complex model may lead to poor prediction from overfitting with issues involving numerical instability, casuality and invertibility. AR(1,0) is the selected model.
+
+```{r,eval=TRUE,echo=FALSE}
+xr_ar1 <- arima(xr$USD,order=c(1,0,0))
+print(xr_ar1)
+```
+The model is
+$$
+X_n=\phi_1 X_{n-1}+\epsilon_n,
+$$
+where
+$$
+\epsilon_n \overset{iid}\sim N[0,\sigma^2].
+$$
+The parameter vector is 
+$$
+\theta=(\phi_1,\sigma^2)=(0.9983,4.581\times 10^{-5}).
+$$
+
+### 3.3.2 Estimation of Parameters
+```{r,eval=TRUE,echo=FALSE}
+ar1_roots <- polyroot(c(1,-coef(xr_ar1)["ar1"]))
+# print(ar1_roots)
+```
+Let check the causality of this model. The root of $1-\phi_1 x$ is 1.001659, which is outside the unit circle. Therefore the AR(1) model is causal. 
+
+The MLE of $\phi_1$ is 0.9983 and the standard error is 0.0010. Then we construct the approximate 95% confidence interval of $\phi_1$ derived from Fisher information:
+
+$$
+[0.9983-1.96*0.0010,0.9983+1.96*0.0010]=[0.99634,1.00026].
+$$
+
+Applying the Bootstrap method using fisher information to confirm the result. Below is the histogram and density plot of $\phi_1$.
+
+```{r,eval=TRUE,echo=FALSE}
+set.seed(123)
+J <- 1000
+ar1_params <- coef(xr_ar1)
+ar_ar1 <- ar1_params["ar1"]
+intercept_ar1 <- ar1_params["intercept"]
+sigma_ar1 <- sqrt(xr_ar1$sigma2)
+theta_ar1 <- matrix(NA,nrow=J,ncol=length(ar1_params),dimnames=list(NULL,names(ar1_params)))
+for(j in 1:J){
+  X_j <- arima.sim(list(ar=ar_ar1),n=length(xr$USD),sd=sigma_ar1)+intercept_ar1;
+  theta_ar1[j,] <- coef(arima(X_j,order=c(1,0,0)));
+}
+hist(theta_ar1[,"ar1"],freq=FALSE,xlab="AR(1) coefficient",main="Histogram")
+plot(density(theta_ar1[,"ar1"],bw=0.05),xlab="AR(1) coefficient",main="Density plot")
+```
+
+The two plots are consistent with the confidence interval via the observed Fisher information.
+
+### 3.3.3 Diagnostics
+
+Now we plot the residuals over time for the exchange rate (xr) date.
+```{r,eval=TRUE,echo=FALSE}
+res_ar1 <- resid(xr_ar1)
+plot(res_ar1~xr_date,type="l",ylab="residuals")
+```
+The plot shows that there might exist trend that occurs monthly. Therefore I will check the assumption of Gaussian white noise.
+
+Checking for Constant variance in the data by plotting residual vs fitted values as below:
+```{r,eval=TRUE,echo=FALSE}
+plot(xr$USD-res_ar1,res_ar1,xlab="fitted",ylab="residuals")
+```
+Plot of residuals v.s. fitted values, tells nonlinearity and confirms the constant variance.
+
+Checking for Normality as below:
+```{r,eval=TRUE,echo=FALSE}
+qqnorm(res_ar1)
+qqline(res_ar1)
+```
+The Q-Q plot suggests there might exist heavy tails, skewed to the left. Therefore lets perform Shapiro-Wilk's normality on the residuals.
+
+```{r,eval=TRUE,echo=FALSE}
+shapiro.test(res_ar1)
+```
+The p-value is extremely small(2.2e-16) and leass than 0.05, therefore we reject the null hypothesis that the residuals are Gaussian.
+
+Finally, Checking Uncorrelation as below:
+```{r,eval=TRUE,echo=FALSE}
+acf(res_ar1,lag=1000,main="Sample autocorrelation of residuals")
+```
+The Autocorrelation (ACF) plot reveals that the residuals are not autocorrelated, corresponding to the white noise assumption. The values of ACF mainly fall inside the dashed lines, showing pointwise acceptance regions at the 5% level under a null hypothesis of white noise. 
+
+### 3.3.4 Inference from daily data
+
+The AR(1) model fit well this dataset. It is stationary and causal. The coefficient is also significant by fisher information. The residuals have constant variance (Constant Stationary) and are uncorrelated, however, they do not the assumption of Gaussian distribution from normality diagnostic. There might be a trend that occurs monthly, suggesting more complex model than ARMA.
+
+# 4. Analysis of Monthly average data
+
+## 4.1 Exploration
+
+Let us study the trend of the exchange rates.We load second dataset with monthly average rates calculated based on the daily rates. There are 121 observations in total.
+
+We plot the monthly rates over time.
+
+```{r,eval=TRUE,echo=FALSE}
+#Monthly data
+
+#Read dataset
+xrm <- read.csv(file="Monthly_exchange_rate.csv",header=TRUE)
+head(xrm)
+#length(xr$USD)
+
+#create dataset and display mean of exchange rates
+dfm <- as.data.frame(xrm)
+mean_xrm <- mean(xrm$USD)
+print(mean_xrm)
+
+Year <- xrm$Year
+Month <- xrm$Month
+Time <-Time <- Year+Month/12
+
+#plot the data on the original scale.
+ggplot(dfm,aes(Time,USD, group = 1))+geom_line(color="blue")+theme_bw()+ xlab("Year")+ylab("USD_$")+ggtitle("Euro-USD Exchange Rates")+theme(plot.title = element_text(lineheight=5, face="bold"))+geom_hline(yintercept = mean_xrm,color="red")
+```
+The blue line reflects the fluctuation of exchange rates and the red horizontal line is the mean 1.226985 over 10 years. The mean is slightly different from the one of daily data, because the number of days in each month may differ. The trend is revealed more clearly.
+
+## 4.2 Spectral analysis
+
+```{r,eval=TRUE,echo=FALSE}
+unsmooth <- spectrum(xrm$USD,main="Periodogram Unsmoothed")
+freq_un <- unsmooth$freq[which.max(unsmooth$spec)]
+# print(freq_un)
+```
+
+The original spectrum density is quite smooth here, so there is no need to smooth it. The frequency is 0.016 cycles per month, so the period is 121 months, which is roughly all the observations of 10 years.
+
+```{r,eval=FALSE,echo=FALSE}
+#install.packages('mFilter')
+require(mFilter)
+rates2_hp <- hpfilter(xrm$USD, freq=100*12^2,type="lambda",drift=F)$cycle
+plot(Time,rates2_hp,type="l",xlab="Year",ylab="")
+```
+## 4.3 Stationary SARMA model
+Based on the analysis in 3.3.1, we take AR(1) for the annual polynomial. And try ARMA(1,1) for the monthly analysis. The model can with white noise be expressed as follows:
+$$
+(1-\Phi_1 B^{12})(1-\phi_1 B)(X_n-\mu)=(1+\psi_1 B)\epsilon_n,
+$$
+where $\epsilon_n$ is a white noise process and $\mu=\E[X_n]$.
+
+```{r,eval=TRUE,echo=FALSE}
+rates2_sarma11x10 <- arima(xrm$USD,order=c(1,0,1),seasonal=list(order=c(1,0,0),period=12))
+print(rates2_sarma11x10)
+```
+
+The MLE of $\Phi_1$ is 0.0030 and the standard error is 0.1113. The 95% confidence interval by Fisher information is
+$$
+[0.0030-1.96*0.1113,0.0030+1.96*0.1113]=[-0.215148, 0.221148].
+$$
+Therefore, the coefficient is not significant. After attempting several simple SARMA models, this problem still exist. This suggests that SARMA model is not appropriate for this dataset, because the annual variation is not significant here.
+
+##  4.4 Errors Model for ARMA 
+
+We get evidence for a decreasing trend of monthly exchange rates from 4.1. So we test for a trend, using a regression model with Gaussian ARMA errors. We consider a table of AIC values for different ARMA(p,q) error specifications.
+
+```{r,eval=TRUE,echo=FALSE}
+aic_table3 <- function(data,P,Q,xreg=NULL){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] <- arima(data,order=c(p,0,q),optim.control=list(maxit = 1000),xreg=xreg)$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>",sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+error_aic_table <- aic_table3(xrm$USD,4,5,xreg=Time)
+kable(error_aic_table,digits=2)
+```
+
+The best smallest model is ARMA(2,0) as follows.
+```{r,eval=TRUE,echo=FALSE}
+arma_err20 <- arima(xrm$USD,order=c(2,0,0),xreg=Time)
+print(arma_err20)
+```
+Let $x_{1:N}^*$ denotes the N values of monthly exchange rates, $t_{1:N}$ denotes the time points by month, where N=132. We have
+$$
+X_n=\alpha+\beta t_n+\epsilon_n,
+$$
+for which $\epsilon_{1:N}$ is a stationary, causal Gaussian(2,0) model statisfying a stochastic difference equation,
+$$
+\epsilon_n=\phi_1\epsilon_{n-1}+\phi_2\epsilon_{n-2}+\omega_n,
+$$
+where $\omega_n$ is a Gaussian white noise with
+$$
+\omega_\sim N[0,\sigma^2].
+$$
+
+```{r,eval=TRUE,echo=FALSE}
+log_lik_ratio <- as.numeric(logLik(arima(xrm$USD,order=c(2,0,0),xreg=Time)) -logLik(arima(xrm$USD,order=c(2,0,0))))
+p_value <- 1-pchisq(2*log_lik_ratio,df=1)
+# print(p_value)
+```
+We can notice that the MLE and standard error of $\beta$ is -0.0292 and 0.0073. Therefore, the 95% confidence interval of $\beta$ is
+$$
+[-0.0292-1.96*0.0073,-0.0292+1.96*0.0073]=[-0.043508,-0.014892].
+$$
+
+Null Hypothesis: coefficient of Time is zero
+
+This is not significant. It is confirmed by the likelihood ratio test giving p-value of 0.009052135. Therefore do not reject the null hypothesis that the coefficient of time is zero. Hence, linear regression over time with ARMA error is not appropriate for the currency exchange rate.
+
+## 4.5 Differenced data: ARMA model
+Looking at the temporal difference. 
+Let $Y_n=(1-B)X_n$ and $y_n^*=x_n^*-x_{n-1}^*$ where $x_n^*$ is the data of monthly average rates.
+```{r,eval=TRUE,echo=FALSE}
+#ARMA Differencited data
+t <- length(xrm$USD)
+delta_rates2 <- rep(0,t)
+delta_rates2[2:t] <- xrm$USD[2:t] - xrm$USD[1:t-1]
+plot(Time,delta_rates2,type="l",xlab="Year",ylab="Rates of Differenced Data")
+```
+
+From the plot we see that it is not stationary, suggesting that ARIMA model may be a reasonable choice.
+
+
+### 4.5.1 ARIMA model based on AIC
+As per 3.3.1, in order to select a simple model with least AIC. I start with the difference term d=1.
+```{r,eval=TRUE,echo=FALSE}
+aic_table2 <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] <- arima(data,order=c(p,1,q),optim.control=list(maxit = 1000))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>",sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+rates_aic_table2 <- aic_table2(xrm$USD,4,5)
+kable(rates_aic_table2,digits=2)
+```
+
+
+The best simplest model is ARIMA(0,1,1) as follows. This model is connected with the exponentially weighted
+moving average (EWMA) method of forecasting.
+
+```{r,eval=TRUE,echo=FALSE}
+rates2_arima <- arima(xrm$USD,order=c(0,1,1))
+print(rates2_arima)
+```
+The model can be expressed as 
+$$
+X_n-X_{n-1}=Y_n=\epsilon_n+\psi_1\epsilon_{n-1}
+$$
+where
+$$
+\epsilon_n \overset{iid}\sim N[0,\sigma^2].
+$$
+The parameter vector is 
+$$
+\theta=(\psi_1,\sigma^2)=(0.2284,0.0005791).
+$$
+We can see that the differenced data are fitted by a random walk model, which is stationary and invertible. The MA polynomial has the root outside the unit circle. The 95% confidence interval of MA(1) coefficient is
+$$
+[0.2284-1.96*0.0823,0.2284+1.96*0.0823]=[0.067092,0.389709].
+$$
+Coefficient is significant by Fisher information.
+
+### 4.5.2 Diagnostic
+
+Plot of residuals is below:
+
+```{r,eval=TRUE,echo=FALSE}
+#diagnostic AR(0,1)
+res_arima <- as.vector(resid(rates2_arima))
+plot(Time,res_arima,type="l",xlab="Time",ylab="residuals")
+```
+Plotting the ACF of residuals.
+```{r,eval=TRUE,echo=FALSE}
+#acf AR(1,0)
+acf(res_arima,lag=100,main="ACF of residuals")
+```
+From ACF plot we see most of the correlations fall inside the threshold limits, indicating that the residuals are behaving like white noise. 
+
+### 4.5.3 Forecast After Brexit: Exchange Rates of Euro-USD in 2020
+ARIMA(0,1,1) model is used to forecast the exchange rates in 2020 [9]. The x-axis means the number of months since 2010.
+
+```{r,eval=TRUE,echo=FALSE}
+#install.packages('forecast')
+#require(forecast)
+fit <- Arima(xrm$USD,order=c(0,1,1),include.drift=TRUE)
+plot(forecast(fit),Time,xlab="Time points",ylab="US Rates($)",main="Forecast: Exchange Rate of Euro after Brexit: ARIMA(0,1,1)")
+```
+The Forecast tells the exchange rates of Euro-USD is showing a decreasing trend in 2020 after Brexit from Jan 2020. This means Euro value will decrease and US Dollar will become more valuable with respect to Euro. This effect on Euro-USD exchange rate can be attributed to Brexit.
+
+# 5. Conclusions
+From this project of Time series analysis, it was seen the ARIMA(0,1,1) model fit the exchange rate on monthly average data. Related work [5],[7] have outlined that ARIMA model is accurate model to fit the exchange rate and showed relatively adequate results in comparison with the actual data.Before the talks of Brexit,USD was getting valuable because of economoic growth [6]. However now there is decreasing trend in the Euro's value after Brexit referendum in 2016 and USD is getting more valuable compared to Euro becuase of Brexit. Exponential smoothing model to forecast can be applied for further study.
+
+
+# 6. References
+[1] http://ionides.github.io/531w20/ 
+\
+[2] http://www.ecb.europa.eu/stats/exchange/eurofxref/html/index.en.html 
+\
+[3] https://en.wikipedia.org/wiki/Exchange_rate 
+\
+[4] http://www.investopedia.com/articles/forex/041415/will-usd-surpass-eur.asp 
+\
+[5] http://arxiv.org/pdf/1508.07534.pdf 
+\
+[6] https://github.com/ionides/531w16/tree/master/midterm_project/project22
+\
+[7] http://www.cluteinstitute.com/ojs/index.php/JABR/article/viewFile/6840/6915 
+© 2020 GitHub, Inc.
+\
+[8] https://www.otexts.org/fpp/8/7 
+\
+[9] https://en.wikipedia.org/wiki/Brexit
+

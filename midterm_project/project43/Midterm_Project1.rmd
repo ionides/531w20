@@ -1,0 +1,439 @@
+---
+title: "531 Midterm Project: Assessing South Korean Measures to Halt Coronavirus Spread"
+date: "3/7/2018"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\ar{\phi}
+\newcommand\ma{\psi}
+\newcommand\AR{\Phi}
+\newcommand\MA{\Psi}
+\newcommand\eqspace{\quad\quad\quad}
+
+-----------------------------------
+
+```{r knitr-opts,include=FALSE,cache=FALSE,purl=FALSE}
+# alteration of 2018 Project 11 default options
+library(pomp) 
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(xts)  # to make time series objects, includes zoo
+library(forecast) 
+prefix <- "intro"
+opts_chunk$set(
+  progress=TRUE,
+  prompt=FALSE,tidy=FALSE,highlight=TRUE,
+  strip.white=TRUE,
+  warning=FALSE,
+  message=FALSE,
+  error=FALSE,
+  echo=FALSE,
+  include=FALSE,
+  cache=TRUE,
+  cache_extra=rand_seed,
+  results='markup',
+  fig.show='asis',
+  size='small',
+  fig.lp="fig:",
+  fig.path=paste0("figure/",prefix,"-"),
+  cache.path=paste0("cache/",prefix,"-"),
+  fig.pos="h!",
+  fig.align='center',
+  fig.height=4,fig.width=6.83,
+  dpi=300,
+  dev='png',
+  dev.args=list(bg='transparent')
+)
+
+```
+```{r opts,include=FALSE,cache=FALSE}
+# alteration of 2018 Project 11 default options
+options(
+  keep.source=TRUE,
+  encoding="UTF-8"
+)
+```
+
+```{r}
+# data read in
+# confirmed = read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv", header=FALSE, stringsAsFactors = FALSE)
+
+confirmed = read.csv("time_series_19-covid-Confirmed-MARCH20.csv",
+                     header=FALSE, stringsAsFactors = FALSE )
+
+# use only the data up to March 9th, 2020
+confirmed = confirmed[ , 1:52]
+
+#deaths = read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv")
+
+#recovered = read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv")
+
+#write.csv(confirmed, "confirmed.csv",row.names = FALSE)
+#write.csv(deaths, "deaths.csv",row.names = FALSE)
+#write.csv(recovered, "recovered.csv", row.names = FALSE)
+
+#confirmed = read.csv("confirmed.csv")
+#deaths = read.csv("deaths.csv")
+#recovered = read.csv("recovered.csv")
+
+#View(confirmed)
+#View(deaths)
+#View(recovered)
+```
+
+```{r}
+# revise confirmed data frame
+# remove Province/State, latitude and longitude
+confirmed = select(confirmed, -c(1, 3,4))
+# extract the first row with only date entries
+dates = confirmed[1, 2:dim(confirmed)[2]]
+# turn it into a string vector
+dates = as.character(dates)
+# turn it into a Date object
+dates = as.Date(dates, format="%m/%d/%y")
+
+# remove first row of confirmed because it was actually 
+confirmed = confirmed[-1, ]
+# rename first column
+names(confirmed)[1] = "country"
+```
+
+```{r}
+# create a function that takes input countryname
+# and outputs the vector of day counts of confirmed cases
+
+confirmed_daycounts = function(countryname) {
+     confirmed %>% 
+     filter(country==countryname) %>%
+     select(-c(1)) %>%
+     mutate_all( function(x) as.numeric(x) ) %>%
+     colSums() %>%
+     as.numeric()
+} 
+```
+
+
+
+
+------------------------------------------
+
+## 1. Introduction
+
+Coronavirus Disease 2019, abbreviated *Covid 19*, is an extremely contagious respiratory illness currently spreading across the planet. The virus that causes Covid 19 first appeared in Wuhan, China in December 2019, see [1]. Its origin was probably a so-called *wet market*, where fresh meat and seafood are sold for human consumption. Exotic animals are also sold at some wet markets.     
+
+Within the span of three months, the virus has spread to many countries and continents of the globe. Several countries have introduced dramatic measures to contain the spread of the disease, such as the quarantine of millions of people in China and Korea, and starting March 8th also in Italy. Numerous deaths have been reported, health systems are overwhelmed, and the ensuing economic consequences are already apparent. The stock market has plummeted and the first airline has already declared bankruptcy. 
+
+In this project I focus on the daily count of confirmed cases in South Korea from January 22, 2020 to March 7, 2020. I chose this country because South Korea has very thorough testing, up to 10,000 tests in a day according to [2]. South Korea has also implemented drastic containment measures, with a public declaration of war on the novel coronavirus on March 3, 2020. Thus, I think the case of South Korea allows me to accurately study the disease spread and the affect of subsequent drastic containment measures, using different parts of the same time series. The data source is a Github repository maintained by the Johns Hopkins University Center for Systems Science and Engineering. See  [3] and [4]. This repository records daily cumulative counts of confirmed cases, deaths, and recoveries, organized by location. The first day is January 22, 2020. I focus on the confirmed cases. 
+
+The main takeaway of this project is that South Korea would have had an *estimated* 43.7% more confirmed cases on March 6, 2020, had it not implemented its drastic containment measures. Of course the results of this project should be viewed with much suspicion, because uncertainty quantification is impossible with so little data. There are well under 100 time points in the time series. I break up the South Korean time series into three pieces, so I have even less data for model fitting on the segments. However, this is the price for using a brand-new exciting dataset. 
+
+I cut the South Korean confirmed cases time series into three parts. The first part 1/22 -- 2/22 has low counts and is before South Korea's implementation of thorough testing. During the second part 2/22 - 2/29, South Korea implemented very thorough population testing, but not yet drastic quarantine measures. During the third part 2/29 - 3/07 South Korea had both thorough population testing and drastic quarantine measures. The change points I selected are only approximate, since I do not know *exactly* when the testing begin nor exactly when the quarantine measures began. I selected the changes points based on media reports. My hope is that the interval 2/22 - 2/29 is a reliable observation of the natural spread of the disease without drastic quarantine measures, while the interval 2/29 - 3/07 is a reliable observation of the spread during drastic quarantine measures. 
+
+My methods are as follows. After exploratory data analysis of several countries, my first method is to use linear regression to fit a quadratic to the reliable interval 2/22 - 2/29 and then use it to predict what would have subsequently happened during 2/29 - 3/07 without quarantine measures. 
+
+My second method is to use linear regression to fit a quadratic on all the data of the second and third intervals 2/22 - 3/07, and then use it to detrend the data of those two intervals, and then fit ARMA(p,q) models seperately on the two (jointly) detrended intervals. Using AIC I determine the reasonable models on the two intervals and see the intervals have different reasonable models. This does not tell me how many cases were prevented, but it tells me the quarantine measures did have some affect. In other words, I am studying the variation as a detrended time series. 
+
+My third method is to twice difference the original data for the entire time 1/22 - 3/07, and then fit ARMA(p,q) models seperately on the two twice-differenced intervals. Twice differencing is used to transform the time series to a sationary time series, for which ARMA modelling would be approriate (once differencing is not enough to achieve stationarity, because once differencing still shows much trend).  Using AIC I determine the reasonable models on the two intervals and see the intervals have different reasonable models. Again, this does not tell me how many cases were prevented, but it tells me the quarantine measures did have some affect.
+
+## 2. Exploratory Data Analysis
+
+The first country hit by the coronavirus was China. Below I plot the confirmed cases for China as a function of time. The huge spike around mid-February in the number of Chinese confirmed cases was not due to sudden spread, rather it was due to the adoption of a new diagnosis method. Thus I did not want to use the early Chinese data to study the natural spread because I presume the earliear diagnosis method was not accurate. Nevertheless, two things are crystal clear from the China plot: the disease spreads rapidly, and the dramatic containment measures have slowed the disease (see the levelling off in the upper right corner). Some media reports have called the Chinese containment measures the largest quarantine in history.  
+
+The next countries hit by the Coronavirus were South Korea, Iran, and Italy. The red South Korean curve shows quadratic increase after widespread testing was introduced, and then linear increase as containment measures were implemented. The yellow Italian curve shows no sign of levelling off, thus indicating ineffective measures and a complete emergency. The green Iranian curve is considered unreliable, because media reports have noted a mismatch between reported deaths and reported confirmed cases in Iran. Hence I do not want to study the Iranian time series. The US curve is also not reliable, because the US has not yet implement widespread testing.   
+
+Thus, I believe the daily South Korean confirmed case count is the best one to study for this project. The autocorrelation function for the daily South Korean confirmed case count is pictured below. As to be expected, there is high correlation amongst lags 6 and below, as we can see by observing the bars that extend beyond the dashed line. 
+
+```{r include=TRUE}
+confirmed_china = confirmed_daycounts("China")
+confirmed_china_ts = xts(confirmed_china, dates)
+plot(confirmed_china_ts,
+     xlab="Time",
+     ylab="Confirmed Cases",
+     main="Confirmed Cases in China Starting 1/22/2020" )
+
+myColors <- c("red", "darkgreen", "goldenrod", "darkblue", "darkviolet")
+confirmed_selected = data.frame(southkorea=confirmed_daycounts("Korea, South"),
+                                iran=confirmed_daycounts("Iran"),
+                                italy=confirmed_daycounts("Italy"),
+                                germany=confirmed_daycounts("Germany"),
+                                us=confirmed_daycounts("US"))
+confirmed_selected_ts = zoo(confirmed_selected, dates)
+plot(confirmed_selected_ts, 
+     xlab="Time",
+     ylab="Confirmed Cases",
+     main="Confirmed Cases in Selected Countries Starting 1/22/2020",
+     screens=1, 
+     col = myColors )
+legend(x = "topleft", 
+       legend = c("South Korea", "Iran", "Italy", "Germany", "US"),
+       lty = 1, 
+       col = myColors)
+```
+
+```{r include=TRUE}
+acf(confirmed_daycounts("Korea, South"), main="Autocorrelation Function for South Korean Confirmed Cases\n Starting 1/22/2020")
+```
+
+
+## 3. Assessing the Affect of South Korean Interventions via a Quadratic Fit to February 22 through February 29
+
+* **<big>Fitting Reliable South Korean Confirmed Cases to a Quadratic Function via Linear Regression</big>** 
+
+
+South Korea began widespread testing on or around February 23rd, 2020 according to the article [1]. Judging from the previous graph, a major intervention in South Korea began taking effect on or around February 29, 2020. Thus, I assume that the days February 22 through February 29 in South Korea give the best estimate of the natural spread of the disease, both from the point of view of thorough testing and limited intervention. For this short period, I linearly regressed *confirmed count* on day count (taking February 22 as day 1), and extrapolated into the future for comparison with the actual count. Of course, this is quite suspicious, because I fit the quadratic with merely 8 observations February 22 - February 29, and I predicated on days outside of the range of observed days. Using models fit on few data points to predict on explanatory values outside the observed range is risky. Moreover, we know there is a lot of dependence between observations, as illustrated above in the autocorrelation function graph. But at least we can visually see the fitted quadratic is close to the observed values in the reliable observation range February 22 through February 29. To assess the fit, I computed the in-sample root mean-squared error, and the in-sample absolute deviation below the graph.            
+
+```{r include=TRUE}
+confirmed_sk = confirmed_daycounts("Korea, South")
+confirmed_sk_ts = xts(confirmed_sk, dates )
+confirmed_sk_ts_tested = window( confirmed_sk_ts, 
+                                start=as.Date("2020-02-22"),
+                                end=as.Date("2020-02-29" ))
+sk_tested = coredata(confirmed_sk_ts_tested)
+m=length(sk_tested)
+x=1:m
+model_sk_power = lm(sk_tested ~ x+I(x^2))
+f = function(x) 577.62-117.52*x+53.77*x^2
+
+
+confirmed_sk_ts_from222 = window( confirmed_sk_ts, 
+                                start=as.Date("2020-02-22"))
+n = length(coredata(confirmed_sk_ts_from222))
+sk_predicted_from_222 = sapply(1:n, f )
+
+sk_comparison_from_222_df = data.frame(coredata(confirmed_sk_ts_from222),
+                                       sk_predicted_from_222)
+
+sk_comparison_from_222_ts = zoo(sk_comparison_from_222_df,
+                                index(confirmed_sk_ts_from222) )
+
+plot(sk_comparison_from_222_ts,
+     xlab="Time",
+     ylab="Confirmed or Predicted Confirmed",
+     main="Confirmed and Quadratic Predicted Confirmed Cases \n in South Korea Starting 2/22/2020",
+     screens=1, 
+     col = c("red","black") )
+legend(x = "topleft", 
+       legend = c("South Korean Confirmed Cases", "South Korean Quadratic Predicted Confirmed Cases"),
+       lty = 1, 
+       col = c("red","black") )
+
+#f(14) # predicted value on March 6
+#(f(14)-6593)/6593 # percentage more cases SK would have had without intervention
+
+## plot the same thing using ggplot, artificially without dates
+#sk_df = data.frame(x=1:n, y=coredata(confirmed_sk_ts_from222) )
+#ggplot(sk_df, mapping=aes(x=x,y=y)) +
+#     geom_line() +
+#     stat_function(fun = function(x) 577.62-117.52*x+53.77*x^2, col="red")
+
+
+```
+
+```{r}
+summary(model_sk_power)
+```
+
+
+The in-sample root mean squared error is `r round( sqrt(mean(resid(model_sk_power)^2)), 3)`. The in-sample mean absolute deviation is `r round( mean(abs(resid(model_sk_power))), 2)`. These in-sample measures of fit of course do not include where the red curve and black curve diverge after February 29. These measures `r round( sqrt(mean(resid(model_sk_power)^2)), 3)` and `r round( mean(abs(resid(model_sk_power))), 2)` are small compared to the range of 433 to 3,150 confirmed cases during the ftting period February 22 - February 29, so the fit is good. Inference is totally unreliable due to dependency and small sample size, so I do not even present the linear model summary. 
+
+
+* **<big>Assessing the Affect of the South Korean Measures using a Quadratic Fit to February 22 through February 29</big>** 
+
+The actual number of confirmed cases in South Korea on March 6, 2020 was 6,593 while the predicted number of confirmed cases was 9,471 (based on the aforementiond quadratic fit to the data February 22 through February 29). According to this model, *without* the dramatic South Korean interventions, South Korea would have had 43.7% more confirmed cases on March 6, 2020. Unfortunately, with so little data, I cannot give any uncertainty quantification. Judging from the graph, it appears that the South Korean measures slowed the quadratic growth to linear growth. There is also a sign that South Korea's confirmed case curve is beginning to level off and that the peak of the South Korean epidemic may soon be reached. 
+
+## 4. Assessing any Affect of South Korean Interventions by Detrending data Fit to February 22 through March 7
+
+Next I want to study the detrended time series as variation. So I jointly detrend the second and third intervals using a quadratic, and then fit ARMA models on the second and third intervals separately. Selecting according to smallest AIC, I see that the second interval would be modelled well by ARMA(4,0), ARMA(3,1), and ARMA(1,2), while the third interval would be modelled well by ARMA(3,0), ARMA(3,4), and ARMA(4,3). Thus the top 3 models for the two intervals have no overlap. So we can believe the containment measures had some effect.
+However, this logic is very suspicious for two reasons: the models are fit on just a handful of points, and the AIC is not a hypothesis test. Moreover, simulations should be compared. However, the short length of the time series may not allow reasonable comparisons with simulations. 
+
+The new quadratic and the detrended time series are pictured below. Of course the flat run-up to the quadratic pictured in the country comparison above is not included in the curve fitting. The AIC tables are also pictured below.
+
+
+```{r include=TRUE}
+confirmed_sk_ts_222_to_307 = window( confirmed_sk_ts,                                    start=as.Date("2020-02-22"),
+                              end=as.Date("2020-03-07"))
+sk_222_to_307 = coredata(confirmed_sk_ts_222_to_307)
+m2 = lm(sk_222_to_307 ~ index(sk_222_to_307) +
+             I(index(sk_222_to_307)^2) )
+#m3 = lm(coredata(confirmed_sk_ts_222_to_307) ~ index(confirmed_sk_ts_222_to_307)  )
+#detrended3 = zoo(resid(m3),index(confirmed_sk_ts_222_to_307))
+detrended2 = zoo(resid(m2),index(confirmed_sk_ts_222_to_307))
+#m2
+g = function(x) { -165.86+287.34*x +14.49*x^2}
+
+sk_predicted_222_307 = sapply(index(sk_222_to_307), g )
+
+sk_comparison_222_307_df = data.frame(sk_222_to_307,
+                                       sk_predicted_222_307)
+
+sk_comparison_222_307_ts = zoo(sk_comparison_222_307_df,
+                        index(confirmed_sk_ts_222_to_307) )
+
+plot(sk_comparison_222_307_ts,
+     xlab="Time",
+     ylab="Confirmed or Predicted Confirmed",
+     main="Quadratic Fit based on Both Reliable Testing and Intervention Period, \n South Korea 2/22/2020 - 3/07/2020",
+     screens=1, 
+     col = c("red","black"),
+     ylim=c(0,10000))
+legend(x = "topleft", 
+       legend = c("South Korean Confirmed Cases", "South Korean Second Quadratic Predicted Confirmed Cases"),
+       lty = 1, 
+       col = c("red","black") )
+
+plot(detrended2, main="Detrended Time Series",
+     xlab="Time",
+     ylab="Residual",
+     lty="dashed")
+```
+
+```{r include=TRUE}
+# Alteration of Prof Ionides' definition of AIC table function
+aic_table <- function(data,P,Q){
+     table <- matrix(NA,(P+1),(Q+1)) 
+     for (p in 0:P) {
+          for (q in 0:Q) {
+               table[p+1,q+1] <- ifelse( 
+                 is.numeric(try(arima(data,order=c(p,0,q))$aic, silent=TRUE)),
+                 arima(data,order=c(p,0,q))$aic, NA  )
+          }
+     }
+     dimnames(table) <- list(paste("AR",0:P, sep=""),
+                             paste("MA",0:Q,sep=""))
+     table}
+
+confirmed_sk_ts_222_to_229 = window( confirmed_sk_ts,                                    start=as.Date("2020-02-22"),
+                              end=as.Date("2020-02-29"))
+confirmed_sk_ts_229_to_307 = window( confirmed_sk_ts,                                    start=as.Date("2020-02-29"),
+                              end=as.Date("2020-03-07"))
+
+sk_222_to_229 = coredata(confirmed_sk_ts_222_to_229)
+sk_229_to_307 = coredata(confirmed_sk_ts_229_to_307)
+
+sk_222_to_229_aic_table = aic_table(sk_222_to_229,4,4)
+sk_229_to_307_aic_table = aic_table(sk_229_to_307,4,4)
+
+
+kable(sk_222_to_229_aic_table, digits=2, caption="Table of AIC values for ARMA(p,q) models of the FIRST half of the detrended time series February 22 - February 29. NA means there was an error fitting that model.")
+
+kable(sk_229_to_307_aic_table, digits=2, caption="Table of AIC values for ARMA(p,q) models of the SECOND half of the detrended time series Februrary 29 to March 7. NA means there was an error fitting that model.")
+```
+
+
+
+
+```{r include=FALSE}
+#auto.arima(sk_tested)
+
+#m=arima(sk_tested, order = c(1, 0, 1))
+
+#confint(m)
+#tsdiag(m)
+#predict(m, n.ahead=10)$pred
+
+```
+
+
+```{r include=FALSE}
+#confirmed_sk_ts_122_to_229 = window( confirmed_sk_ts, 
+#                                end=as.Date("2020-02-29" ))
+#sk_122_to_229 = coredata(confirmed_sk_ts_tested)
+#auto.arima(sk_122_to_229)
+#
+#sk_122_to_229_aic_table = aic_table(sk_122_to_229,4,4)
+#kable(sk_122_to_229_aic_table, digits=2, caption="Table of #AIC values for ARMA(p,q) models. NA means there was an error fitting that model.")
+#
+#arma31 = arima(sk_122_to_229, order=c(3,0,1))
+#arma12 = arima(sk_122_to_229, order=c(1,0,2))
+#arma40 = arima(sk_122_to_229, order=c(4,0,0))
+#
+#predict(arma31, n.ahead=10)$pred
+#predict(arma12, n.ahead=10)$pred
+#predict(arma40, n.ahead=10)$pred
+```
+
+## 5. Assessing any Affect of South Korean Interventions via Double Differencing and Model Fitting on Two Different Time Intervals
+
+Lastly, I differenced the South Korean time series in order to transform it to something stationary. Differencing once showed non-constant trend, so I differenced a second time. A time-plot of the twice-differenced time series is below, and it appears to be well modelled by a model with consant mean zero. The twice-differenced plot also confirms a segmentation of the overall time interval 1/22 - 3/07 into three subintervals, roughly with the three change points spelled out above. Namely, from 1/22 - 2/19 the twice differenced time series is essentially zero. From 2/19 - 2/29 we have small oscillations, and then 2/29 - 3/7 there are are large oscillations. 
+
+Then I fit ARMA models on the second and third intervals separately. Selecting according to smallest AIC, I see that the second interval would be modelled well by ARMA(0,0), while the third interval would be modelled well by ARMA(4,0), ARMA(4,1), and ARMA(0,2). Thus the top model for the second interval is different from all three top models of the third interval. So we can believe the containment measures had some effect. However, this logic is very suspicious for the same reasons as in the previous section: very short time series, and AIC is not a hypothesis test. 
+
+The AIC tables are pictured below.
+
+```{r include=TRUE}
+confirmed_sk_ts_diff_diff = diff(diff(confirmed_sk_ts))
+
+plot(confirmed_sk_ts_diff_diff,
+     main="Twice-Differenced South Korean \nConfirmed Cases January 22 - March 7",
+     xlab="Time",
+     ylab="Twice-Differenced\n Confirmed Counts")
+
+#acf(coredata(confirmed_sk_ts_diff_diff)[3:length(coredata(confirmed_sk_ts_diff_diff))])
+
+diff_diff_ts_219_to_229 = window( confirmed_sk_ts_diff_diff,                                    start=as.Date("2020-02-19"),
+                              end=as.Date("2020-02-29"))
+diff_diff_ts_229_to_307 = window( confirmed_sk_ts_diff_diff,                                    start=as.Date("2020-02-29"),
+                              end=as.Date("2020-03-07"))
+
+diff_diff_219_to_229 = coredata(diff_diff_ts_219_to_229)
+diff_diff_229_to_307 = coredata(diff_diff_ts_229_to_307)
+
+diff_diff_219_to_229_aic_table = aic_table(diff_diff_219_to_229,4,4)
+diff_diff_229_to_307_aic_table = aic_table(diff_diff_229_to_307,4,4)
+
+
+kable(diff_diff_219_to_229_aic_table, digits=2, caption="Table of AIC values for ARMA(p,q) models of the SECOND THIRD of the double differenced time series February 19 - February 29. NA means there was an error fitting that model.")
+
+kable(diff_diff_229_to_307_aic_table, digits=2, caption="Table of AIC values for ARMA(p,q) models of the LAST THIRD of the double differenced time series Februrary 29 to March 7. NA means there was an error fitting that model.")
+
+```
+
+## 6. Conclusion
+
+Covid-19 is extremely contagious and may required dramatic quarantine measures by governments to slow the number of new cases. An exploratory time plot of confirmed cases in China, South Korea, and Italy suggests this point. Both China and South Korea implemented dramatic quarantine measures and their curves show a levelling off. Italy (prior to 3/8/2020) did not implement dramatic quarantine, and Italy's curve showed no sign of levelling off. 
+
+In this project I investigated South Korea's daily confirmed case time series. This time series is perhaps the most reliable because South Korea implemented thorough testing and then dramatic quarantine measures, as President Moon Jae-in declared war on the virus. I segmented the South Korean time series into three intervals, and focused on the second and third interval. First I fit a quadratic to the second interval and predicated on the third interval. Then I jointly detrended the second and third interval, and fit ARMA models to the two detrended intervals and noticed the top models according to low AIC were different. Finally, I twice-differenced the original South Korean time series to make it stationary, and again observed three reasonable segments. The top ARMA models for the second and third interval were again different.  
+The main takeaway from the quadratic fit is that South Korea would have had an *estimated* 43.7% more confirmed cases on March 6, 2020, had it not implemented its drastic containment measures.
+
+The methods I used were inferentially problematic because the time series were extremly short, so I cannot give any uncertainty quantification. Of course, since this coronavirus is brand new, there is no seasonality to investigate, nor cycles to investigate, so frequency domain methods would not be appropirate to use here. Let's hope there will never be a need to study seasonality in the coronavirus literature.  
+
+## Acknowledgements
+
+Chapter 14 of Paul Teetor's cookbook [1C] was essential for my coding. I used many of the recipes. The two websites [2C] and [3C] were useful for learning to plot. The dashboard linked on [2] was useful for confirming my computations. I used Professor Ionide's code [4C] to make the AIC tables, and I read his notes for further ideas. I used the knitr default set up options from 2018 Project 11 [5C] plus my own, but I used no other code from the paper. I glanced at Project 12 from 2018 [6C], but I could not actually use any of the ideas from [6C] because this time series does not have any seasonality to investigate. 
+
+## References
+
+[1] Centers for Disease Control and Prevention, Coronavirus Disease 2019 (COVID-19), Frequently Asked Questions and Answers,  https://www.cdc.gov/coronavirus/2019-ncov/faq.html#basics
+
+[2] Aria Bendix, 
+"South Korea has tested 140,000 people for the coronavirus. That could explain why its death rate is just 0.6% - far lower than in China or the US," Business Insider, March 5, 2020. 
+https://www.businessinsider.com/south-korea-coronavirus-testing-death-rate-2020-3
+
+[3] https://systems.jhu.edu/research/public-health/ncov/
+
+[4] Github Site: Novel Coronavirus (COVID-19) Cases, provided by JHU CSSE, 
+ https://github.com/CSSEGISandData/COVID-19 <br> Particular data set I used is: https://github.com/CSSEGISandData/COVID-19/blob/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv
+
+## References for Coding Tools
+
+[1C] Paul Teetor, *R Cookbook*, O'Reilly Media Company, 2014 
+
+[2C] https://blog.revolutionanalytics.com/2014/01/quantitative-finance-applications-in-r-plotting-xts-time-series.html
+
+[3C] https://joshuaulrich.github.io/xts/plotting_basics.html
+
+[4C] Edward Ionides, Lecture notes, https://ionides.github.io/531w20/#class-notes
+
+[5C] 535 Project 11 from 2018: Human Duodenal MMC Phase 3 Motility Model Based on Manometry Readings, https://ionides.github.io/531w18/midterm_project/project11/midterm_project.html
+
+[6C] 535 Project 12 from 2018: A study in temporal behavior of influenza mortality, https://ionides.github.io/531w18/midterm_project/project12/Stat531_midterm.html
+
+

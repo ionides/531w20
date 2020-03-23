@@ -1,0 +1,178 @@
+---
+title: "Impact Analysis of COVID-19 on the US Tourism Demand"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+
+-----------
+
+```{r , echo=FALSE,warning=FALSE,message=FALSE}
+# this block loads R packages that may be needed for the analysis.
+library(dplyr)
+library(ggplot2)
+library(forecast)
+library(astsa)
+library(tseries)
+```
+
+
+# 1 Introduction
+
+In this report, I used time series analysis to model and forecast the oversea non-resident arrivals to the United States. Since the first fatal case of Coronavirus (COVID-19) has been discovered in Wuhan, China in December 2019, thousands of cases of infection are diagnosed all over the world and the number is continue increasing due to its highly infection property. Chinese government locked down Wuhan on January 23rd 2019 and issued quarantine policies like traveling restrictions, which is followed by many other countries, in order to reduce further spread of COVID-19. The strict quarantine policies will have a negative impact on the US tourism demand. Since COVID-19 has not yet been taken under control, it is predictable that the world will face recession in tourism. Quantifying the impact of COVID-19 on the U.S. tourism demand is the interest of this report. By modeling the oversea non-resident arrivals to the U.S. using Seasonal Autoregressive Integrated Moving Average (SARIMA) methods, we then can make a one-month-ahead forecast of the U.S. tourist demand. The difference between the forecasted and the observed can be viewed as the initial impact of the outbreak of COVID-19 on the US tourism demand. 
+
+The data of overseas non-resident arrivals to the U.S. was extracted from the U.S. Government website: National Travel & Tourism Office. The data spans from January, 2003 to January, 2020 and its measurement includes all countries except Canada and Mexico.
+
+In Section 2 I conducted basic data exploratory analysis to see whether there is non-stationarity (trend or seasonality) in the time series prior to applying the SARIMA methods. Section 3 contains three subsections: first is to find a good SIRIMA model fit the data and next is to assess the model performance though diagnostic residual analysis. The last subsection is to make a one-month-head forecast using the candidate SRIMA model.
+
+# 2 Exploratory Data Analysis
+
+As mentioned above the data was collected from January, 2003 to January, 2020 with total 205 observations. Because the last observation: overseas visits in January, 2020 will be used for comparison to the forecasted, it will be excluded from the SRIMA model. Figure 1 shows the time plot of the data, there is a clear upward trend and suggestion of seasonality. The smoothed periodogram of the US overseas visits in Figure 2 indicates a frequency of 12 cycles/year of the series, which is confirmed by the dominant annual cycle in Figure 1. This periodicities can been seen more clearly from decomposition of the time series into harmonic components. 
+
+```{r read_data, echo=FALSE, warning=FALSE,message=FALSE, fig.width=10, fig.height=4}
+tour <- read.csv("US_OverseaVistits.csv")
+tour$Time <- as.Date(tour$Time, format = "%Y-%m-%d")
+tour_m <- tour[1:(nrow(tour)-1),]
+
+Visits <- tour_m$Monthly_Overseas_Count
+Visits_ts <- ts(Visits, start=2003, frequency=12)
+
+par(mfrow=c(1,2))
+plot.ts(Visits_ts,type="l", main="US Overseas Visits Series", xlab="Year",ylab="US Overseas Visits", sub="Figure 1")
+
+spectrum(Visits_ts,spans=c(3,3,3),main="Smoothed Periodogram for Sunspots", xlab="frequency",sub="Figure 2")
+
+plot(decompose(Visits_ts))
+```
+
+
+Next, for the purpose of better understanding of the stationary properties of the data, I need to detrend the non-stationary parts. It is suggested from the time plot that the trend may just be a straight line. I decided to fit the trend using ordinary least squares. From the summary output, the trend can be written as $$\hat\mu_t=1387272.3+10600.2t,$$ and since this non-stationary time series can be defined as $$X_t=\mu_t + Y_t,$$ where $\hat Y_t$  is the stationary process. Thus, the residual of OLS is equivalent to $X_t$. What’s more, because the liner trend of the data is somewhat obvious, I didn’t worry much about the non-constant variance.
+
+
+```{r, echo=FALSE, warning=FALSE,message=FALSE, fig.width=10, fig.height=4}
+vfit <- lm(Visits~time(Visits))
+summary(vfit)
+par(mfrow=c(1,2))
+detour_m <- resid(vfit)
+detour_m <- ts(detour_m, start=2003, frequency=12)
+
+#adf.test(diff(log(Visits_ts)), alternative="stationary", k=0)
+```
+
+
+# 3 Time Series Analysis
+
+## 3.2 SARIMA Model
+
+
+As we have seen the seasonality in this dataset, SARIMA Model is then viable. Specifically, the SARIMA model for non-stationary monthly data $(p, d, q)\times (P, D, Q)_12$ is defined as $$\phi(B)\Phi(B^{12})((1-B)^d(1-B)^{12})^D Y_n-\mu)=\psi(B)\Psi(B^{12})\epsilon_n,$$ where $\phi(B)$ and $\Phi(B)$ are polynomials in $B$ of order $p$ and $q$, $psi(B)$ and$\Psi(B)$ polynomials in $B^{12}$ of order $P$ and $Q$, $Y_t$ is the observation at time $t$, $\mu=E[(1-B)^d(1-B)^{12})^D]$ is the mean of the differenced process, and $\epsilon_t$ is the white noise with mean $0$ and constant variance $\sigma^2.$ To have a sense of the choice of parameters (P,D,Q), I first take a look at the ACF and PACF plots. The ACF plot shows a strong seasonality which might be a sign of taking seasonal difference. 
+
+```{r , echo=FALSE, warning=FALSE,message=FALSE, fig.width=10, fig.height=4}
+
+par(mfrow=c(1,2))
+acf_tou <- acf(detour_m, lag.max=30,plot = FALSE)
+plot(acf_tou, xlab = "Lag (in Year)", main = "")
+pacf_tou <-pacf(detour_m, lag.max=30,plot = FALSE)
+plot(pacf_tou, xlab = "Lag (in Year)", main = "")
+
+```
+
+
+After taking first seasonal difference, the changes of ACF and PACF are as following:
+
+```{r , echo=FALSE, warning=FALSE,message=FALSE, fig.width=10, fig.height=4}
+par(mfrow=c(1,2))
+Vdl = diff(detour_m, 12)
+acf_tou <- acf(Vdl, lag.max=30,plot = FALSE)
+plot(acf_tou, xlab = "Lag (in Year)", main = "")
+pacf_tou <-pacf(Vdl, lag.max=30,plot = FALSE)
+plot(pacf_tou, xlab = "Lag (in Year)", main = "")
+```
+
+We can see the PACF show high autocorrelation at 1s, 2s, 3s…, which suggests that P=0 and Q=1 may be a possible choice.
+
+For the parameters (p,d,q) since I have already detrended the data, d equals 0, and p and q are going to be selected according to the AIC table. From the table, we can see SARIMA $(3, 0, 4)\times (0, 1, 1)_{12}$ gives the lowest AIC, 5,014.85.
+
+```{r , echo=FALSE, warning=FALSE,message=FALSE, fig.width=10, fig.height=4}
+aic_table <- function(data,P,Q){ 
+  table <- matrix(NA,(P+1),(Q+1)) 
+  for(p in 0:P) { 
+    for(q in 0:Q) { 
+      table[p+1,q+1] <- arima(data,order=c(p,0,q),
+                              seasonal=list(order=c(0,1,1),period=12),method="ML")$aic
+    } 
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+anntemp_aic_table <- aic_table(detour_m,4,5) 
+require(knitr) 
+kable(anntemp_aic_table,digits=2,caption = "AIC of First Seasonal Difference",sub="Table 1")
+#auto.arima(log(Visits_ts))
+```
+
+```{r , echo=FALSE, warning=FALSE,message=FALSE, fig.width=10, fig.height=4}
+best_fit <- arima(detour_m,order=c(3,0,4),seasonal=list(order=c(0,1,1),period=12))
+```
+
+## 3.2 Diagnostic Analysis
+
+Now that I have determined the model, its performance of fit is going to be analysis through its residuals. From the residual plot, we can see the residual seems random.
+
+```{r , echo=FALSE, warning=FALSE,message=FALSE, fig.width=10, fig.height=4}
+par(mfrow=c(1,2))
+
+plot(resid(best_fit),ylab="Residual",main = "Residual Plot")
+resi_acf <- acf(resid(best_fit),plot = FALSE)
+plot(resi_acf, xlab = "Lag (in Year)", main = "ACF of Residual")
+```
+
+The ACF of residuals show no obvious autocorrelation.
+
+```{r  echo=FALSE, warning=FALSE,message=FALSE, fig.width=10, fig.height=4}
+qqnorm(resid(best_fit), main="Q-Q plot")
+qqline(resid(best_fit))
+```
+
+```{r , echo=FALSE, warning=FALSE,message=FALSE, fig.width=10, fig.height=4}
+shapiro.test(resid(best_fit))
+```
+
+Finally, using the QQ plot, we can see the residuals seem to be normally distributed, which is also confirmed by the relatively high p-value of Shapiro Normality test, not enough evidence to reject the null hypothesis under 5% significant level.
+
+SARIMA $(3, 0, 4)\times (0, 1, 1)_{12}$ seems to be a competitive model to fit the US overseas visits. 
+
+## 3.3 Forecast
+
+```{r , echo=FALSE, warning=FALSE,message=FALSE, fig.width=10, fig.height=4}
+sarima.for(Visits_ts, 1, 3,0,4, 0,1,1,12,plot=F)
+```
+
+The Forecast of SARIMA $(3, 0, 4)\times (0, 1, 1)_{12}$ for Jan, 2020 is 3,005,068 with standard error of 105,885.8. The observed value is 2,854,917 is lower than its lower bound of first standard error.
+
+# 5 Conclusion
+
+For the US overseas visits data from 2003 to 2019, one good model is SARIMA $(3, 0, 4)\times (0, 1, 1)_{12}$. It makes forecast for Jan, 2020, which is over one SE higher than the observed value. Even though the outbreak of COVID-19 has only been 3 months, the impact of it on tourism demand has already seem to be obvious. The US has just issued its ban on tourism arrival in Feb, 2020 and the Feb tourism data is still awaiting for releasing. It is no doubt that the negative impact on US tourism is going to grow on.
+
+# 6 References
+
+Data: https://travel.trade.gov/view/m-2017-I-001/index.asp
+
+Coronavirus: https://www.cdc.gov/coronavirus/2019-ncov/about/transmission.html
+
+Previous Project: https://ionides.github.io/531w18/midterm_project/project1/midterm_project.html
+
+Lecture notes.
+
+R. Shumway and D. Stoffer “Time Series Analysis and its Applications” 4th edition.
+
+
+
+
+

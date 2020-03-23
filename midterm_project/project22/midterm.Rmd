@@ -1,0 +1,209 @@
+---
+title: "The Houston Astros Cheated, But Did it Help?"
+date: "March 8, 2020"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: flatly
+
+---
+
+```{r echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE)
+```
+## 1.Background
+
+On September 18, 2019, Major League Baseball's (MLB) Houston Astros defeated the Texas Rangers 3-2. This win clinched the Astros a postseason berth and marked their third consecutive 100 win season (out of 162 games), thereby becoming the first team accomplish this feat since 2004 [1]. However, its historic run was to be marred by controversy.
+
+On November 12th of the same year, shortly after the Astros lost in the World Series to the Washington Nationals, baseball writers Ken Rosenthal and Evan Drellich published a story in *The Athletic* accusing the Astros for using video technology to steal the pitching signs of opposing teams[2]. Baseball pitchers use signs that indicate what type of pitch they should throw at a given time. These signs are relayed to the pitcher by the catcher, who is behind and out of view of the batter. These signs are generally standard throughout baseball. For example, if the catcher points one finger down, he is asking the pitcher to throw a fastball, while two fingers indicates a curveball. The article stated that a camera feed from center field was being relayed to the Astros dugout, where a member of the Astros would loudly bang on a trash can to let the batter know what type of pitch is about to be thrown. Upon the publication of the article, many <a href="https://www.youtube.com/watch?v=M2XNW1qHN9w">videos</a> began to surface online where the banging sound can be heard whenever certain signs were made while the Astros were batting[3]. 
+
+After a subsequent investigation by the MLB, the Houston Astros were found guilty and were punished with fines and loss of draft picks. In the following weeks, the Houston players and staff were critcized for showing little remorse for their actions, with team owner Jim Crane saying the scheme "didn't impact the game[4]."
+
+This report analyzes batting data of the Houston Astros before, during, and after the sign stealing occurred to find whether or not the system benefitted the team. Specifically, my goal is to model the performance of the Houston Astros over time using an ARMA model.
+
+## 2.Data
+
+In the aforementioned videos, the loud banging can be heard whenever a sign for an offspeed pitch is made. These pitches are slower than fastballs, but can throw off the timing of the batter, casuing him to swing and miss. Certain offspeed pitches also move away from the strike zone right as the ball reaches the batter. If a batter knows that such a pitch is about to be thrown, he is less likely to swing and chase after the ball.
+
+The data I am using is of the swing and miss rate on offspeed pitches of Houston Astros batters from home games during the 2016-2019 seasons[5]. According to the MLB investigation, the Astros used their scheme in the 2017 and 2018 seasons, but not in 2019. Thus, we will be able to compare the middle two years of our data to that of the first and last years to find any benefit the scheme had. Also note that the camera capturing signs was only installed in Houston's home stadium, so we are only looking at data from home games.
+
+We can visualize this data.
+
+```{r}
+home_data = read.csv('savant_data.csv')
+missRate = home_data$OSMissRate
+plot(missRate, type = 'l', main = 'Houston Astros Home Miss Rate 2016-2019', xlab = 'Game', ylab = 'Miss Rate')
+```
+
+There are 81 home games each regular season, with about 8 or so home games each postseason depending on how far the Astros advanced (in 2016, Houston did not qualify for the postseason). We can already see that the miss rate is greater in 2016 than the following years. However, it may be that the team became better overall at not swinging and missing at offspeed pitches naturally. To account for this factor, we can subtract out the average miss rate from each season's away games. This modification will leave us with the difference in home and away miss rates. If we can still see a trend, then there is greater evidence for foul play during Astros home games. We plot the new series. 
+
+```{r}
+away16 = 0.157292012
+away17 = 0.119837735
+away18 = 0.144812082
+away19 = 0.141191695
+missRate[1:81] = missRate[1:81] - away16
+missRate[82:170] = missRate[82:170] - away17
+missRate[171:256] = missRate[171:256] - away18
+missRate[257:length(missRate)] = missRate[257:length(missRate)] - away19
+plot(missRate, type = 'l', main = 'Houston Astros Miss Rate Difference 2016-2019', xlab = 'Game', ylab = 'Home Miss Rate - Away Miss Rate')
+```
+
+We can still see a decrease in the miss rate difference from 2016 to 2018, with perhaps a slight increase near the end of the 2019 season. This will be the time series that we will use for the remainder of the report.
+
+## 3.Models
+
+### Fitting a Polynomial
+
+There is a clear trend in our time series. We can model the data using polynomial regression with the residuals modeled as an ARMA process: $$Y_n = P(n) + \eta_n$$ where $P$ is a polynomial and $\eta_n$ is a stationary ARMA($p,q$) model.
+
+We first must fit a polynomial to the data. Given the nature of the trend, I will fit a 3rd degree polynomial to the series.
+
+```{r}
+game = seq(length(missRate))
+regr = lm(missRate ~ poly(game, 3))
+summary(regr)
+plot(game, missRate, type = 'l')
+lines(game, regr$fitted.values)
+```
+
+The coefficients of the polynomial regression are significant, and we can see the polynomial follows the trend of the series. Now we can look at the residuals to see whether it is appropriate to fit an ARMA model to them.
+
+```{r}
+errors = regr$residuals
+plot(errors, type = 'l', main = 'Polynomial regression residuals')
+
+qqnorm(regr$residuals)
+qqline(regr$residuals)
+
+acf(regr$residuals, main = 'ACF of residuals')
+
+```
+
+The residuals do not appear to have a trend over time. The QQ-plot shows that they follow a normal distrbution. From the ACF plot, we see that only one of the 25 lags has a significant autocorrelation, while the rest are insignincant, indicating a generally stationary process. Now, we can proceed to fitting an ARMA model to the residuals.
+
+### ARMA Model Selection
+
+We will consider all ARMA($p,q$) models where $0 \leq p,q \leq 4$. To start, we can find the AIC values of each of these models when fit to the residuals. 
+
+```{r}
+aics = function(data, P, Q){
+  table = matrix(NA,P+1, Q+1)
+  for(p in (0:P)){
+    for(q in (0:Q)){
+      table[p+1,q+1] = arima(data, order =c(p,0,q), optim.control = list(maxit = 1000), method = 'ML')$aic
+    }
+  }
+  dimnames(table) = list(paste('AR',0:P, sep=''), paste('MA',0:Q, sep=''))
+  table
+}
+
+er_aic = aics(errors, 4, 4)
+require(knitr)
+kable(er_aic, digits=2)
+
+```
+
+The lowest AIC value is from the ARMA(4,4) model. However, we can see that there are certain cases of the AIC value increasing by more than 2 when adding one more parameter to the model. This indicates that there are some issues when maximizing the likelihood function of some models. Also, an ARMA(4,4) model is rather complex, which can lead to issues such as non-invertibility and numeric instability. Among the simpler models, we can see that the ARMA(2,2) model has the lowest AIC. This model achieves a good balance between predictive power and simplicity, so we will select it as the model for our data. We can find the parameters of this model.
+
+```{r}
+arma22 = arima(errors, order=c(2,0,2), method = 'ML')
+print(arma22)
+```
+
+We can write this model as: $$X_n = 0.14X_{n-1} - 0.94X_{n-2} - 0.19\epsilon_{n-1} + 0.97\epsilon_{n-2} + \epsilon_n$$, where $\epsilon_n \sim N(0,0.0029)$.
+
+To make sure that we can use the ARMA(2,2) model, we should run some diagnostics. First, we can check the roots of the AR and MA polynomials 
+
+```{r}
+print('AR Polynomial Roots')
+arroots = polyroot(c(1,-coef(arma22)[c("ar1")], -coef(arma22)[c("ar2")]))
+print(abs(arroots))
+print('MA Polynomial Roots')
+maroots = polyroot(c(1,coef(arma22)[c("ma1")], coef(arma22)[c("ma2")]))
+print(abs(maroots))
+```
+
+Both roots of each polynomial fall outside of the unit circle, so we know our model is both causal and invertible. Also note that the standard errors of coefficients give us confidence intervals which don't include 0, meaning we can consider the estimates good. 
+
+We can now look at a plot of the residuals of the model.
+
+```{r}
+plot(arma22$residuals, type='l', main = 'Residuals of ARMA(2,2) model', xlab='Game', ylab='Residual')
+```
+
+We can see that the residuals look similar to white noise. There is no noticable trend nor change in variability over time. To make sure of these assumptions, we can look at a QQ-plot of the residuals and run a Shaprio-Wilk test for normality.
+
+```{r}
+qqnorm(arma22$residuals)
+qqline(arma22$residuals)
+shapiro.test(arma22$residuals)
+```
+
+The QQ-plot shows that the distribution of the residuals is close to normal, but there is a heavy left tail. However, the p-value from the Shaprio-Wilk test is greater than 0.05, so we can say that the distribution is not significantly different from a normal distribution.
+
+We will lastly look at the ACF of the residuals to ensure stationarity.
+
+```{r}
+acf(arma22$residuals)
+```
+
+All but two lags are insignificant, so we can be relatively sure about our stationarity assumption.
+
+If we are able to find any seasonality in the data, we may be able to use a SARMA model to better model the series and ensure that all lags have insignificant autocorrelations. We can start by looking at a smoothed periodogram of the series in order to find the dominant frequency.
+
+```{r}
+spectrum(errors, spans = c(7,7))
+```
+
+The dominant frequency is about 0.05, which corresponds to a period of about 20 games. After experiemeting with seasonal models using this information, I was unable to find a model which performed signifcantly better than the non seasonal model. We should not necessarily expect any seasonality in the data, and the period of 20 games has no fundamental meaning with regards to a baseball season. Generally in an MLB season, two teams will play each other for 3-5 games in a row before playing against a different team. However, there is likely no relation between how well an opposing team pitched and the order in which the Astros played against such a team, so any seasonality which may exist is probably due to chance. For these reasons, I will stick with the original ARMA(2,2) model.
+
+## 4.Forecasting
+
+Now that we have finalized our model, we can try to forecast the performance of the Houston Astros for the upcoming 2020 season. I will run the forecast for the next 50 games.
+
+
+```{r}
+require(forecast)
+fit = Arima(errors, order = c(2,0,2), method = 'ML')
+pred = forecast(fit, h=50)
+pred_errors = pred$mean
+pred_errors_l = pred$lower
+pred_errors_u = pred$upper
+new <- data.frame('game'=seq(348, length.out = 50))
+pred_mr = predict(regr, new, type = 'response') + pred_errors
+pred_mr_low = predict(regr, new, type = 'response') + pred_errors_l[,2]
+pred_mr_high = predict(regr, new, type = 'response') + pred_errors_u[,2]
+pred_mr_low80 = predict(regr, new, type = 'response') + pred_errors_l[,1]
+pred_mr_high80 = predict(regr, new, type = 'response') + pred_errors_u[,1]
+
+plot(x=seq(1,length(missRate)),y=missRate,type='l', xlim = c(0,420), main = 'Forecasted Miss Rate Difference', xlab = 'Game', ylab = 'Home Miss Rate - Away Miss Rate')
+future=seq(length(missRate)+1, length.out = 50)
+polygon(c(rev(future), future), c(rev(pred_mr_high),pred_mr_low),col = rgb(0.79,0.86,1,0.5), border = NA)
+polygon(c(rev(future), future), c(rev(pred_mr_high80),pred_mr_low80),col = rgb(0.79,0.86,1,0.8), border = NA)
+lines(x=future,y=pred_mr, col = 'blue')
+
+legend(x='top', legend = c('Original', 'Predicted Avg.', '80% conf. int.', '95% conf. int.'),
+       col=c('black','blue',rgb(0.79,0.86,1,0.8),rgb(0.79,0.86,1,0.5)), lt=1, cex=0.8)
+```
+
+The forecast predicts that the home-away swing and miss rate on offspeed pitches by the Houston Astros will increase at the beginning of the 2020 season. This trend is likey due to the upward trend at the end of the 2019 season. Since the players on the team may change between seasons, this forcecast may not be very accurate. However, it does indicate an increase in miss rate when no sign stealing occurs.
+
+## 5.Conclusion and Next Steps
+
+We have been able to model the batting behavior of the Houston Astros over a time when they began to steal the signs of opposing pitchers. We can see that the Houston batters knowing which pitch was going to be thrown to them allowed them to have better batting discipline and not swing and miss at as many pitches. In this sense, their system did have a tangible impact on the game. The extent of this impact is still unclear. We do not know if this decrease in miss rate actually helped the Astros win more games. It is also possible that the decrase in miss rate is also due to other factors which we did not consider. 
+
+If we looked at other statistics outside of miss rate, we could potentially strengthen or weaken evidence against the impact the sign stealing had on games. The performance of other teams in the league could also be considered. If similar trends are found in teams which did not steal signs, then the benefit of sign stealing may be lower than what our analysis suggests. 
+
+Many baseball fans have been calling for the Houston Astros to be stripped of their 2017 World Series title, and we have shown that their complaints may have merit. 
+
+## Sources
+1. https://www.baseball-reference.com/
+2. K. Rosenthal and E. Drellich, “The Astros stole signs electronically in 2017,” The Athletic, 11-Feb-2020. [Online]. Available: https://theathletic.com/1363451/2019/11/12/the-astros-stole-signs-electronically-in-2017-part-of-a-much-broader-issue-for-major-league-baseball/. [Accessed: 05-Mar-2020].
+3. https://www.youtube.com/watch?v=M2XNW1qHN9w
+4. Mike Axisa, "Astros owner Jim Crane says sign-stealing scandal 'didn't impact the game' as team issues public apology," CBS Sports, 13-Feb-2020. [Online]. Available: https://www.cbssports.com/mlb/news/astros-owner-jim-crane-says-sign-stealing-scandal-didnt-impact-the-game-as-team-issues-public-apology/. [Accessed: 05-Mar-2020].
+5. Data from https://baseballsavant.mlb.com/
+
+I also referenced the lecture slides for methods and code.

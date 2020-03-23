@@ -1,0 +1,235 @@
+---
+title: "Midterm Project: Time Series Analysis of PM 2.5 in Beijing"
+date: "2020/2/29"
+output:
+  html_document:
+    toc: yes
+    theme: flatly
+---
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1.Introduction
+
+In the area of aerodynamics, Particulate Matter 2.5 (PM 2.5) means the particulate matter whose equivalent diameter is equal to or less than 2.5 micrometer. Many times, it is used to measure the air quality. PM 2.5 can suspend in the air for a long time, and the higher content concentration of PM 2.5, the even worse of air pollution. Meanwhile, PM 2.5 would significantly influence visibility and carry hazardous substance. With the development of industry, high concentration of PM 2.5 become a serious problem in some countries and affect people's health, like China. Beijing, the capital of China, is suffered by high PM 2.5 concentration for a long time. Also, the PM 2.5 concentration does not have a obvious periodical change when we merely see the data superficially, which lets the government hard to formulate effective policies. In this project, I would find a time series model to fit the dataset of PM 2.5 concentration collected near Olympic Sports Center in Beijing. If the model fitted the data well, it could find the pattern of the trend of PM 2.5 concentration and be used to predict the future PM 2.5 concentration, which could help the Chinese Government to formulate the relative policy to control the PM 2.5 concentration. 
+
+# 2.Exploratory Data Analysis
+
+The dataset I use in this project is downloaded from the UCI machine learning repository. The original dataset has 35065 instances which are collected from 2013 to 2017 near Olympic Sports Center in Beijing. Each instance has several features, like the time to record the information, PM 2.5 concentration, PM 10 concentration, etc. Since I am only interested in the relationship between time and PM 2.5 concentration, I extract features year, month, day and PM 2.5 for each instance. Also, to decrease the size of dataset, I use the data collected at 8 pm from 2014 to 2016. The reason I select 8 pm is after observing the dataset, I find the PM 2.5 concnetration is relatively high at night. Right now, there are 1096 instances and I fill all the missing value by its previous value. 
+
+```{r, echo=FALSE}
+library("zoo")
+pm25 = read.csv(file = 'PRSA_Data_Aotizhongxin_20130301-20170228.csv')
+pm25 = subset(pm25, year > 2013)
+pm25 = subset(pm25, year < 2017)
+pm25 = subset(pm25, hour == 20)
+pm25 = data.frame(pm25$year,pm25$month,pm25$day,pm25$PM2.5)
+year14 = subset(pm25, pm25.year==2014)
+lst = seq(0,1-1/nrow(year14), by=1/nrow(year14))
+time14 = year14$pm25.year+lst
+year15 = subset(pm25, pm25.year==2015)
+lst = seq(0,1-1/nrow(year15), by=1/nrow(year15))
+time15 = year15$pm25.year+lst
+year16 = subset(pm25, pm25.year==2016)
+lst = seq(0,1-1/nrow(year16), by=1/nrow(year16))
+time16 = year16$pm25.year+lst
+time = append(time14, time15)
+time = append(time, time16)
+pm25_data = na.locf(pm25$pm25.PM2.5)
+head(pm25, n=5)
+```
+
+```{r, echo=FALSE}
+summary(pm25_data)
+```
+
+```{r, echo=FALSE}
+hist(pm25_data, xlab="PM 2.5 concentration", main="pm 2.5 Concentration Distribution Diagram")
+```
+
+```{r, echo=FALSE}
+plot(pm25_data~time, type="l", xlab='year',ylab='PM2.5 concentration', main='The Relationship Between Date and PM2.5 Concentration')
+```
+
+The first table shows the first 5 instances in the dataset. The summary shows the general information about the instances. From the summary and histogram, we could easily find that the data of PM 2.5 concentration is significantly skewed. Also, based on the "year~PM 2.5 concentration" graph above, it shows there is no mean stationary and convariance stationary for the data. Furthermore, the dataset size is still too large, which might influence my future work. So, I decide to continue decreasing the size of dataset by picking one value for each week, and do log transformation and difference operation on each instance. For the difference operation, it simply means to get the difference between two adjacent data. Thus, we can transform the data $y_{1:N}$ to $Z_{2:N}$, where 
+
+$z_{n}=\Delta y_{n}=y_{n}-y_{n-1}$
+
+Here, $y_{n}$ is the log transformed PM 2.5 concentration. 
+
+
+```{r, echo=FALSE}
+s = seq(1, length(pm25_data), by=7)
+pm25_week = pm25_data[c(s)]
+index = seq(1, length(pm25_week))
+pm25_week = diff(log(pm25_week))
+index = seq(1, length(pm25_week))
+plot(pm25_week~index, type="l", ylab='the difference of log PM 2.5', main='The difference of log transformed PM 2.5 with Time')
+```
+```{r, echo=FALSE}
+hist(pm25_week, main='The diff of log transformed PM 2.5')
+```
+
+```{r, echo=FALSE}
+shapiro.test(pm25_week)
+```
+
+After the log transformation and difference operation, the plot shows the variance of the data is relatively stable and the mean is nearly constant. Thus, we can say the data is almost weak stationary. Furthermore, I use the histogram and Shapiro Wilk test to confirm the normal distribution of the dataset. By now, we can use ARMA model to fit the data.
+
+
+```{r, echo=FALSE}
+par(mfrow=c(1,2))
+spec1 = spectrum(pm25_week, method="ar", main="Spectrum estimated via AR model")
+spec2 = spectrum(pm25_week, spans=c(3,5,3), main="smoothed periodgram")
+```
+
+```{r, echo=FALSE}
+high = spec1$freq[which.max(spec1$spec)]
+high2 = spec2$freq[which.max(spec2$spec)]
+sprintf("The dominant frequency corresponding to the highest density in the above periodgrams are %s and %s", high, high2)
+```
+
+Before applying the ARMA model, I want to do some data analysis using the frequenyc domain. In the graph above, we see that when frequency = 0.41875 or 0.43587, it has the highest density. But we cannot say the data has a periodical change in around 2.5 weeks since there are several peaks and different frequency might confuse with each other.
+
+# 3.Model Selection
+
+## 3.1 General ARMA Model
+First, since I have already confirmed the weak stationary of the dataset above, I will apply the general ARMA model to fit the data to see the effect. The formula of the general stationary ARMA model is 
+
+$\phi(B)\left(Y_{n}-\mu\right)=\psi(B) \epsilon_{n}$
+
+where $\epsilon_{n}$ is a white noise process. It has mean 0 and covariance $\sigma^{2}$. $Y_{n}$ is the random variable. In this problem, it is the variable of PM 2.5 concentration on 12 pm. $B$ is the backshift operator, which is given by $BY_{n} = Y_{n-1}$. Furthermore, $\mu$ is the constant mean. Last,
+
+$\phi(x)=1-\phi_{1} x-\cdots-\phi_{p} x^{p}$, which represents the autoregressive model.
+
+$\psi(x)=1+\psi_{1} x+\cdots+\psi_{q} x^{q}$, which represents the moving average model. 
+
+Then I should choose value p and q for ARMA(p,q). Akaike's information criterion (AIC) is a general approach to pick p and q. It is a method to compare likelihoods of different models by penalizing the likelihood of each model by a measure of its complexit. And the formula is $A I C=-2 \times \ell(\theta)+2 D$, which means "Minus twice the maximized log likelihood plus twice the number of parameters". And I will select the model based on the low AIC score and simple model (comparatively small p and q).
+
+```{r, warning=FALSE, echo=FALSE}
+library(knitr)
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,1,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+pm25_aic_table = aic_table(pm25_week, 5,4)
+kable(pm25_aic_table, digits = 2)
+```
+
+From the AIC table above, when (p,q) = (0,2), the model has the lowest AIC value. Also, MA(2) is a very simple model. So, due to the model simplicity and low AIC value, we apply the MA(2) model here to fit the data.
+
+```{r, echo=FALSE}
+pm25_model = arima(pm25_week, order=c(0,0,2))
+pm25_model
+```
+
+```{r, echo=FALSE}
+abs(polyroot(c(1, -1.016, 0.0160)))
+```
+
+After generating the model under the circumstance when (p,q) = (0,2), we could check the invertibility by calculating the MA polynomial. The results is that all the roots are on or outside the unit circle in the complex plane, which might let us believe the model is invertible
+
+### 3.1.1 Diagnostic Analysis
+
+```{r, echo=FALSE}
+par(mfrow=c(1,2))
+acf(pm25_model$residuals, lag.max=40)
+qqnorm(pm25_model$residuals)
+qqline(pm25_model$residuals, probs=c(0.25, 0.75))
+```
+
+
+Based on the left plot above, it shows there is no substantial autocorrelation for the residuals. But when lag=32, the corresponding ACF is a little bit out of the confidence interval. Also, when checking the Q-Q plot, we find that there is a little bit heavier tail, which means the model is generally acceptable but not perfectly fit the data.
+
+
+## 3.2 Seasonal ARMA model
+
+Due to the imperfect of the general ARMA model, I want to try the seasonal ARMA model since the data I use is collected in three years for each week. So, I conjecture seasonality might be a factor to influence the data, and the ACF plot shows above support my conjecture. However, since the periodical change of the PM 2.5 is not highly related to month, week or year, I set the period be 32 based on the above ACF. The $\operatorname{SARMA}(p, q) \times(P, Q)_{32}$ model for the data is 
+
+$\phi(B) \Phi\left(B^{32}\right)\left(Y_{n}-\mu\right)=\psi(B) \Psi\left(B^{32}\right) \epsilon_{n}$ where
+
+$\Phi(x)=1-\Phi_{1} x-\cdots-\Phi_{P} x^{P}$ represents the seasonal AR model
+
+$\Psi(x)=1+\Psi_{1} x+\cdots+\Psi_{Q} x^{Q}$ represents the seasonal MA model
+
+```{r, echo=FALSE}
+pm25_sarma = arima(pm25_week, order=c(0,0,2),seasonal=list(order=c(1,0,0), period=32))
+pm25_sarma
+```
+
+### 3.2.1 Diagnostic Analysis
+
+```{r, echo=FALSE}
+par(mfrow=c(1,2))
+acf(pm25_sarma$residuals, lag.max=40)
+qqnorm(pm25_sarma$residuals)
+qqline(pm25_sarma$residuals, probs=c(0.25, 0.75))
+```
+
+```{r, echo=FALSE}
+shapiro.test(pm25_sarma$residuals)
+```
+
+Based on the plot above, it shows there is no substantial autocorrelation for the residuals. Also, after using the Shapiro-wilk test and drawing the Q-Q plot, I find that residuals are almost normally distributed. 
+
+### 3.2.2 Likelihood Ratio Test
+
+To further confirm the necessity to keep the seasonal term in the model, I use the likelihood ratio test. The parameter space of the model is $\Theta \subset \mathbb{R}^{D}$. And we have two nested hypotheses here,
+
+$H^{\langle 0\rangle}: \theta \in \Theta^{\langle 0\rangle}$
+
+$H^{\langle 1\rangle}: \theta \in \Theta^{\langle 1\rangle}$
+
+Here $H^{\langle 0\rangle}$ corresponds to the ARMA(0,2) model and $H^{\langle 1\rangle}$ corresponds to the SARMA$(0, 2) \times(1, 0)_{32}$ model. And two nested parameter subspances do have the relationship $\Theta^{\langle 0\rangle} \subset \Theta^{\langle 1\rangle}$. The null hypothesis of the 
+
+```{r, echo=FALSE}
+log_diff = pm25_sarma$loglik-pm25_model$loglik
+log_diff
+```
+
+The log likelihood of the ARMA(0,2) model is -238.53, and the log likelihood of the SARMA$(0, 2) \times(1, 0)_{32}$ model is -235.91. The difference of log likelihhod is 2.614, which is larger than the 1.92 cutoff for a test at 5% size. So, we should keep the seasonal term. Thus, we could safely to say SARMA$(0, 2) \times(1, 0)_{32}$ fits the data well.
+
+# 4.Forecast
+
+```{r, echo=FALSE}
+library("forecast")
+pm25 = read.csv(file = 'PRSA_Data_Aotizhongxin_20130301-20170228.csv')
+pm25 = subset(pm25, year > 2013)
+pm25 = subset(pm25, hour == 20)
+year17 = subset(pm25, year==2017)
+lst = seq(0,1-1/nrow(year17), by=1/nrow(year17))
+time17 = year17$pm25.year+lst
+time = append(time, time17)
+pm25_data = na.locf(pm25$PM2.5)
+s = seq(1, length(pm25_data), by=7)
+pm25_week = pm25_data[c(s)]
+pm25_week = diff(log(pm25_week))
+index = seq(1, length(pm25_week))
+plot(forecast(pm25_sarma, h=9, level=c(95)))
+lines(index, pm25_week, type='l')
+```
+
+Finally, I use the seasonal ARMA model to do the prediction of the following 7 time series data. But when comparing to the actual data, I find the data generated from the trivial prediction is not quite close to the ground truth, even though the 95% confidence interval could include these actual data. I think there are several reasons to cause such an inaccuracy: first, this time series data is unpredicted and does not have a regular pattern since PM 2.5 concentration is highly related to the human activity; second, the ARMA model will only do the prediction by looking backward, which will let the line of prediction become a straight line finally.
+
+# 5.Conclusion
+
+All in all, after doing the log transformation and difference operation, I get the dataset that can be used to apply ARMA model. After applying the MA(2) model, we find that the residuals generated from the model have some autocorrelation and not quitely noraml distributed. Then, we add the seasonal term to the model based on the ACF plot, and find that SARMA$(0, 2) \times(1, 0)_{32}$ could fit the data well. 32 is an unusual choice, which means the dataset of PM 2.5 concentration does not have a regular pattern, like monthly, quarterly. In my mind, PM 2.5 concentration is highly related with human activity and human activity is always unpredicted. Also, through the forecast, we realize that even though the seasonal ARMA model fits the data well, it could not perform well in doing prediction when merely using the "forecast" package. So, maybe we need use more advanced techniques and add the factors of human activity to do the prediction in the future. By now, we have captured the pattern of the PM 2.5 concentration dataset in the past, and I believe it could be suggestive to the Chinese Government to make some environmential policies.
+
+## Reference
+
+download the dataset from https://archive.ics.uci.edu/ml/datasets/Beijing+Multi-Site+Air-Quality+Data
+
+refer the slides on https://ionides.github.io/531w20/ 
+
+refer the webiste to know the basic knowledge of PM 2.5 https://baike.baidu.com/item/细颗粒物/804913?fromtitle=PM%202.5&fromid=847195&fr=aladdin
+
+refer the documentation on the website to learn how to use forecast function https://a-little-book-of-r-for-time-series.readthedocs.io/en/latest/src/timeseries.html
+
+refer the documentation to realize the disadvantage of using forecast in arima model https://libres.uncg.edu/ir/uncw/f/zhai2005-2.pdf

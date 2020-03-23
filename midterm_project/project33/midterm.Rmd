@@ -1,0 +1,257 @@
+---
+title: "Modelling the Inflation Rate in the Euro Area"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    theme: flatly
+bibliography: midterm.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+First a very brief introduction to inflation is given and it is argued why it is important to understand and predict it. Definitions and explanations are mostly taken from [@abel2014macroeconomics] and some also stems from [@task]. Inflation here is understood as a sustained increase in prices of goods and services in an economy over a period in time . If prices for the same goods and services increase, the same of amount of money can purchase less of these goods and services. If inflation is present in an economy this is believed to have both positive and negative impacts on the economy. He negative and positive is strongly depends on how strong the prices increase and how well this can be predicted. It is undesirable to have low inflation because it has been shown that in a time of recession wages don't drop as fast as they should according to economic theory which in turn prolonged periods of recession [@low1]. An increase in inflation can thus be a way to decrease real wages. Another reason is that it gives institutions room to decrease nominal interest rates in order to punish households holding money instead of spending it as a way of fighting recession.<br />
+However, inflation also comes with a cost. This cost depends particularly on how well consumers, investors, workers, and firms are able to predict the inflation before it occurs [@abel2014macroeconomics], page 462. For example, general price stability lets actors better differentiate between relative price changes of a specific product and general changes in the price level. Thus, they are better able to link changes in prices to changes in supply and demand for example. A further cost of unpredictable inflation is that it introduces uncertainty. For example, wages should be adjusted for inflation. However, if it is unknown by what factor the wages have to be adjusted, then both employee or employer risk to lose money. On an economic level, this fact alone doesn't constitute a loss since one side loses and sides stands to gain something. But the induced risk for both sides and possible use use of resources to reduce this risk could constitute a loss for the economy as a whole. Even if inflation was perfectly predictable, there are still some economic losses associated with inflation. One example are the so-called shoe leather costs which are costs for individuals to reduce their holding of currency as the value of currency decreases when inflation is present.
+In the euro area, the key measure of the rate of inflation is the harmonized consumer price index. This index is compiled based on data from the national central banks by Eurostat, a Directorate-General of the European Comission responsible for providing statistical information to the European institutions.<br />
+Ensuring price stability in the euro area is one of the main responsibilities of the European Central Bank (ECB) and the national central banks. While there appears to be no precise consensus on what the ideal rate of inflation is, the ECB aims for steady annual rate of inflation below but close to 2% [@task] in the medium turn. <br />
+This report aims to analyse inflation in the euro area by analyzing the time series of the harmonized consumer price index, from now on referred to as HICP for brevity. The aim of the first section is to fit an ARIMA model (possibly with seasonal components) to HICP. While this model might provide some insides about the inflation rate on its own, it can also be used for forecasting purposes. As was stated above, reliable forecasts of the rate of inflation are beneficial for the economy as a whole.<br /> Furthermore, ARIMA models are also used to remove seasonal effects from economic time series, see [@seas] [@sdw]. In the second section, some non-parametric methods are employed to decompose the HICP time series to identify long term trends and medium term behavior. 
+
+# A SARIMA model for HICP
+
+We aim to fit a SARIMA model the HICP time series. To make this precise, let $y_{1:N}$ denote the observations of the raw time series of the HICP. Then we assume that the observations are realizations of a model $Y_{1:N}$, where 
+$$
+\phi(B)\Phi(B^s)Y_n = \psi(B)\Psi(B^s)\epsilon_n, 
+$$
+where $\{\epsilon_n\}$ is a Gaussian white noise process, $\phi,\Phi, \psi, \Psi$ are polynomials with coefficients $\phi_1,\dots,\phi_{p}$, $\Phi_1,\dots,\Phi_{P}$, $\psi_1,\dots,\psi_{q}$ and $\Psi_1,\dots,\Psi_{Q}$, $B$ is the backshift operator (i.e. $BY_n = Y_{n-1}$) and $s$ corresponds to the period. Since this is monthly data, taking annual seasonality into account would mean choosing $s = 12$. The procedure to identify the most appropriate model aims to follow what is taught in [@shumwaystoffer] and [@ed].
+
+
+## The Data
+The basis for the analysis is the so-called harmonized index of consumer prices (HICP).  HICP is published by Eurostat on a monthly basis and is available for example via the websites of Eurostat or the European Central Bank. The data measures the HICP for the whole euro area. In the defined time range, the euro area's composition changed. Furthermore, periodically, there are change in the way the HICP is computed. Taking these facts as into account is beyond the scope of this report. Furthermore, ther will be detailed discussion on how this index is computed. This particular instance of the data comes from the ECB's "Statistical Data Warehouse". The data is accessed via the R package `ecb`. While the index is available at different frequencies and breakdowns, this report focuses on the monthly overall index for Euro Area, neither seasonally nor working day adjusted, i.e. we focus on the time series that can be found on the website of the European Central Bank with code $ICP.M.U2.N.000000.4.INX$. At the time of writing this report, data up until February 2020 is available. However, because the model will also be used later on for forecasting purposes, we only consider data up February 2019. Because they will be mentioned later, we define two derived time series of the HICP, namely the monthly rate of change and the annual rate of change. To define these properly, let $y_{1:N}$ denote the observations of the raw time series of the HICP at time points $t_{1:N}$ with $t_0$ = Jan. 2002 and $t_N$ = Feb. 2020. Let $m_{2:N}$ denote the observations of the monthly rate of change time series. Then the monthly rate of change time series is computed as  
+$$
+m_t = \frac{y_{t}}{y_{t-1}}-1.
+$$
+Furthermore, letting $a_{13:N}$ denote the observations of annual rate of change, then one computes the annual rate of change as 
+
+$$
+a_t = \frac{y_{t}}{y_{t-12}}-1.
+$$
+Below are plots of the raw HICP time series and the two derived time series.
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.width=10.5, fig.height=3}
+library(ecb)
+library(xts)
+key <- "ICP.M.U2.N.000000.4.INX"
+filter = list(startPeriod = "1997-01", endPeriod = "2019-02")
+xtsdata = get_data(key, filter)
+tsdata = ts(as.numeric(xtsdata$obsvalue), start = 1997, frequency = 12)
+plot(as.xts(tsdata), main = "Harmonized Consumer Price Index for the Eurozone")
+tsmdata = ts(diff(as.numeric(tsdata))/as.numeric(tsdata)[-length(tsdata)], start = c(1997,2), frequency = 12)
+tsadata = ts(diff(as.numeric(tsdata), lag = 12)/as.numeric(tsdata)[-seq(255,266,1)], start = 1998, frequency = 12)
+par(mfrow = c(1, 2))
+plot(as.xts(tsmdata), main = "Monthly Rate of Change for HICP", yaxis.right = FALSE)
+plot(as.xts(tsadata), main = "Annual Rate of Change for HICP", yaxis.right = FALSE)
+```
+## Model Selection
+Quite clearly, the above time series is not stationary, a positive trend is visible which appears to be almost linear. This implies that in order to fit a $SARIMA$ model, transformations will be necessary. Furthermore, as the HICP time series is an economic time series, it might be good to check for seasonality in the data. To that end, we check the smoothed periodogram for the HICP time series. We use a smoothed periodogram as computed by R as an estimate of the spectral density. R will automatically detrend the data. Smoothing is done via the R implementation which uses modified Daniell smothers. I tried several different smoothing parameters, but all reasonable smoothing options appeared to give similar results. The smoothed periodogram is plotted below. Her the spans argument for the `spectrum` function (this estimates the spectral density) is given as `c(2,3,2)`.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.width = 8, fig.align="center", fig.asp=0.5, fig.height=4}
+library(ecb)
+library(xts)
+key <- "ICP.M.U2.N.000000.4.INX"
+filter = list(startPeriod = "1997-01", endPeriod = "2019-02")
+xtsdata = as.xts(ts(as.numeric(get_data(key, filter)$obsvalue), start = 1997, frequency = 12))
+spectrum(na.omit(log(xtsdata)), spans = c(2,3,2), main = "Smoothed Periodogram of the Monthly Rate of Change of HICP", xlab = "Cycles per Year", ylab = "Spectrum")
+```
+
+We see two large peaks at 1 cycle per year and 2 cycles per year suggesting semi-annual and annual seasonality. Furthermore, the peaks at 3,4 and 5 cycles per year suggest that the periods are not sinusoidal. 
+Commonly, log-transformations and differencing are employed to obtain stationarity. Thus, as a first step, we log transform the HICP data and then difference once with lag 1. In fact, this is closely to the time series of the monthly rate of change of HICP due to the properties of the logarithm close to 1. Below is a plot of the log transformed differenced time series. 
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.width = 8, fig.align="center", fig.height=3}
+library(ecb)
+library(xts)
+key <- "ICP.M.U2.N.000000.4.INX"
+filter = list(startPeriod = "1997-01", endPeriod = "2019-02")
+xtsdata = as.xts(ts(as.numeric(get_data(key, filter)$obsvalue), start = 1997, frequency = 12))
+xtsmdata = na.omit(diff(log(xtsdata)))
+plot(xtsmdata, yaxis.right = FALSE, main = "HICP after log Transformation and Differencing.")
+```
+
+This appears to have successfully removed the positive trend, however it cannot have removed the annual seasonality. The sample ACF plot below gives further indication for seasonality. There are clear spikes at multiples of lag 6 which are particularly pronounced at multiples of lag 12. 
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.width = 6, fig.align="center", fig.height=3}
+library(ecb)
+library(xts)
+key <- "ICP.M.U2.N.000000.4.INX"
+filter = list(startPeriod = "1997-01", endPeriod = "2019-02")
+xtsdata = as.xts(ts(as.numeric(get_data(key, filter)$obsvalue), start = 1997, frequency = 12))
+xtsmdata = na.omit(diff(log(xtsdata)))
+acf(as.numeric(xtsmdata), main = "HICP after log Transformation and Differencing.")
+```
+
+Furthermore, the monthly rate of change time series still doesn't appear to be stationary as it seems that the variability increases over time, especially starting around 2008/2009. Further transformations are in order. To account for the seasonality an option is to further difference with lag 12. This again is closely related to a time series which is of interest on its own, namely the annual rate of change time series. For example, the primary goal of the ECB is formulated in terms of the annual rate of change of HICP. In fact, the once differenced time series of annual rate of change is again very well approximated by the differenced monthly rate of change with at lag 12. Below is a plot of the resulting time series of the log-transformed raw time series twice differenced, first with lag 1 and then lag 12. 
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.width = 8, fig.align="center", fig.height=3}
+library(ecb)
+library(xts)
+key <- "ICP.M.U2.N.000000.4.INX"
+filter = list(startPeriod = "1997-01", endPeriod = "2019-02")
+xtsdata = as.xts(ts(as.numeric(get_data(key, filter)$obsvalue), start = 1997, frequency = 12))
+par(mfrow = c(1, 1))
+# plot(xtsadata, main = "Annual Rate of Change of HICP")
+plot(na.omit(diff(diff(log(xtsdata)), lag = 12)), main = "Twice differenced log transformed HICP")
+```
+
+The resulting time series now appears to be reasonably stationary so that one might fit a model. First, we look at the ACF plot.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.width = 6, fig.align="center", fig.height=3}
+library(ecb)
+library(xts)
+key <- "ICP.M.U2.N.000000.4.INX"
+filter = list(startPeriod = "1997-01", endPeriod = "2019-02")
+xtsdata = as.xts(ts(as.numeric(get_data(key, filter)$obsvalue), start = 1997, frequency = 12))
+# plot(xtsadata, main = "Annual Rate of Change of HICP")
+acf(as.numeric(na.omit(diff(diff(log(xtsdata)), lag = 12))), main = "ACF plot of ", lag.max = 40)
+```
+
+It appears that at the seasons the ACF cuts of immediately after lag 12. At shorter lags, one might argue that the ACF exhibits slight sinusoidal behavior. This might suggest a MA average component for seasonal part and one auto regressive part for the non-seasonal part of the model. To further help the selection we consider the AIC criterion. Below is a table of the AIC values for SARIMA$(p,1,q)\times(P,1,Q)_{12}$ where we let $p,q,P,Q$ vary. Models without seasonal components are ignored.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.width = 6, fig.align="center", fig.height=4}
+library(ecb)
+library(xts)
+library(kableExtra)
+require(knitr)
+key <- "ICP.M.U2.N.000000.4.INX"
+filter = list(startPeriod = "1997-01", endPeriod = "2019-02")
+xtsdata = as.xts(ts(as.numeric(get_data(key, filter)$obsvalue), start = 1997, frequency = 12))
+aic_table <- function(data, maxR, maxS){
+  table <- matrix(NA,(maxR+1)*(maxS+1),(maxR+1)*(maxS+1))
+  for(P in 0:maxS){
+    for(Q in 0:maxS){
+      for(p in 0:maxR){
+        for (q in 0:maxR){
+          if (P == Q & Q == 0) next
+          try(table[P*(maxR+1)+p+1,(maxR+1)*Q+q+1] <- arima(data,order=c(p,1,q), seasonal = c(P,1,Q))$aic)  
+        }
+      }
+    }
+  }
+  dimnames(table) <- list(paste("AR = ",c(seq(0,3,1),seq(0,3,1)), sep=""),paste("MA = ",c(seq(0,3,1),seq(0,3,1)),sep=""))
+  return(table)
+}
+hicptable <- aic_table(xtsdata,3,1)
+kable(hicptable, digits = 2) %>%
+  kable_styling("striped") %>%
+  add_header_above(c(" " = 1, "SMA = 0" = 4, "SAM = 1" = 4)) %>%
+  pack_rows("SAR = 0", 1, 4) %>%
+  pack_rows("SAR = 1", 5, 8)
+```
+
+The table seems to confirm our initial assessment as the $SARIMA(1,1,0)\times(0,1,1)_{12}$ has the lowest AIC. Thus, we fit model with these specifications. Let $Z_n$ denote the log transformed random variables, i.e. $Z_n = \log(Y_n)$. The resulting model can be written as
+$$
+Z_n = -1.1885Z_{n-1}-0.1885 Z_{n-2}Z_{n-1}+Z_{n-12}-1.885Z_{n-13} + 0.1885Z_{n-14}+\epsilon_n - 0.5492 \epsilon_{n-12},
+$$
+where variance of the Gaussian errors is 0.036. 
+
+## Model Diagnostics
+
+As a next step, we will subject the chosen model to some diagnostic checks. We first check the assumption that the errors are a sequence of i.i.d. Gaussian distributed random variables. To that end, below are an ACF plot of the residuals as well as qq plot of the scaled and centered residuals against the theoretical quantiles of the standard normal distribution. 
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.width = 10, fig.align="center", fig.height=4}
+library(ecb)
+library(xts)
+key <- "ICP.M.U2.N.000000.4.INX"
+filter = list(startPeriod = "1997-01", endPeriod = "2019-02")
+xtsdata = as.xts(ts(as.numeric(get_data(key, filter)$obsvalue), start = 1997, frequency = 12))
+m1 = arima(xtsdata, order = c(1,1,0), seasonal = c(0,1,1))
+# plot(xtsadata, main = "Annual Rate of Change of HICP")
+par(mfrow = c(1, 2))
+acf(as.numeric(m1$residuals), main = "ACF plot for Residuals of SARIMA(1,1,0)x(0,1,1) ", lag.max = 20)
+qqnorm(1/sd(m1$residuals)*(m1$residuals-mean(m1$residuals)))
+lines(seq(-3,3,0.1),seq(-3,3,0.1))
+```
+
+This ACF plot seems relatively similar to an ACF plot of white noise, there are two exceedance of the blue dashed lines which seems reasonable for the ACF for 20 different lags. Hence, the ACF plot doesn't seem to contradict the independence assumption on the errors. Furthermore, the QQ-plot of the residuals doesn't show a perfect fit but also doesn't exhibit severe deviations of the sample quantile from the theoretical ones. Thus, the assumptions of Gaussianity doesn't seem to be severely violated. Lastly, we plot the residuals against time
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.width = 8, fig.align="center", fig.height=4}
+library(ecb)
+library(xts)
+key <- "ICP.M.U2.N.000000.4.INX"
+filter = list(startPeriod = "1997-01", endPeriod = "2019-02")
+xtsdata = as.xts(ts(as.numeric(get_data(key, filter)$obsvalue), start = 1997, frequency = 12))
+m1 = arima(xtsdata, order = c(1,1,0), seasonal = c(0,1,1))
+# plot(xtsadata, main = "Annual Rate of Change of HICP")
+plot(time(xtsdata), m1$residuals, main = "Residuals vs. Time", xlab = "Date", ylab = "Residuals")
+```
+
+While this plot doesn't immediately contradict the assumptions made on the errors, one might suspect some heteroscedasticity. One might argue, that the variance of the residuals increases starting at around 2008.
+
+## Forecasting
+As the last part of this section, we want to test whether the above fitted $SARIMA$ model can provide reliable forecasts. To this end, we use the above obtained $SARIMA$ to create a forecast for the values at times Mar. 2019 until Feb. 2020 based on the model fitted to the data until Feb. 2019. The forecast is done using the native R function `predict` which takes as input the model output and the number of periods that should be forecasted. `predict` uses the Kalman Filter to create its predictions. Below is a plot of the prediction. The black line corresponds to the true values as reported on the ECB's website. The blue dashed line corresponds to the forecast and the dotted red lines are 2 standard deviation estimates of the forecast which also come from `predict`.   
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.width = 8, fig.align="center", fig.height=4}
+library(ecb)
+library(xts)
+key <- "ICP.M.U2.N.000000.4.INX"
+filter = list(startPeriod = "1997-01", endPeriod = "2019-02")
+xtsdata = as.xts(ts(as.numeric(get_data(key, filter)$obsvalue), start = 1997, frequency = 12))
+m1 = arima(xtsdata, order = c(1,1,0), seasonal = c(0,1,1))
+filter = list(startPeriod = "2017-01", endPeriod = "2020-02")
+# plot(xtsadata, main = "Annual Rate of Change of HICP")
+tdata = ts(as.numeric(get_data(key, filter)$obsvalue), start = 2017, frequency = 12)
+pred = predict(m1, n.ahead = 12)
+predts = ts(pred$pred, start = c(2019,3), frequency = 12)
+sets = ts(pred$se, start = c(2019,3), frequency = 12)
+plot(tdata, ylim = c(100,106.5), main = "True Data and Prediction based on the SARIMA Model", ylab = "HICP")
+lines(predts, col = "blue", lty = 6)
+lines(predts+sets, col = "red", lty = 3)
+lines(predts-sets, col = "red", lty = 3)
+```
+
+It appears that the forecast using the SARIMA model is quite good. The blue dashed lines follows the true values quite closely. However, the standard errors seem to give relatively wide confidence bands. At some points they appear to be wider than the whole variation of the HICP in the year between Feb. 2019 and Feb. 2020. 
+
+# Time Series Decomposition 
+The aim of this section is to analyse the HICP time series by filtering out the the general long term trend as well as low frequency variation. We will use the full data set available for this section, that is data up until Feb. 2020. As was discovered in the previous section, HICP seems to increase almost linearly when analysed over a large period of time. Lower frequency variation might simply be considered as noise. As was mentioned in the introduction, the main goal of the ECB is ensure price stability in the medium term. Thus, if the ECB were able to achieve this goal, one might expect very low variation after long term trend and short term variation are filtered out. Before filtering, we aim to adjust for the previously discovered seasonality. This is because this analysis aims to identify underlying medium term behavior so that it is desirable to filter out seasonal behavior. To adjust for seasonality, we use `seas` command from the `seasonal` package in R. The package `seasonal` provides an interface X-13ARIMA-SEATS, the seasonal adjustment software developed by the United States Census Bureau. This or variants of this are used by most statistical agencies. In fact, `seas` will make use of the SARIMA model fitted above. It chooses the same SARIMA model that was chosen above, just with adapted parameter estimates. Additionally, it takes care of some further seasonal effect such as the easter effect. While there are many tuning parameters available, we will use the default set-up which works well in many circumstances [@seas]. More information on the seasonal package can also be found in [@seas]. Below is the seasonally adjusted time series together with a frequency response plot. The seasonal adjustment has significantly removed signal and the seasonal frequencies.  
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.width = 12, fig.align="center", fig.height=5}
+library(ecb)
+library(xts)
+library(seasonal)
+key <- "ICP.M.U2.N.000000.4.INX"
+filter = list(startPeriod = "1997-01", endPeriod = "2020-02")
+xtsdata = ts(as.numeric(get_data(key, filter)$obsvalue), start = 1997, frequency = 12)
+seas = seas(xtsdata)
+s1 = spectrum(final(seas(xtsdata)), spans = c(2,3,2), plot = FALSE)
+s2 = spectrum(xtsdata, spans = c(2,3,2), plot = FALSE)
+par(mfrow = c(1, 2))
+plot(final(seas), main = "HICP Seasonally Adjusted", ylab = "HICP")
+plot(s1$freq, s1$spec/s2$spec, log = "y", type = "l", main = "Frequency Response Plot", xlab = "Cycles per Year", ylab = "Response")
+```
+
+Next, we aim to filter out the long term trend of the signal as well as short term variation. To this end, we use the `loess` function in R. For the long term trend we use as `span` argument 0.5, i.e. to smooth the data loess will use the closest 50 % at each point to fit a local linear regression. To filter out what might be considered noise, we use a span of 0.1. 
+
+```{r echo = FALSE, warning=FALSE, message=FALSE, fig.width = 8, fig.align="center", fig.height=6}
+library(ecb)
+library(xts)
+library(seasonal)
+key <- "ICP.M.U2.N.000000.4.INX"
+filter = list(startPeriod = "1997-01", endPeriod = "2020-02")
+xtsdata = ts(as.numeric(get_data(key, filter)$obsvalue), start = 1997, frequency = 12)
+S.A.HICP = final(seas(xtsdata))
+
+num = as.numeric(S.A.HICP)
+time = time(S.A.HICP)
+
+Trend <- ts(loess(num ~ time ,span=0.5)$fitted,start=1997,frequency=12)
+Noise <- ts(as.ts(num) - loess(num ~ time,span=0.1)$fitted,start=1997,frequency=12)
+Remainder <- S.A.HICP - Trend - Noise
+plot(ts.union(S.A.HICP , Trend, Noise ,Remainder),main="Decomposition of HICP")
+```
+
+After removing trend and noise, we see that remainder behaves very stable from 1997 until September 2007. Then we see a large spike followed be a period of increased volatility from 2010 until the end of the available data. Thus, the above plot indicates that while the beginning of the 21st century was marked by relative stability, since mid 2007 prices have been relatively unstable. This is not surprising. The first spike coincides with the global financial crises in 2007/2008. Following this financial crisis, many European countries, especially southern European countries, subsequently suffered from the European Debt Crisis. In this time falls a period of high activity by European central bank.  
+
+# Conclusions
+
+The HICP raw time series was analysed in different ways. It clearly exhibits a positve trend, i.e. prices are rising in the medium and long term. Furthermore, it appears that HICP clearly exhibtis seasonal behaviour. To the extent of this analysis it appears that the HICP time series can be decently modeled using a SARIMA model. There are no obvious or striking violations of the assumptions and one year forecasts using this model appear to give very good results. However, it appears that the increase in HICP is not as stable as desired by the European Central Bank. Especially beginning with the financial crises in 2007/2008 it appears that rate of change in the HICP has become increasingly volatile. Indications of this are also visible in the diagnositcs of the $SARIMA$ model. For further analysis, it might be useful to try to model HICP using models designed to cope with heteroscedasticity. While the the forecasting quality for the year 2019 seemed to be relatively good, it would be interesting to see how well the $SARIMA$ model can accounut for shocks such as the financial crises of 2007/2008. Intuitively, it seems questionable whether a $SARIMA$ model which assumes some kind of stationarity is well equipped for such a task. Unfortunately, at the time of writing this report, new data that would be affected by the worldwide outbreak of a new Corona virus was not yet available. It would be interesting to see how the $SARIMA$ model predicts the development of inflation in the euro area over the next couple of months. 
+
+
+# References

@@ -1,0 +1,627 @@
+
+---
+title: |
+  ![](king under the mountain.jpg){width=15in}  
+  
+  <center> <h1>Gold Spot Price and Investment Analysis</h1> </center> 
+
+
+
+date: <center>February 28th, 2020</center> 
+
+output:
+  html_document:
+    theme: flatly
+    toc: true
+csl: ecology.csl
+---
+
+
+------
+
+# 1. Introduction
+
+> Gold is honest money that survived the ages, and will live on long after the political fiats of today have gone the way of all paper. 
+>
+> <cite>[——Hans F. Sennholz]{style="float:right"}</cite>
+
+### 1.1 Background
+
+Gold, which used to be a medium of exchange and unit of account in history, but now is more the store of value and investment vehicle in financial markets. 
+
+Some may argue that gold is already a kind of relic that no longer holds the monetary qualities. It does not have yields and the prices could be volatile on a short-term basis. However, in the long run, gold is still considered a tool to combat inflation and a valuable asset in portfolio management to diversify the risk.
+
+In general, investors can invest in gold through exchange-traded funds, longing and shorting stocks of gold miners' company or simply buying or selling gold at the live price in spot gold trading market.
+
+### 1.2 Objective
+
+* Finding the pattern of gold price and analyze the seasonality in the long run.
+
+* Fitting a model of gold price and predict gold prices in the short run.
+
+* Combining time series result with current affairs and giving investment suggestions.
+
+------
+
+# 2. Data Exploration 
+
+We have two data sets for gold prices, one is monthly gold spot average prices starting from January 1950 to January 2020, which serves to analyze the long-run seasonality. The other is the daily gold spot close prices starting from January 2rd, 2015 to February 28th, 2020, which serve to predict short-run prices. 
+
+```{r chunk_without_code, echo=FALSE, include=FALSE}
+# Package used
+library(fGarch)
+library(normtest)
+library(tseries)
+library(mFilter)
+library(ggplot2)
+library(zoo)
+library(knitr)
+library(kableExtra)
+```
+
+```{r echo=FALSE}
+# Function used
+FirstLast = function(x) 
+{
+  seq = c()
+  count = 1
+  for(i in 2:length(x)) 
+  {
+    if (x[i] == 1 && x[i-1] == 0) 
+    {
+      seq[count] = i
+      count = count + 1
+    }
+    if (x[i] == 0 && x[i-1] == 1) 
+    {
+      seq[count] = i
+      count = count + 1
+    }
+    
+  }
+  seq
+}
+
+localMaxima = function(x) 
+{
+  y = diff(c(-.Machine$integer.max, x)) > 0L
+  rle(y)$lengths
+  y = cumsum(rle(y)$lengths)
+  y = y[seq.int(1L, length(y), 2L)]
+  if (x[[1]] == x[[2]]) {
+    y = y[-1]
+  }
+  y
+}
+
+train = function(data, tags, index) 
+{
+  traindata = data[1:tags[index]]
+  return(traindata)
+}
+
+valid = function(data, tags, index) 
+{
+  validdata = data[(tags[index]+1): tags[index+1]]
+  return(validdata)
+}
+
+mse = function(x, y) 
+{ 
+  mean((x - y)^2)
+}
+```
+
+```{r echo=FALSE}
+gold_m = read.csv(file="gold_m.csv", header=TRUE)
+gold_startdate_1 = which(gold_m$Date == "1965-01")
+gold_m_gg = as.matrix(gold_m$Price)[gold_startdate_1:nrow(gold_m)]
+date_m_gg = seq(as.Date(as.yearmon('1965-01')), as.Date(as.yearmon('2020-01')), "month")
+gold_m_gg = data.frame(date_m_gg, gold_m_gg)
+
+usrec_m = read.csv(file="USREC.csv", header=TRUE)
+rec_startdate_1 = which(usrec_m$DATE == "1965/1/1")
+usrec_m_gg = as.matrix(usrec_m$USREC)[rec_startdate_1:nrow(usrec_m)]
+
+date_rec_m = date_m_gg[FirstLast(usrec_m_gg)]
+date_rec_m_frame = data.frame(date_rec_m[c(1,3,5,7,9,11,13)],date_rec_m[c(2,4,6,8,10,12,14)])
+names(date_rec_m_frame)[1]<-paste("start")
+names(date_rec_m_frame)[2]<-paste("end")
+```
+
+```{r,echo=FALSE,fig.align="center", fig.width = 10}
+ggplot(data = gold_m_gg, aes(x = date_m_gg, y = gold_m_gg)) + geom_line(size = 0.7) + 
+       geom_vline(xintercept = as.Date("1971-08-01"),linetype="dashed", color = "red") + 
+       geom_rect(aes(xmin = date_rec_m[1], xmax = date_rec_m[2], 
+                     ymin = 0, ymax = Inf, fill="Recession"), color = NA, alpha = 0.003) +
+       geom_rect(aes(xmin = date_rec_m[3], xmax = date_rec_m[4], 
+                     ymin = 0, ymax = Inf), fill="blue1", color = NA , alpha = 0.003) + 
+       geom_rect(aes(xmin = date_rec_m[5], xmax = date_rec_m[6], 
+                     ymin = 0, ymax = Inf), fill="blue1", color = NA , alpha = 0.003) + 
+       geom_rect(aes(xmin = date_rec_m[7], xmax = date_rec_m[8], 
+                     ymin = 0, ymax = Inf), fill="blue1", color = NA , alpha = 0.003) + 
+       geom_rect(aes(xmin = date_rec_m[9], xmax = date_rec_m[10], 
+                     ymin = 0, ymax = Inf), fill="blue1", color = NA , alpha = 0.003) + 
+       geom_rect(aes(xmin = date_rec_m[11], xmax = date_rec_m[12], 
+                     ymin = 0, ymax = Inf), fill="blue1", color = NA , alpha = 0.003) +
+       geom_rect(aes(xmin = date_rec_m[13], xmax = date_rec_m[14], 
+                     ymin = 0, ymax = Inf), fill="blue1", color = NA , alpha = 0.003) +
+       scale_fill_manual("", values = 'blue1', guide = guide_legend(override.aes = list(alpha = 0.5))) +
+       ggtitle("Nominal Monthly Average Price of Gold in History (oz/USD)") +
+       theme(plot.title = element_text(hjust = 0.5),legend.position = c(0.975, .25),
+             legend.justification = c("right", "top"), legend.box.just = "right",
+             legend.margin = margin(3, 3, 3, 3)) +
+       labs(x = "Daily data from 1965-01 to 2020-01",y = "Nominal average price of gold (oz/USD)")
+```
+
+The monthly gold spot average prices show very interesting results. As we know, on 15 August 1971, the United States brought the Bretton Woods system to an end and rendered the dollar a fiat currency. After the Bretton Woods system, the gold price starts to rise and fluctuate because of the loss of convertibility of the US dollar to gold and the inflationary oil crisis. Then comes the first bear market occurred in the 1980s and the 1990s, the U.S. economy flourished and the greenback strengthened. In the 2000s, the confidence in the American economy and its currency dropped, and the gold price soars until 2011. Meanwhile, by plotting every recession period, we can see the gold prices usually experience a drop at first and then increase to the almost same level. This sounds interesting and we will discuss this at the very end of the report.
+
+Similarly, the *Nominal daily close prices of gold in history (oz/USD)* can be plotted. Easy to see it's non-stationary just like the monthly average data. It's increasing trend recently can be explained partly by the uncertainty in U.S. election, trade tensions between the U.S. and China, and the expectation of cutting interest rates in 2020. After all, gold plays a significant role in the store of value and it's far safer than currencies.
+
+```{r,echo=FALSE,fig.align="center", fig.width = 10}
+gold_d = read.csv(file="gold_d.csv", header=TRUE)
+gold_d_gg = data.frame(as.Date(gold_d$DATE, format = "%Y/%m/%d"),gold_d$price)
+names(gold_d_gg)[1]<-paste("Date")
+names(gold_d_gg)[2]<-paste("Price")
+ggplot(data = gold_d_gg, aes(x = Date, y = Price)) + geom_line(size = 0.7) +
+       ggtitle("Nominal Daily Close Price of Gold in History (oz/USD)") +
+       theme(plot.title = element_text(hjust = 0.5)) +
+       labs(x = "Daily data from 2015-01-02 to 2020-02-28",
+            y = "Nominal average price of gold (oz/USD)")
+```
+
+------
+
+# 3. Seasonality in Long Run
+
+To Find the long-run pattern and seasonality of gold prices, we need to adjust the gold price to eliminate the seasonality with the high-frequency and long-run trend. Also, notice the Bretton Woods system is really important for the gold price, the date is truncated before January 1972. There are three ways worth considering:
+
+* Adjusting the gold price with inflation rate (CPI index).
+
+* Loess Smoothing to extract the trend, noise and cycle component.
+
+* Using Hodrick-Prescott filter to eliminate the trend.
+
+### 3.1 Inflation-Adjusted Gold Price
+
+We start from the first way. It's not surprising that there is no significant seasonality for the inflation-adjusted gold monthly price since we can predict it from the adjusted data plot on the left. Although we can see some long-run trends and it does provide some insights that gold price is relatively high recently with respect to inflation, still it's not the seasonality we want. 
+
+```{r, echo=FALSE,fig.align="center", fig.width = 10}
+inflation = read.csv(file="inflation.csv", header=TRUE) 
+
+gold_startdate_2 = which(gold_m$Date == "1972-01")
+inflation_startdate_2 = which(inflation$date == "Jan-72")
+
+gold_m_price = ts(gold_m$Price[gold_startdate_2:nrow(gold_m)],
+                start=c(1972,1),frequency=12)
+inflation_rate = ts(inflation$inflation[inflation_startdate_2:nrow(inflation)],
+                    start=c(1972,1),frequency=12)
+adjust_gold_m_price_1 = gold_m_price/inflation_rate
+
+par(mfrow=c(1,2))
+plot(adjust_gold_m_price_1, col = "black", lwd = 1.7,
+     main = "Inflation Adjusted Monthly Price", 
+     xlab = "Monthly data from 1972-01 to 2020-01", 
+     ylab = "Adjusted price of gold", col.lab = "blue", type = 'l')
+
+spec_gold_m_price_1 = spectrum(adjust_gold_m_price_1, spans=c(3,5,3), lwd = 1.7, main="Smoothed periodogram")
+
+#date_m_adjust1_gg = date_m_gg[(which(date_m_gg == "1972-01-01")):length(date_m_gg)]
+#gold_m_adjust1_gg = data.frame(date_m_adjust1_gg, adjust_gold_m_price_1)
+#names(gold_m_adjust1_gg)[1]<-paste("Date")
+#names(gold_m_adjust1_gg)[2]<-paste("Price")
+#
+#ggplot(data = gold_m_adjust1_gg, aes(x = Date, y = Price)) + geom_line(size = 0.7) +
+#       ggtitle("Inflation Adjusted Monthly Average Price of Gold in History (oz/USD)") +
+#       theme(plot.title = element_text(hjust = 0.5)) +
+#       labs(x = "Monthly data from 1972-01 to 2020-01",
+#            y = "Adjusted price of gold (oz/USD)")
+
+```
+
+
+### 3.2 Loess-Smoothed Gold Price
+
+The loess-smoothed gold price can help to extract the trend, noise and cycle component of our data. The trend part can be explained by the continuously increasing money supply (M2), which also proves that gold is a good way to maintain value. The noise part is hard to explain only by recessions (red dashed lines) espeically after 2010 if we plot them out, though intuitively recessions will cause the market prices to fluctuate violently. Similarly, the cycle component of our data can be plotted and divided using local maximum value (blue dashed lines). There are roughly six cycles between 1980 and 2012 as shown in *Cycle for Monthly Gold Price*, which means a reasonable guess for the period of gold long-run prices is around **5.33 years/cycle**. The most recent three peaks appear around **August 2002**, **March 2007** and **January 2012**. However, one may cast doubt on this result since we choose the `span` in `loess` function quite empirically, and our estimate of the period is largely dependent on the `span`.
+
+```{r, echo=FALSE,fig.align="center", fig.width = 10}
+date_m_adjust1_gg = date_m_gg[(which(date_m_gg == "1972-01-01")):length(date_m_gg)]
+Year_1 = as.numeric(format(date_m_adjust1_gg,format="%Y"))
+Month_1 = as.numeric(format(date_m_adjust1_gg,format="%m"))
+time_1 = Year_1 + (Month_1 - 1)/12
+
+Year_2 = as.numeric(format(date_rec_m_frame$start,format="%Y"))
+Month_2 = as.numeric(format(date_rec_m_frame$start,format="%m"))
+time_2 = Year_2 + (Month_2 - 1)/12
+
+adjust_gold_m_low = ts(loess(gold_m_price ~ time_1, span=0.5)$fitted, 
+                       start = time_1[1] ,frequency = 12)
+adjust_gold_m_high = ts(gold_m_price - loess(gold_m_price ~ time_1, span=0.13)$fitted, 
+                        start = time_1[1],frequency = 12)
+adjust_gold_m_cycles=ts(gold_m_price - adjust_gold_m_low - adjust_gold_m_high,
+                        start = time_1[1], frequency = 12)
+ts.adjust_gold_m = ts.union(adjust_gold_m_low, adjust_gold_m_high,
+                            adjust_gold_m_cycles)
+colnames(ts.adjust_gold_m)=c("trend","noise","cycles")
+
+par(mfrow=c(2,2))
+plot(adjust_gold_m_price_1, col = "black", main = "Monthly Average Gold Price", lwd = 1.7,
+     xlab = "Monthly data from 1972-01 to 2020-01", ylab = "Monthly Average Gold Price", type = 'l')
+plot(adjust_gold_m_low, main = "Trend for Monthly Gold Price", lwd = 1.7,
+     xlab = "Monthly data from 1972-01 to 2020-01", ylab = "Monthly trend")
+plot(adjust_gold_m_high, main = "Noise for Monthly Gold Price", lwd = 1.7,
+     xlab = "Monthly data from 1972-01 to 2020-01", ylab = "Monthly noise")
+abline(v=time_2,lty="dashed", lwd = 1.7, col="red") 
+plot(adjust_gold_m_cycles, main = "Cycle for Monthly Gold Price", lwd = 1.7,
+     xlab = "Monthly data from 1972-01 to 2020-01", ylab = "Monthly cycle")
+abline(v=time_1[localMaxima(adjust_gold_m_cycles)], lty="dashed", lwd = 1.7, col="blue") 
+```
+
+### 3.3 Hodrick-Prescott filter Adjusted Gold Price
+
+The Hodrick-Prescott filter is a widely used method in macroeconomics to eliminate trends and short-term fluctuations. The Hodrick-Prescott filter assumes that the time series $\{y\}_{1:N}$ can be decomposed to trend component $\tau_t$, cyclical component $c_{t}$ and error component $\epsilon_{t}$. For a time series $\{y\}_{1:N}$, the Hodrick-Prescott filter constructs $\{s\}_{1:N}$ which satisfies the optimization problem below:
+
+$$
+{s_{1:N}} = \arg\min_{s_{1:N}} 
+\left\{ 
+  \sum^{N}_{n=1}\big({y_n}-s_{n}\big)^2 + 
+  \lambda\sum^{N-1}_{n=2}\big((s_{n+1}-s_{n})-(s_{n}-s_{n-1})\big)^2 
+\right\}.
+$$
+
+The first term penalizes the cyclical component while the second penalizes variations in the growth rate of the trend component. A standard econometric choice of the smoothing parameter $\lambda$ in monthly data is $\lambda = 14400$.
+
+The result looks quite good here. After Hodrick-Prescott filter transformation, the Smoothed periodogram gives three frequencies: 0.22 cycles/year, 0.60 cycles/year and 0.86 cycles/year which lie in confidence Interval. Those frequencies corresponding to **4.55 years/cycle**, **1.67 years/cycle** and **1.16 years/cycle** respectively. If we only consider the most significant period, which is **4.55 years/cycle**, then by some simple smoothers, we can roughly eliminate the short-term fluctuations and plot the cycles in history. The historic cycles are shown in *Smoothed HP Filter Adjusted Gold Price*. The most recent three peaks appear around **November 2007**, **February 2012** and **January 2017**.
+
+```{r, echo=FALSE,fig.align="center", fig.width = 10}
+date_m_adjust1_gg = date_m_gg[(which(date_m_gg == "1972-01-01")):length(date_m_gg)]
+layout(matrix(c(1, 2,
+                1, 3), nrow=2, byrow=TRUE))
+adjust_gold_m_3 = hpfilter(gold_m_price, freq = 14400, type = "lambda", drift = F)$cycle
+plot(adjust_gold_m_3, col = "black", main = "Hodrick-Prescott filter Adjusted Gold Price", lwd = 1.7,
+     xlab = "Monthly data from 1972-01 to 2020-01", 
+     ylab = "Adjusted Gold Price", type = 'l')
+
+spec_gold_m_price_3 = spectrum(adjust_gold_m_3, spans = c(3,5,3), lwd = 1.7, 
+                               main = "Smoothed Periodogram")
+spec_gold_m_freq_3 = spec_gold_m_price_3$freq[localMaxima(spec_gold_m_price_3$spec)[1:3]]
+abline(v=spec_gold_m_freq_3, lty="dashed", lwd = 1.7, col="red") 
+
+smooth_gold_m_price_3 = smooth.spline(adjust_gold_m_3, spar=0.5)
+plot(smooth_gold_m_price_3, type = "l", col = "black", lwd = 1.7,
+     xlab = "Monthly data from 1972-01 to 2020-01", 
+     ylab = "Smoothed HP filter adjusted value",
+     main = "Smoothed HP Filter Adjusted Gold Price")
+abline(v=time_1[localMaxima(smooth_gold_m_price_3$y)], lty="dashed", lwd = 1.7, col="blue") 
+
+# spec_gold_m_freq_3
+# 1/spec_gold_m_freq_3
+# date_m_adjust1_gg[localMaxima(smooth_gold_m_price_3$y)]
+# tail(date_m_adjust1_gg[localMaxima(adjust_gold_m_cycles)], 4)
+```
+
+To summaries, the inflation rate adjustment fails while the long run seasonality could be drived from last two methods. Loess Smoothing adjustment gives a period of 5.33 years/cycle and Hodrick-Prescott filter adjustment ives a period of 4.55 years/cycle. The results they give are close to each other, which indicate the existence of this long-run seasonality.
+
+I would prefer that the true period the monthly gold price followed is 4.55 years/cycle. There are mainly two reasons. The first one, as we discussed, is the choice of `span` is quite random for Loess-Smoothing adjustment. The second reason is that if we go back to the first figure *Nominal Monthly Average Price of Gold in History (oz/USD)*, we can check the most recent three peaks that two methods give. Apparently, the result November 2007, February 2012 and January 2017 makes more sense than the result August 2002, March 2007 and January 2012. Notice that 8 years passed from January 2012 to January 2020, which implies that the most recent cycle lasts more than eight years long. This is really a long period and the first plot shows there should be another peak around January 2012, which is contradicting this implication. Thus the true period should be around 4.55 years/cycle.
+
+------
+
+# 4. Model of Gold Price in Short Run
+
+Now we can play with the second set of data, the close price of gold. Still, there are serval ways worth considering. Generalized least squares (linear regression with ARMA error), recurrent neural network (Long short-term memory) and ARIMA model with its derivatives.
+
+The **generalized least squares** seems prospective. However, since the main purpose of our model is to predict in the short run, one potential problem with it is that it's hard to find some indicator variables or some variables that we can predict its future values easily and confidently. And some useful variables in macroeconomics like inflation rate, GDP and Potential GDP are usually given every month or quarter but not every day. Thus it's not very helpful unless the potential requirements are met.
+
+The **recurrent neural network** is also fine but out of the scope of this class, it has a very easy model implementation in MATLAB and the potential problems are overfitting and interpretation. If the final project can be on the same topic then I would do that.
+
+The **ARIMA model and its derivatives** are easy models. Easiness is good since simple models are usually more robust and easier to change and interpret. Because of the non-stationarity we've discussed, we need some transformations on the raw data.
+
+Besides, since there are 1304 observations in our dataset and it's really large compared to 1000. So I prefer to truncate the original data to 1201 observations.
+
+```{r echo=FALSE}
+gold_d = read.csv(file="gold_d.csv", header=TRUE)
+gold_d_price = tail(gold_d$price, 1201)
+gold_d_date_once = as.Date(tail(gold_d$DATE, 1201), "%Y/%m/%d")
+gold_d_date = as.Date(tail(gold_d$DATE, 1200), "%Y/%m/%d")
+```
+
+### 4.1 Data Transformation
+
+There are several ways for financial data transformation: differentiation, log transformation, return transformation, log-return transformation and we can plot them out. And there is a fashion that we usually do not go beyond them, because more complex transformation may result in problems in interpretation and loss of financial meaning.
+
+```{r, echo=FALSE, fig.align="center", fig.width = 10}
+gold_d_diff_price = diff(gold_d_price)
+gold_d_log_price = log(gold_d_price)
+gold_d_return = diff(gold_d_price)/gold_d_price[-length(gold_d_price)]
+gold_d_log_return = log(gold_d_price[-1]/gold_d_price[-length(gold_d_price)])
+
+par(mfrow=c(2,2))
+plot(gold_d_diff_price ~ gold_d_date, type ="l", main = "Differentiation tranformation",
+     xlab = "Daily data from 2016-03-14 to 2020-02-28", ylab = "Value")
+plot(gold_d_log_price ~ gold_d_date_once, type ="l", main = "Log tranformation",
+     xlab = "Daily data from 2016-03-14 to 2020-02-28",, ylab = "Value")
+plot(gold_d_return ~ gold_d_date, type ="l", main = "Return tranformation",
+     xlab = "Daily data from 2016-03-14 to 2020-02-28",, ylab = "Value")
+plot(gold_d_log_return ~ gold_d_date, type = "l", main = "Log-Return tranformation",
+     xlab = "Daily data from 2016-03-14 to 2020-02-28",, ylab = "Value")
+```
+
+It seems that differentiation, return transformation and log-return transformation perform well. I would prefer the log return transformation since it will curve down some extreme values and it's widely used for stocks, spot commodities in the financial area.
+
+### 4.2 Model Selection by Nested Cross-Validation
+
+Fortunately, we limit our model to the ARIMA model and its derivatives. However, it still contains a wide range of models. One way to select the best one from our candidates is to use nested cross-validation for time series combining with the knowledge in our lecture.
+
+The nested cross-validation process follows the diagram below, the original data is divided into K-fold training and validating data and leave-one-out data. 
+
+* The blue points represent the training data and the red points represent the validating data in *Nested Cross-Validation for Time Series* diagram, we usually use reasonable $k$ folds of data as starting training data and use the one fold data which following the training data as validating data. Then, we would use $k+1$ folds as training and the one fold following as validating data. This iteration continues until our validating data is $K$th fold.
+
+* By comparing every model's validating error (usually mean squared error) in the whole iteration described above, we can select some robust models that are less likely to overfit.
+
+* At last, use whole training and validating data to train our models and report training error. use leave-one-out data to test our models and report the testing error.
+
+As we can see, in nested cross-validation, we do not shuffle the dataset anymore and thus maintain the chronological order of time series data. The nested cross-validation we use here will divide the 1200 observations into 20 folds. The testing data will be observations from 1140th to 1200th and the rest are training and validating data. The starting training data will be observations from 1st to 540th. 
+
+```{r,echo=FALSE, fig.align="center", fig.width = 5, fig.height = 3}
+par(mar=c(0,0,0,0))
+plot(0,0,xlim=c(0,16),ylim=c(0,1),
+       xaxt="n",yaxt="n",bty="n",xlab="",ylab="",type="n")
+i = 1
+for(j in 1:10)
+{
+  test = (6+j):16
+  train = 1:(5+j)
+  arrows(0, 1 - j/10, 16.5, 1 - j/10,0.05)
+  points(train,rep(1-j/10,length(train)),pch=19,col="blue")
+  if(length(test) >= i)
+    points(test[i], 1-j/10, pch=19, col="red")
+  if(length(test) >= i)
+    points(test[-i], rep(1-j/10,length(test)-1), pch=19, col="gray")
+  else
+    points(test, rep(1-j/10,length(test)), pch=19, col="gray")
+}
+text(16, 0.05, "time")
+text(8.5, 0.95, "Nested Cross Validation for Time Series", cex = 1.2)
+```
+
+Since running nested cross-validation is time-consuming, here we simply provide the top 10 models that have the least validating error and order them according to ascending validating error. The result can be replicated by using *NCV.Rmd*.
+
+```{r,echo=FALSE}
+# NCV result from cvresult.csv
+cvresult = data.frame("AR-p" = c(0,1,0,0,0,0,0,1,0,1), 
+                      "MA-q" = c(0,0,1,0,0,0,0,0,1,0), 
+                      "GARCH-p" = c(2,2,2,2,2,1,1,1,1,2), 
+                      "GARCH-q" = c(0,0,0,2,1,0,0,0,0,2), 
+                      "Cond.Distr." = c("norm","norm","norm","norm","norm",
+                                        "norm","norm","norm","norm","norm"),
+                      "Val.Error"= c(4.55498e-4, 4.55506e-4, 4.55513e-4,
+                                     4.55533e-4, 4.55566e-4, 4.55580e-4, 
+                                     4.55580e-4, 4.55602e-4, 4.55609e-4, 
+                                     4.55635e-4))
+
+cvresult %>% kable(align='cccccc') %>% kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+### 4.3 Model Selection by Diagnostics
+
+From the table above, we select the first three models to conduct detailed diagnostics since they have relatively smaller validating errors (Notice that the criterion here is quite strict since their validating errors are very close to each other. In a more general way, more models should be compared). The models are:
+
+* $ARCH(2)$ model with guassian white noise.
+
+* $AR(1)-ARCH(2)$ model with guassian white noise.
+
+* $MA(1)-ARCH(2)$ model with guassian white noise.
+
+```{r,echo=FALSE}
+gold_d_log_return_train = gold_d_log_return[1:1140]
+gold_d_log_return_test = gold_d_log_return[1141:1200]
+```
+
+```{r,echo=FALSE}
+model_1 = garchFit(~garch(2, 0), data = gold_d_log_return_train, trace = FALSE)
+model_2 = garchFit(~arma(1,0) + garch(2, 0), data = gold_d_log_return_train, trace = FALSE)
+model_3 = garchFit(~arma(0,1) + garch(2, 0), data = gold_d_log_return_train, trace = FALSE)
+```
+
+```{r, echo=FALSE, fig.align="center", fig.width = 10}
+par(mfrow=c(2,2))
+
+residual = model_1@residuals
+plot(residual, type="l", col= "black", main = "Residual for ARCH(2)")
+acf(residual,lag=20, na.action= na.pass, main="")
+qqnorm(residual, main ="QQ-plot for ARCH(2)")
+qqline(residual)
+plot(gold_d_log_return_test, col = "red", type = "l", 
+     main = "Test data(red) vs preidcted(blue) for ARCH(2)",
+     xlab = "data index", ylab = "Value")
+lines(predict(model_1, 60)$meanForecast, col = "blue", type = "l")
+
+residual = model_2@residuals
+plot(residual, type="l", col= "black", main = "Residual for AR(1)-ARCH(2)")
+acf(residual,lag=20, na.action= na.pass, main= "")
+qqnorm(residual, main ="QQ-plot for AR(1)-ARCH(2)")
+qqline(residual)
+plot(gold_d_log_return_test, col = "red", type = "l",
+      main = "Test data(red) vs preidcted(blue) for AR(1)-ARCH(2)",
+      xlab = "data index", ylab = "Value")
+lines(predict(model_2, 60)$meanForecast, col = "blue", type = "l")
+
+residual = model_3@residuals
+plot(residual, type="l", col= "black", main = "Residual for MA(1)-ARCH(2)")
+acf(residual,lag=20, na.action= na.pass, main="")
+qqnorm(residual, main ="QQ-plot for MA(1)-ARCH(2)")
+qqline(residual)
+plot(gold_d_log_return_test, col = "red", type = "l",
+      main = "Test data(red) vs preidcted(blue) for MA(1)-ARCH(2)",
+      xlab = "data index", ylab = "Value")
+lines(predict(model_3, 60)$meanForecast, col = "blue", type = "l")
+```
+
+```{r, echo=FALSE}
+#summary(model_1)
+#summary(model_2)
+#summary(model_3)
+
+#model_1_train = mse(model_1@fitted ,gold_d_log_return_train)
+#model_1_train
+#model_1_test = mse(predict(model_1, 60)$meanForecast, gold_d_log_return_test)
+#model_1_test
+
+#model_2_train = mse(model_1@fitted ,gold_d_log_return_train)
+#model_2_train
+#model_2_test = mse(predict(model_2, 60)$meanForecast, gold_d_log_return_test)
+#model_2_test
+
+#model_3_train = mse(model_1@fitted ,gold_d_log_return_train)
+#model_3_train
+#model_3_test = mse(predict(model_3, 60)$meanForecast, gold_d_log_return_test)
+#model_3_test
+```
+
+Notice that we can hardly see any difference by our eyes from the diagnostic plot above. Thus the results of AIC, BIC, tests for single parameters, Box-Ljung test, LM Arch Test, Jarque-Bera test, Shapiro-Wilk test, MSE for training data and test data should be compared.
+
+```{r, echo=FALSE}
+result_1 = data.frame("Diagnosis" = c("T-test for mu", "T-test for ar1", 
+                                      "T-test for ma1", "T-test for omega",
+                                      "T-test for alpha1", "T-test for alpha2",
+                                      "Jarque-Bera", "Shapiro-Wilk",
+                                      "Ljung-Box-R", "Ljung-Box-R^2",
+                                      "LM Arch", "AIC", "BIC", "Training MSE",
+                                      "Testing MSE"),
+                      "ARCH_2" = c("\u2715", "NA", 
+                                      "NA", "\u2713",
+                                      "\u2715", "\u2713",
+                                      "\u2715", "\u2715",
+                                      "\u2713", "\u2715",
+                                      "\u2715", "-6.9247", "-6.9070", "5.8556e-05",
+                                      "6.8965e-05"), 
+                      "AR_1.ARCH_2" = c("\u2715", "\u2715", 
+                                      "NA", "\u2713",
+                                      "\u2715", "\u2713",
+                                      "\u2715", "\u2715",
+                                      "\u2713", "\u2715",
+                                      "\u2715", "-6.9230", "-6.9008", "5.8556e-05",
+                                      "6.8967e-05"), 
+                      "MA_1.ARCH_2" = c("\u2715", "NA", 
+                                      "\u2715", "\u2713",
+                                      "\u2715", "\u2713",
+                                      "\u2715", "\u2715",
+                                      "\u2713", "\u2715",
+                                      "\u2715", "-6.9230", "-6.9009", "5.8556e-05",
+                                      "6.8966e-05"))
+
+result_1 %>% kable(align='cccccc') %>% kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+In summary, The results are again similar to each other, which suggests that AR term and MA term are not necessary here. Combining the result of training MSE and testing MSE, we pick $ARCH(2)$ as our final model concerning the simpleness of model.
+
+The $ARCH(2)$ model can be expressed by:
+
+$$
+X_t = \mu + \sigma_t  \epsilon_t \\
+\sigma_t = \sqrt{\omega + \alpha_1 X_{t-1}^2 + \alpha_2 X_{t-2}^2}\\
+\epsilon_t \sim i.i.d. \ Guassian \ White \ Noise 
+$$
+And from the estimates of the result, our $ARCH(2)$ model can be rewritten to:
+
+$$
+X_t = 0.0001512 + \sigma_t  \epsilon_t \\
+\sigma_t = \sqrt{0.00004716 + 0.04746 X_{t-1}^2 + 0.1522 X_{t-2}^2}\\
+\epsilon_t \sim i.i.d. \ Guassian \ White \ Noise 
+$$
+The predictions of log return from this model converge to 0.0001512448. If we convert the log return predictions to a nominal price, we can plot them out like *Nominal Daily Close Price of Gold and Predicted Gold Close Price (oz/USD)*. As we can see, the result seems not very well. I always believe that the statistic is not performing magic or doing some fancy stuff out of thin air. It's more like conducting cautious experiments with different data. 
+
+I think our model here could only capture the main recent trend of gold price. After all, it's a simple and small model. Another way to make this final prediction fancier is doing rolling forecasting. Again, the purpose of this part is to predict a short-term gold price and one-day prediction is just not enough. We need a relatively long period to make our decision on longing and shorting based on historical data. If we do the rolling forecasting, though we do not need to change the model, still we need input every day's new gold price to see what's happening. Of course, it can be done easily if we have a standard API. But this is not the case for us. For common investors, the gold serves to maintain the value we created. Frequent trading will result in high trading fees and it's very dangerous since there is a lot of noise in the market. Greed and fear will always behind us when we are making our decisions and bad things can happen anytime. Thus, I think a half month or longer period is suitable for common investors to analyze, judge and decide to long or short a specific kind of asset in the financial market. That's also the reason why I make two-month-validation in Nested Cross-Validation. Thus, this model is more robust in the two-month-period. And a more robust model will be more helpful for us to figure out the true value of an asset and eliminate more noise as possible.
+
+```{r, echo=FALSE, fig.align="center", fig.width = 10}
+logreturn_pred = predict(model_1, 60)$meanForecast
+cum_pred  = cumsum(logreturn_pred)
+price_pred = gold_d_price[1140] * exp(cum_pred)
+
+gold_d_price_test = tail(gold_d$price, 61)
+gold_d_price_pred = c(gold_d_price[1140],price_pred)
+gold_d_date = as.Date(tail(gold_d$DATE, 61), "%Y/%m/%d")
+
+gold_d_gg = data.frame(gold_d_date, gold_d_price_test, gold_d_price_pred)
+
+names(gold_d_gg)[1]<-paste("Date")
+names(gold_d_gg)[2]<-paste("Price")
+names(gold_d_gg)[3]<-paste("Pred")
+
+ggplot() + geom_line(data = gold_d_gg, aes(x = Date, y = Price , colour="darkblue"), size = 1.05) + 
+           geom_line(data = gold_d_gg, aes(x = Date, y = Pred,,colour="red"), size = 1.05) +
+           scale_color_discrete(name = " Close Price of Gold", labels = c("Real","Predict"))+
+           ggtitle("Nominal Daily Close Price of Gold and Predicted Gold Colse Price (oz/USD)") +
+           theme(plot.title = element_text(hjust = 0.5)) +
+           labs(x = "Daily data from 2019-12-02 to 2020-02-28",
+           y = "Nominal average price of gold (oz/USD)")
+
+```
+
+------
+
+# 5. Current Affairs and Investment Suggestion
+
+According to historical analysis, the gold price is most relevant to the greenback power and the U.S. economy, the world's economy, and also some important disasters and wars. Thus, several affairs need to be considered recently.
+
+### 5.1 Current Affairs
+
+* Will Fed continues to cut the interest rate in 2020 to strengthen the U.S. economy? 
+
+* Will the U.S. economy experience recession this year? 
+
+* Will be the expected inflation rate be higher?
+
+* Will trade tensions between the U.S. and China and the world's other countries be eased this year?
+
+* Will coronavirus stop spreading?
+
+* Will Britain end up trading with no deal after Brexit?
+
+* Will Donald Trump be president again?
+
+* Will there be wars?
+
+I can not answer all those questions correctly. But I can share some of my thoughts. My prediction is a little bit pessimistic. I think the recession is inevitable in the following one or two years. And I do not believe Donald Trump can avoid recession. Recession is an interesting topic since the gold price will not go up blindly during the recession. It will rise a little bit and drop abruptly, and then back to the same level again as we can see from *Nominal Monthly Average Price of Gold in History (oz/USD)*. And what about then? My guess is that it's left for the gold cycle to decide whether it rise or drop after the recession.
+
+Generally, a simple rule for gold spot price is when the real economy not performing very well, the money will flee from the real economy and go to some assets that can maintain value like gold. When the economy is prosperous, high money demand will push up the nominal interest rate and make the spot gold investment not so appealing since opportunity cost is increasing.
+
+Similarly, we can infer that when recession comes, the money supply will be in short and people will not want to spend the money on their hands, which makes the currency more expensive to some extent. Thus the gold spot price will drop largely. Then, at the end of the recession, the money supply starts to meet the demand and spot gold prices will be adjusted to the same level. That's my explanation about the interesting result in the first figure in this report. 
+ 
+On the other hand, life can be easier if we believe the Efficient Market Hypothesis by Eugene Fama. Then we can totally trust our model and analysis above since all the information and its combinations are contained in the past prices. If the prices have a cycle, it means all the factors in the past adds up to a cyclical behavior of gold prices, which we only need to trust that it will appear in the future again.
+
+### 5.2 My Investment Suggestion
+
+Although I will totally not be responsible for this, I would like to give my prediction and suggestion on the spot gold investment. I think the spot gold price will continue to rise (omit fluctuation) in the following two months and until almost the end of this year. Then the gold price should reach the peak of its long-run cycle and start to drop. If someone has spot gold positions in hand, he or she should consider selling their positions gradually, and he or she should not own a lot of spot gold position at the very end of this year. Then, After around two years, we can start gradually buying gold. Actually, I do not think longing or shorting futures, ETFs related to gold is a very good way by using these results since our purpose is to combat inflation using spot gold. Thus, instead of concentrating on speculation on the derivative market, the intrinsic value of gold should be focused and gradually buying and gradually selling spot gold is a suitable way for us.
+
+
+------
+
+# 6. Reference
+
+### 6.1 Data
+
+[1] Gold monthly data. Retrieved from https://datahub.io/core/gold-prices#data
+
+[2] Gold daily data. Retrieved from https://fred.stlouisfed.org/series/GOLDAMGBD228NLBM
+
+[3] Inflation data. Retrieved from https://inflationdata.com/Inflation/Inflation_Rate/HistoricalInflation.aspx
+
+[4] NBER based recession indicators data. Retrieved from https://fred.stlouisfed.org/series/USREC
+
+### 6.2 Materials
+
+[1] Bretton Woods system. Wikipedia. https://en.wikipedia.org/wiki/Bretton_Woods_system#Dollar_shortages_and_the_Marshall_Plan
+
+[2] Gold Cycle. Sunshineprofits. https://www.sunshineprofits.com/gold-silver/dictionary/gold-cycle/
+
+[3] Hodrick–Prescott filter. Wikipedia. https://en.wikipedia.org/wiki/Hodrick%E2%80%93Prescott_filter
+
+[4] Nested Cross-Validation Diagram. Robjhyndman. https://gist.github.com/robjhyndman/9fa152c585442bb076eb42a30a020091
+
+### 6.3 Picture
+
+[1] Finnstark, Anato. Smaug. ARTSTATION, October 2019, https://www.artstation.com/artwork/XBWdwa.
+
+------
