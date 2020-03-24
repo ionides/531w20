@@ -121,8 +121,12 @@ Please read the [grading policy in the syllabus](syllabus.html) before turning i
 
 <!--
 [Solution](hw06/sol06.html).
+-->
 
-* [Homework 7](hw07/hw07.html), due 11:59pm on Monday 3/26. [Solution](hw07/sol07.html).
+* [Homework 7](hw07/hw07.html), due 5pm on Mon Mar 30.
+
+<!--
+[Solution](hw07/sol07.html).
 
 * [Homework 8](hw08/hw08.html), to be carried out by Monday 4/2.
 
@@ -161,9 +165,7 @@ Reading the textbook is not mandatory for the exam, but may be useful to get a b
 
 * [Information](midterm_project/midterm_project_info.html).
 
-<!--
-* [Projects](midterm_project/index.html)
--->
+* [2020 midterm projects](midterm_project/index.html)
 
 * You are welcome to browse previous [2016 midterm projects](http://ionides.github.io/531w16/midterm_project/) and  [2018 midterm projects](http://ionides.github.io/531w18/midterm_project/).
 

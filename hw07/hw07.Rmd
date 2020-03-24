@@ -1,0 +1,42 @@
+---
+title: "Homework 7, due Mon 3/30"
+author: "STATS 531, Winter 2020"
+output:
+  html_document:
+    theme: flatly
+---
+
+
+-----------
+
+
+This week your homework involves some preparatory work toward planning your final project. Your responses should be submitted to Canvas as a pdf file.
+
+
+-----------
+
+**<big>Question 7.1</big>. Learning from the midterm projects.**
+Browse the midterm projects at http://ionides.github.io/531w20/midterm_project. Pick two projects to read carefully. Think about how your project compares to these projects, in terms of (i) writing, (ii) statistical analysis, (iii) coding technique. Write a paragraph on one of these projects. This can either on the contents of the project, or technical skills you learned, or how it compares to your own midterm project.
+
+------------
+
+**<big>Question 7.2</big>. Learning from past final projects.**
+Browse the STATS 531 W18 final projects at http://ionides.github.io/531w18/final_project. Optionally, you can look also at http://ionides.github.io/531w16/final_project. Pick one project on a topic that interests you to read more carefully.
+The projects use some techniques we have not covered yet, but we will cover soon. You may want to focus on how the model is described, both mathematically and in software. Write a paragraph identifying some technical details that you learned by reading the code in the project, either in the HTML version or the source code for the project on github. Note that these project use pomp version 1.x so the code would require [some changes](https://kingaa.github.io/pomp/vignettes/upgrade_guide.html) to run properly on an up-to-date version of pomp.
+
+--------------
+
+**<big>Question 7.3</big>. Final project proposal.**
+Identify a potential dataset for your final project, a potential scientific question (broadly interpreted to include social science, health sciences, economics, etc) and a potential model linking the two. Write a paragraph explaining your idea. This will not be part of the project grade, but it will help you move your thoughts toward your final project. You are not committing to your choice of project at this point: if you change your mind and choose something else later that is fine. 
+
+
+-----------
+
+**<big>Question 7.4</big>. This feedback question is worth credit.**
+Explain which parts of your responses above made use of a source, meaning anything or anyone you consulted (including classmates or office hours) to help you carry out your homework. All sources are permitted. To encourage responsible use of these sources while maintaining class integrity, we require a response to this question. See the syllabus for additional information on grading.
+
+For this particular homework, it may well be that the only sources are the anonymous projects that you comment on, which should nevertheless be appropriately referenced. 
+
+---------
+
+---------
