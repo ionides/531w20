@@ -2,6 +2,9 @@
 \documentclass{beamer}
 
 \input{../header.tex}
+
+\setbeamertemplate{footline}[frame number]
+
 \newcommand\CHAPTER{10}
 
 

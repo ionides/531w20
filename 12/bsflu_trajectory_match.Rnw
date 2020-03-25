@@ -1,0 +1,39 @@
+
+
+This is code to test naive MC on the flu example
+
+
+
+\item  Let's generate a bunch of simulated trajectories at some particular point in parameter space.
+
+<<bbs-mc-like-2,results='markup'>>=
+simulate(sir,params=c(Beta=2,gamma=1,rho=0.5,N=2600),
+         nsim=10000,states=TRUE) -> x
+matplot(time(sir),t(x["H",1:50,]),type='l',lty=1,
+        xlab="time",ylab="H",bty='l',col='blue')
+lines(time(sir),obs(sir,"B"),lwd=2,col='black')
+@
+
+\item  We can use the function \code{dmeasure} to evaluate the log likelihood of the data given the states, the model, and the parameters:
+
+<<bbs-mc-like-3,results='markup',cache=T>>=
+ell <- dmeasure(sir,y=obs(sir),x=x,times=time(sir),log=TRUE,
+                params=c(Beta=2,gamma=1,rho=0.5,N=2600))
+dim(ell)
+@
+
+\item  According to the equation above, we should sum up the log likelihoods across time:
+
+<<bbs-mc-like-4,results='markup'>>=
+ell <- apply(ell,1,sum); summary(exp(ell)); logmeanexp(ell,se=TRUE)
+@
+
+\item  The likelihood appears to be very low, but the error in the estimate is very high and therefore the estimated likelihood is very imprecise.
+
+\item  We are going to need very many simulations to get an estimate of the likelihood sufficiently precise to be of any use in parameter estimation or model selection.
+
+\item  What's the problem? Essentially, far too many of the trajectories don't pass near the data. Moreover, once a trajectory diverges from the data, it almost never comes back.
+
+\item  This is a consequence of the fact that we are proposing trajectories in a way that is completely unconditional on the data.
+
+\item  The problem will only get worse with longer data sets!
