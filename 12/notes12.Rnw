@@ -254,38 +254,6 @@ $$
 
 \end{slide}
 
-\begin{slide}[fragile]
-
-\frametitle{Reconstructing the flu pomp}
-
-<<sir-construct>>=
-bsflu <- read.table("bsflu_data.txt")
-
-sir_step <- Csnippet("
-  double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt));
-  double dN_IR = rbinom(I,1-exp(-gamma*dt));
-  S -= dN_SI;
-  I += dN_SI - dN_IR;
-  R += dN_IR;
-  H += dN_IR;
-")
-
-sir_init <- Csnippet("
-  S = nearbyint(N)-1;
-  I = 1;
-  R = 0;
-  H = 0;
-")
-
-dmeas <- Csnippet("lik = dbinom(B,H,rho,give_log);")
-rmeas <- Csnippet("B = rbinom(H,rho);")
-
-pomp(bsflu,times="day",t0=0,
-     rprocess=euler.sim(sir_step,delta.t=1/5),
-     initializer=sir_init,rmeasure=rmeas,dmeasure=dmeas,
-     zeronames="H",statenames=c("H","S","I","R"),
-     paramnames=c("Beta","gamma","rho","N")) -> sir
-@
 
 <<sir-sim1>>=
 sims <- simulate(sir,params=c(Beta=2,gamma=1,rho=0.8,N=2600),nsim=20,
@@ -931,10 +899,17 @@ stew(file=sprintf("pf-%d.rda",run_level),{
 
 \item  Saving results so that the code is only re-run when necessary is called \myemph{caching}.
 
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+\bi
 \item  You may already be familiar with Rmarkdown's own version of caching. 
 
 \item  In the notes, we tell Rmarkdown to cache. For example, in (notes13.Rmd) the first R chunk, called \code{knitr-opts}, contains the following:
 
+\ei
 
 <<set_cache, eval=FALSE>>=
 opts_chunk$set(
@@ -942,16 +917,18 @@ opts_chunk$set(
   )
 @
 
-\end{frame}
-
-\begin{frame}[fragile]
 \bi
 \item  Rmarkdown uses a library called \code{knitr} to process the Rmd file, so options for Rmarkdown are formally options for knitr.
 
 \item  Having set the option \code{cache=TRUE}, Rmarkdown caches every chunk, meaning that a chunk will only be re-run if code in that chunk is edited.
 
 \item  You can force Rmarkdown to recompute all the chunks by deleting the \code{cache} subdirectory.
+\ei
+\end{frame}
 
+\begin{frame}[fragile]
+\frametitle{Practical advice for caching}
+\bi
 \item  What if changes elsewhere in the document affect the proper evaluation of your chunk, but you didn't edit any of the code in the chunk itself?
 Rmarkdown will get this wrong. \myemph{It will not recompute the chunk}.
 
@@ -1025,6 +1002,8 @@ stew(file=sprintf("local_search-%d.rda",run_level),{
 
 @
 
+\end{frame}
+\begin{frame}[fragile]
 \bi
 \item  Although the filtering carried out by \code{mif2} in the final filtering iteration generates an approximation to the likelihood at the resulting point estimate, this is not usually good enough for reliable inference. Partly, this is because some parameter perturbations remain in the last filtering iteration. Partly, this is because \code{mif2} is usually carried out with a smaller number of particles than is necessary for a good likelihood evaluation---the errors in \code{mif2} average out over many iterations of the filtering. 
 
@@ -1217,11 +1196,9 @@ Is this more or less well determined that $\beta$ for this model and data?
 
 \end{frame}  
 
- \begin{frame}[fragile]
 
+\begin{frame}[fragile]
 \frametitle{Checking model source code}
-
-\myquestion. Check the source code for the \code{bsflu} \code{pomp} object. Does the code implement the model described?
 
 For various reasons, it can be surprisingly hard to make sure that the written equations and the code are perfectly matched. Here are some things to think about:
 
@@ -1234,6 +1211,14 @@ For various reasons, it can be surprisingly hard to make sure that the written e
 \end{enumerate}
 
 \end{frame}  
+
+ \begin{frame}[fragile]
+
+
+\myquestion. Check the source code for the \code{bsflu} \code{pomp} object. Does the code implement the model described?
+
+\answer{\vspace{50mm}}{todo}
+\end{frame}
 
  \begin{frame}[fragile]
 

@@ -5,6 +5,7 @@
 \input{../header.tex}
 \newcommand\CHAPTER{11}
 
+\setbeamertemplate{footline}[frame number]
 
 \newcommand\eqspace{\quad\quad\quad}
 \newcommand\eqskip{\vspace{2.5mm}}
@@ -643,9 +644,9 @@ Now, we'll model the data, $B$, as a binomial process,
 $$B_t \sim \dist{Binomial}{H(t)-H(t-1),\rho}.$$
 But we have a problem, since at time $t$, the variable \code{H} we've defined will contain $H(t)$, not $H(t)-H(t-1)$.
 We can overcome this by telling \code{pomp} that we want \code{H} to be set to zero immediately following each observation.
-We do this by setting the \code{zeronames} argument to \code{pomp}:
+We do this by setting the \code{accumvars} argument to \code{pomp}:
 <<zero1>>=
-pomp(sir,zeronames="H") -> sir
+pomp(sir,accumvars="H") -> sir
 @
 
 Now, to include the observations in the model, we must write both a \code{dmeasure} and an \code{rmeasure} component:
@@ -655,7 +656,8 @@ rmeas <- Csnippet("B = rbinom(H,rho);")
 @
 and put these into our \code{pomp} object:
 <<add-meas-model>>=
-sir <- pomp(sir,rmeasure=rmeas,dmeasure=dmeas,statenames="H",paramnames="rho")
+sir <- pomp(sir,rmeasure=rmeas,dmeasure=dmeas,
+  statenames="H",paramnames="rho")
 @
 
 \end{frame}
@@ -669,10 +671,12 @@ sir <- pomp(sir,rmeasure=rmeas,dmeasure=dmeas,statenames="H",paramnames="rho")
 In the data, it looks like there were a total of \Sexpr{sum(bsflu$B)} \code{infections}, so the population size, $N$, must be somewhat in excess of this number.
 \item
 We can use the final-size equation
-$$R_0 = -\frac{\log{(1-f)}}{f},$$
-where $f=R(\infty)/N$ is the final size of the epidemic, together with the idea that $R_0$ must be, say, around 1.5, to estimate that $f\approx 0.6$, whence $N\approx 2600$.
+$$\Rzero = -\frac{\log{(1-f)}}{f},$$
+where $f=R(\infty)/N$ is the final size of the epidemic.
+\item In epidemiology, $\Rzero$ is the average number of secondard cases per primary case in a fully susceptible population. The font distinguishes it from the latent state $R$.
+\item We suppose $\Rzero\approx 1.5$, so $f\approx 0.6$ and  $N\approx 2600$.
 \item 
-If the infectious period is roughly 1 day, then $1/\gamma \approx 1~\text{da}$ and $\beta = \gamma\,R_0 \approx 1.5~\text{da}^{-1}$.
+If the infectious period is roughly 1 day, then $1/\gamma \approx 1~\text{da}$ and $\beta = \gamma\,\Rzero \approx 1.5~\text{da}^{-1}$.
 \ei
 \end{frame}
 
