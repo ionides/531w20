@@ -39,9 +39,9 @@ sir <- pomp(subset(sir_data,select=c(day,B)),
   skeleton = vectorfield(sir_skel),
   paramnames=c("Beta","gamma","N","rho"),
   statenames=c("S","I","R","H"),
-  zeronames="H") 
+  accumvars="H") 
 
-if(sir_test <- 1){
+if(sir_test <- 0){
   sims <- simulate(sir,params=c(Beta=1.5,gamma=1,rho=0.9,N=2600),
     nsim=20,format="data.frame",include=TRUE)
   ggplot(sims,mapping=aes(x=day,y=B,group=.id,color=.id=="data"))+

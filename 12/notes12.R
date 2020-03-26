@@ -36,35 +36,6 @@ stopifnot(packageVersion("pomp")>="2.0")
 
 
 
-## ----sir-construct------------------------------------------------------------
-bsflu <- read.table("bsflu_data.txt")
-
-sir_step <- Csnippet("
-  double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt));
-  double dN_IR = rbinom(I,1-exp(-gamma*dt));
-  S -= dN_SI;
-  I += dN_SI - dN_IR;
-  R += dN_IR;
-  H += dN_IR;
-")
-
-sir_init <- Csnippet("
-  S = nearbyint(N)-1;
-  I = 1;
-  R = 0;
-  H = 0;
-")
-
-dmeas <- Csnippet("lik = dbinom(B,H,rho,give_log);")
-rmeas <- Csnippet("B = rbinom(H,rho);")
-
-pomp(bsflu,times="day",t0=0,
-     rprocess=euler.sim(sir_step,delta.t=1/5),
-     initializer=sir_init,rmeasure=rmeas,dmeasure=dmeas,
-     zeronames="H",statenames=c("H","S","I","R"),
-     paramnames=c("Beta","gamma","rho","N")) -> sir
-
-
 ## ----sir-sim1-----------------------------------------------------------------
 sims <- simulate(sir,params=c(Beta=2,gamma=1,rho=0.8,N=2600),nsim=20,
                  as.data.frame=TRUE,include.data=TRUE)
