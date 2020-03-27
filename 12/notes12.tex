@@ -1,5 +1,55 @@
 %\documentclass[handout]{beamer}
-\documentclass{beamer}
+\documentclass{beamer}\usepackage[]{graphicx}\usepackage[]{color}
+% maxwidth is the original width if it is less than linewidth
+% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+\makeatletter
+\def\maxwidth{ %
+  \ifdim\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \Gin@nat@width
+  \fi
+}
+\makeatother
+
+\definecolor{fgcolor}{rgb}{0.345, 0.345, 0.345}
+\newcommand{\hlnum}[1]{\textcolor[rgb]{0.686,0.059,0.569}{#1}}%
+\newcommand{\hlstr}[1]{\textcolor[rgb]{0.192,0.494,0.8}{#1}}%
+\newcommand{\hlcom}[1]{\textcolor[rgb]{0.678,0.584,0.686}{\textit{#1}}}%
+\newcommand{\hlopt}[1]{\textcolor[rgb]{0,0,0}{#1}}%
+\newcommand{\hlstd}[1]{\textcolor[rgb]{0.345,0.345,0.345}{#1}}%
+\newcommand{\hlkwa}[1]{\textcolor[rgb]{0.161,0.373,0.58}{\textbf{#1}}}%
+\newcommand{\hlkwb}[1]{\textcolor[rgb]{0.69,0.353,0.396}{#1}}%
+\newcommand{\hlkwc}[1]{\textcolor[rgb]{0.333,0.667,0.333}{#1}}%
+\newcommand{\hlkwd}[1]{\textcolor[rgb]{0.737,0.353,0.396}{\textbf{#1}}}%
+\let\hlipl\hlkwb
+
+\usepackage{framed}
+\makeatletter
+\newenvironment{kframe}{%
+ \def\at@end@of@kframe{}%
+ \ifinner\ifhmode%
+  \def\at@end@of@kframe{\end{minipage}}%
+  \begin{minipage}{\columnwidth}%
+ \fi\fi%
+ \def\FrameCommand##1{\hskip\@totalleftmargin \hskip-\fboxsep
+ \colorbox{shadecolor}{##1}\hskip-\fboxsep
+     % There is no \\@totalrightmargin, so:
+     \hskip-\linewidth \hskip-\@totalleftmargin \hskip\columnwidth}%
+ \MakeFramed {\advance\hsize-\width
+   \@totalleftmargin\z@ \linewidth\hsize
+   \@setminipage}}%
+ {\par\unskip\endMakeFramed%
+ \at@end@of@kframe}
+\makeatother
+
+\definecolor{shadecolor}{rgb}{.97, .97, .97}
+\definecolor{messagecolor}{rgb}{0, 0, 0}
+\definecolor{warningcolor}{rgb}{1, 0, 1}
+\definecolor{errorcolor}{rgb}{1, 0, 0}
+\newenvironment{knitrout}{}{} % an empty environment to be redefined in TeX
+
+\usepackage{alltt}
 \usepackage{natbib}
 \bibliographystyle{dcu}
 \input{../header.tex}
@@ -19,89 +69,20 @@
 % \newcommand\answer[2]{{\color{blue}{#2}}} % to show answers
 \newcommand\answer[2]{#1} % to show blank space
 
-<<R_answer,echo=F,purl=F>>=
-# ANS = TRUE
- ANS=FALSE
-@
+
 
 \usepackage{bbm} % for blackboard bold 1
-
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
 \begin{document}
 
 % knitr set up
-<<knitr_opts,echo=F,cache=F,purl=F>>=
-library(knitr)
-opts_chunk$set(
-  cache=FALSE,
-#  cache=TRUE,
-  eval=TRUE,
-  include=TRUE,
-  echo=TRUE,
-  purl=TRUE,
-  cache.path=paste0("tmp/cache"),
-  dev='png',
-  dev.args=list(bg='transparent'),
-  dpi=300,
-  error=FALSE,
-  fig.pos="h!",
-  fig.align='center',
-  fig.height=4,fig.width=6.83,
-  fig.lp="fig:",
-  fig.path=paste0("tmp/figure"),
-  fig.show='asis',
-  highlight=TRUE,
-  message=FALSE,
-  progress=TRUE,
-  prompt=FALSE,
-#  results='asis',
-  results="markup",
-  size='small',
-  strip.white=TRUE,
-  tidy=FALSE,
-  warning=FALSE
-#  comment=NA # to remove ## on output
-)
-options(width = 60) # number of characters in R output before wrapping
-
-@
-
-<<setup,echo=F,results=F,cache=F>>=
-myround<- function (x, digits = 1) {
-  # taken from the broman package
-  if (digits < 1) 
-    stop("This is intended for the case digits >= 1.")
-  if (length(digits) > 1) {
-    digits <- digits[1]
-    warning("Using only digits[1]")
-  }
-  tmp <- sprintf(paste("%.", digits, "f", sep = ""), x)
-  zero <- paste0("0.", paste(rep("0", digits), collapse = ""))
-  tmp[tmp == paste0("-", zero)] <- zero
-  tmp
-}
-
-set.seed(2050320976)
-
-options(
-  keep.source=TRUE,
-  encoding="UTF-8"
-)
-
-@
 
 
 
-<<prelims,echo=F,cache=F>>=
-set.seed(594709947L)
-library(ggplot2)
-theme_set(theme_bw())
-library(plyr)
-library(reshape2)
-library(foreach)
-#library(doMC)
-library(pomp)
-stopifnot(packageVersion("pomp")>="2.0")
-@
+
+
+
+
 
 
 \begin{frame}[fragile]
@@ -159,29 +140,16 @@ or
 $$\loglik(\theta) = \log\lik(\theta) = \sum_{n} \log f_{Y_n|X_n}(y_n^*\given x_n(\theta)\params \theta).$$
 \ei
 
-<<det-example,echo=FALSE,results="hide",purl=FALSE>>=
-source("bsflu.R")
- coef(sir) <- c(Beta=1.8,mu_IR=1,rho=0.9,N=2600)
- x <- trajectory(sir) 
- y <- cbind(as.data.frame(sir),x=x["H",1,])
- mutate(y,xlab=sprintf("H[%d]",day),
-       ylab=sprintf("B[%d]",day)) -> y
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
 
- ggplot(data=y,
-       mapping=aes(x=day,xend=day))+
-  geom_point(aes(y=B),color='black',alpha=0.5)+
-  geom_point(aes(y=x),color='red',alpha=0.5)+
-  geom_line(aes(y=B),color='black',alpha=0.5)+
-  geom_line(aes(y=x),color='red',alpha=0.5)+
-  geom_text(aes(y=B,label=ylab,vjust=ifelse(day>=10,2,-1)),
-    parse=TRUE,color='black')+
-  geom_text(aes(y=x,label=xlab,vjust=ifelse(day>=10,-1,2)),
-    parse=TRUE,color='red')+
-  geom_segment(aes(y=x,yend=B),color='blue',linetype=2,alpha=0.3,
-               arrow=grid::arrow(length=grid::unit(0.02,"npc")))+
-  expand_limits(y=c(-20,320))+
-  labs(y="")
-@
+{\centering \includegraphics[width=\maxwidth]{tmp/figuredet-example-1} 
+
+}
+
+
+
+\end{knitrout}
 
 \end{frame} 
 
@@ -262,12 +230,23 @@ $$\hat\lik_n(\theta)  \approx \frac{1}{N}\,\sum_j\, f_{Y_n|X_n}(y^*_{n}|X_{n,j}^
 
 \begin{frame}[fragile]
 
-<<sir-sim1>>=
-  sims <- simulate(sir,params=c(Beta=1.8,mu_IR=1,rho=0.9,N=2600),
-    nsim=20,format="data.frame",include=TRUE)
-  ggplot(sims,mapping=aes(x=day,y=B,group=.id,color=.id=="data"))+
-    geom_line()+guides(color=FALSE)
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+  \hlstd{sims} \hlkwb{<-} \hlkwd{simulate}\hlstd{(sir,}\hlkwc{params}\hlstd{=}\hlkwd{c}\hlstd{(}\hlkwc{Beta}\hlstd{=}\hlnum{1.8}\hlstd{,}\hlkwc{mu_IR}\hlstd{=}\hlnum{1}\hlstd{,}\hlkwc{rho}\hlstd{=}\hlnum{0.9}\hlstd{,}\hlkwc{N}\hlstd{=}\hlnum{2600}\hlstd{),}
+    \hlkwc{nsim}\hlstd{=}\hlnum{20}\hlstd{,}\hlkwc{format}\hlstd{=}\hlstr{"data.frame"}\hlstd{,}\hlkwc{include}\hlstd{=}\hlnum{TRUE}\hlstd{)}
+  \hlkwd{ggplot}\hlstd{(sims,}\hlkwc{mapping}\hlstd{=}\hlkwd{aes}\hlstd{(}\hlkwc{x}\hlstd{=day,}\hlkwc{y}\hlstd{=B,}\hlkwc{group}\hlstd{=.id,}\hlkwc{color}\hlstd{=.id}\hlopt{==}\hlstr{"data"}\hlstd{))}\hlopt{+}
+    \hlkwd{geom_line}\hlstd{()}\hlopt{+}\hlkwd{guides}\hlstd{(}\hlkwc{color}\hlstd{=}\hlnum{FALSE}\hlstd{)}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=\maxwidth]{tmp/figuresir-sim1-1} 
+
+}
+
+
+
+\end{knitrout}
 
 \end{frame}
 
@@ -286,20 +265,41 @@ $$\hat\lik_n(\theta)  \approx \frac{1}{N}\,\sum_j\, f_{Y_n|X_n}(y^*_{n}|X_{n,j}^
 We must choose the number of particles to use by setting the \code{Np} argument.
 \ei
 
-<<sir-pfilter-1,results='markup',cache=T>>=
-pf <- pfilter(sir,Np=5000,params=c(Beta=2,mu_IR=1,rho=0.8,N=2600))
-logLik(pf)
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{pf} \hlkwb{<-} \hlkwd{pfilter}\hlstd{(sir,}\hlkwc{Np}\hlstd{=}\hlnum{5000}\hlstd{,}\hlkwc{params}\hlstd{=}\hlkwd{c}\hlstd{(}\hlkwc{Beta}\hlstd{=}\hlnum{2}\hlstd{,}\hlkwc{mu_IR}\hlstd{=}\hlnum{1}\hlstd{,}\hlkwc{rho}\hlstd{=}\hlnum{0.8}\hlstd{,}\hlkwc{N}\hlstd{=}\hlnum{2600}\hlstd{))}
+\hlkwd{logLik}\hlstd{(pf)}
+\end{alltt}
+\begin{verbatim}
+## [1] -74.38111
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
 
 \bi
 \item  We can run a few particle filters to get an estimate of the Monte Carlo variability:
 \ei
 
-<<sir-pfilter-2,results='markup',cache=T>>=
-pf <- replicate(10,pfilter(sir,Np=5000,params=c(Beta=2,mu_IR=1,rho=0.8,N=2600)))
-ll <- sapply(pf,logLik); ll
-logmeanexp(ll,se=TRUE)
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{pf} \hlkwb{<-} \hlkwd{replicate}\hlstd{(}\hlnum{10}\hlstd{,}\hlkwd{pfilter}\hlstd{(sir,}\hlkwc{Np}\hlstd{=}\hlnum{5000}\hlstd{,}\hlkwc{params}\hlstd{=}\hlkwd{c}\hlstd{(}\hlkwc{Beta}\hlstd{=}\hlnum{2}\hlstd{,}\hlkwc{mu_IR}\hlstd{=}\hlnum{1}\hlstd{,}\hlkwc{rho}\hlstd{=}\hlnum{0.8}\hlstd{,}\hlkwc{N}\hlstd{=}\hlnum{2600}\hlstd{)))}
+\hlstd{ll} \hlkwb{<-} \hlkwd{sapply}\hlstd{(pf,logLik); ll}
+\end{alltt}
+\begin{verbatim}
+##  [1] -70.14517 -76.58557 -72.34135 -80.62329 -75.07345
+##  [6] -74.11358 -76.50689 -76.52644 -75.68941 -69.65674
+\end{verbatim}
+\begin{alltt}
+\hlkwd{logmeanexp}\hlstd{(ll,}\hlkwc{se}\hlstd{=}\hlnum{TRUE}\hlstd{)}
+\end{alltt}
+\begin{verbatim}
+##                      se 
+## -71.4267132   0.8441585
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
 
 \end{frame}
 
@@ -341,26 +341,30 @@ Both slices will pass through the default parameter set.
 
 \begin{frame}[fragile]
 
-<<sir-like-slice,cache=TRUE,results='hide'>>=
-sliceDesign(
-  c(Beta=2,mu_IR=1,rho=0.8,N=2600),
-  Beta=rep(seq(from=0.5,to=4,length=40),each=3),
-  mu_IR=rep(seq(from=0.5,to=2,length=40),each=3)) -> p
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{sliceDesign}\hlstd{(}
+  \hlkwd{c}\hlstd{(}\hlkwc{Beta}\hlstd{=}\hlnum{2}\hlstd{,}\hlkwc{mu_IR}\hlstd{=}\hlnum{1}\hlstd{,}\hlkwc{rho}\hlstd{=}\hlnum{0.8}\hlstd{,}\hlkwc{N}\hlstd{=}\hlnum{2600}\hlstd{),}
+  \hlkwc{Beta}\hlstd{=}\hlkwd{rep}\hlstd{(}\hlkwd{seq}\hlstd{(}\hlkwc{from}\hlstd{=}\hlnum{0.5}\hlstd{,}\hlkwc{to}\hlstd{=}\hlnum{4}\hlstd{,}\hlkwc{length}\hlstd{=}\hlnum{40}\hlstd{),}\hlkwc{each}\hlstd{=}\hlnum{3}\hlstd{),}
+  \hlkwc{mu_IR}\hlstd{=}\hlkwd{rep}\hlstd{(}\hlkwd{seq}\hlstd{(}\hlkwc{from}\hlstd{=}\hlnum{0.5}\hlstd{,}\hlkwc{to}\hlstd{=}\hlnum{2}\hlstd{,}\hlkwc{length}\hlstd{=}\hlnum{40}\hlstd{),}\hlkwc{each}\hlstd{=}\hlnum{3}\hlstd{))} \hlkwb{->} \hlstd{p}
 
-# library(foreach)
-library(doParallel)
-registerDoParallel()
+\hlcom{# library(foreach)}
+\hlkwd{library}\hlstd{(doParallel)}
+\hlkwd{registerDoParallel}\hlstd{()}
 
-library(doRNG)
-registerDoRNG(3899882)
+\hlkwd{library}\hlstd{(doRNG)}
+\hlkwd{registerDoRNG}\hlstd{(}\hlnum{3899882}\hlstd{)}
 
-foreach (theta=iter(p,"row"),
-  .combine=rbind,.inorder=FALSE) %dopar% {
-    pfilter(sir,params=unlist(theta),Np=5000) -> pf
-    theta$loglik <- logLik(pf)
-    theta
-  } -> p
-@
+\hlkwd{foreach} \hlstd{(}\hlkwc{theta}\hlstd{=}\hlkwd{iter}\hlstd{(p,}\hlstr{"row"}\hlstd{),}
+  \hlkwc{.combine}\hlstd{=rbind,}\hlkwc{.inorder}\hlstd{=}\hlnum{FALSE}\hlstd{)} \hlopt{%dopar%} \hlstd{\{}
+    \hlkwd{pfilter}\hlstd{(sir,}\hlkwc{params}\hlstd{=}\hlkwd{unlist}\hlstd{(theta),}\hlkwc{Np}\hlstd{=}\hlnum{5000}\hlstd{)} \hlkwb{->} \hlstd{pf}
+    \hlstd{theta}\hlopt{$}\hlstd{loglik} \hlkwb{<-} \hlkwd{logLik}\hlstd{(pf)}
+    \hlstd{theta}
+  \hlstd{\}} \hlkwb{->} \hlstd{p}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
 
 
 \end{frame}  
@@ -398,13 +402,31 @@ foreach (theta=iter(p,"row"),
 
 \ei
 
-<<sir-like-slice-plot,cache=TRUE,results="hide">>=
-foreach (v=c("Beta","mu_IR")) %do% 
-{
-  x <- subset(p,slice==v)
-  plot(x[[v]],x$loglik,xlab=v,ylab="loglik")
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{foreach} \hlstd{(}\hlkwc{v}\hlstd{=}\hlkwd{c}\hlstd{(}\hlstr{"Beta"}\hlstd{,}\hlstr{"mu_IR"}\hlstd{))} \hlopt{%do%}
+\hlstd{\{}
+  \hlstd{x} \hlkwb{<-} \hlkwd{subset}\hlstd{(p,slice}\hlopt{==}\hlstd{v)}
+  \hlkwd{plot}\hlstd{(x[[v]],x}\hlopt{$}\hlstd{loglik,}\hlkwc{xlab}\hlstd{=v,}\hlkwc{ylab}\hlstd{=}\hlstr{"loglik"}\hlstd{)}
+\hlstd{\}}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=\maxwidth]{tmp/figuresir-like-slice-plot-1} 
+
 }
-@
+
+
+
+
+{\centering \includegraphics[width=\maxwidth]{tmp/figuresir-like-slice-plot-2} 
+
+}
+
+
+
+\end{knitrout}
 
 \end{frame}
 
@@ -413,58 +435,51 @@ foreach (v=c("Beta","mu_IR")) %do%
 Slices offer a very limited perspective on the geometry of the likelihood surface.
 With two parameters, we can evaluate the likelihood at a grid of points and visualize the surface directly.
 
-<<sir-grid1,cache=TRUE>>=
-expand.grid(Beta=seq(from=1,to=4,length=50),
-            mu_IR=seq(from=0.7,to=3,length=50),
-            rho=0.8,
-            N=2600) -> p
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{expand.grid}\hlstd{(}\hlkwc{Beta}\hlstd{=}\hlkwd{seq}\hlstd{(}\hlkwc{from}\hlstd{=}\hlnum{1}\hlstd{,}\hlkwc{to}\hlstd{=}\hlnum{4}\hlstd{,}\hlkwc{length}\hlstd{=}\hlnum{50}\hlstd{),}
+            \hlkwc{mu_IR}\hlstd{=}\hlkwd{seq}\hlstd{(}\hlkwc{from}\hlstd{=}\hlnum{0.7}\hlstd{,}\hlkwc{to}\hlstd{=}\hlnum{3}\hlstd{,}\hlkwc{length}\hlstd{=}\hlnum{50}\hlstd{),}
+            \hlkwc{rho}\hlstd{=}\hlnum{0.8}\hlstd{,}
+            \hlkwc{N}\hlstd{=}\hlnum{2600}\hlstd{)} \hlkwb{->} \hlstd{p}
 
-foreach (theta=iter(p,"row"),.combine=rbind,
-         .inorder=FALSE) %dopar% 
- {
-   pfilter(sir,params=unlist(theta),Np=5000) -> pf
-   theta$loglik <- logLik(pf)
-   theta
- } -> p
+\hlkwd{foreach} \hlstd{(}\hlkwc{theta}\hlstd{=}\hlkwd{iter}\hlstd{(p,}\hlstr{"row"}\hlstd{),}\hlkwc{.combine}\hlstd{=rbind,}
+         \hlkwc{.inorder}\hlstd{=}\hlnum{FALSE}\hlstd{)} \hlopt{%dopar%}
+ \hlstd{\{}
+   \hlkwd{pfilter}\hlstd{(sir,}\hlkwc{params}\hlstd{=}\hlkwd{unlist}\hlstd{(theta),}\hlkwc{Np}\hlstd{=}\hlnum{5000}\hlstd{)} \hlkwb{->} \hlstd{pf}
+   \hlstd{theta}\hlopt{$}\hlstd{loglik} \hlkwb{<-} \hlkwd{logLik}\hlstd{(pf)}
+   \hlstd{theta}
+ \hlstd{\}} \hlkwb{->} \hlstd{p}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{pp} \hlkwb{<-} \hlkwd{mutate}\hlstd{(p,}\hlkwc{loglik}\hlstd{=}\hlkwd{ifelse}\hlstd{(loglik}\hlopt{>}\hlkwd{max}\hlstd{(loglik)}\hlopt{-}\hlnum{100}\hlstd{,loglik,}\hlnum{NA}\hlstd{))}
+\hlkwd{ggplot}\hlstd{(}\hlkwc{data}\hlstd{=pp,}\hlkwc{mapping}\hlstd{=}\hlkwd{aes}\hlstd{(}\hlkwc{x}\hlstd{=Beta,}\hlkwc{y}\hlstd{=mu_IR,}\hlkwc{z}\hlstd{=loglik,}\hlkwc{fill}\hlstd{=loglik))}\hlopt{+}
+  \hlkwd{geom_tile}\hlstd{(}\hlkwc{color}\hlstd{=}\hlnum{NA}\hlstd{)}\hlopt{+}
+  \hlkwd{geom_contour}\hlstd{(}\hlkwc{color}\hlstd{=}\hlstr{'black'}\hlstd{,}\hlkwc{binwidth}\hlstd{=}\hlnum{3}\hlstd{)}\hlopt{+}
+  \hlkwd{scale_fill_gradient}\hlstd{()}\hlopt{+}
+  \hlkwd{labs}\hlstd{(}\hlkwc{x}\hlstd{=}\hlkwd{expression}\hlstd{(beta),}\hlkwc{y}\hlstd{=}\hlkwd{expression}\hlstd{(mu_IR))}
+\end{alltt}
+\end{kframe}
 
-@
-<<sir-grid1-plot,cache=TRUE>>=
-pp <- mutate(p,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
-ggplot(data=pp,mapping=aes(x=Beta,y=mu_IR,z=loglik,fill=loglik))+
-  geom_tile(color=NA)+
-  geom_contour(color='black',binwidth=3)+
-  scale_fill_gradient()+
-  labs(x=expression(beta),y=expression(mu_IR))
-@
+{\centering \includegraphics[width=\maxwidth]{tmp/figuresir-grid1-plot-1} 
+
+}
+
+
+
+\end{knitrout}
 
 \end{frame}
 
 
 \begin{frame}[fragile]
 
-<<sir-grid2,eval=FALSE,include=FALSE,purl=FALSE,fig.show=FALSE,cache=TRUE>>=
-expand.grid(Beta=seq(from=1,to=3,length=50),
-            mu_IR=1,
-            rho=0.8,
-            N=seq(from=1600,to=3000,length=50)) -> p
 
-foreach (theta=iter(p,"row"),.combine=rbind,
-         .inorder=FALSE) %dopar% 
- {
-   pfilter(sir,params=unlist(theta),Np=5000) -> pf
-   theta$loglik <- logLik(pf)
-   theta
- } -> p
 
-@
-<<sir-grid2-plot,eval=FALSE,include=FALSE,purl=FALSE>>=
-pp <- mutate(p,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
-ggplot(data=pp,mapping=aes(x=Beta,y=N,z=loglik,fill=loglik))+
-  geom_tile(color=NA)+
-  geom_contour(color='black',binwidth=3)+
-  scale_fill_gradient()+
-  labs(x=expression(beta),y=expression(N))
-@
 
 \end{frame}
 
@@ -687,9 +702,13 @@ Here is one possible explanation: the precision of interest is often the second 
 \item  For a relatively simple epidemiological example of IF2, we consider fitting a stochastic SIR model to an influenza outbreak in a British boarding school [@anonymous78]. Reports consist of the number of children confined to bed for each of the 14 days of the outbreak. The total number of children at the school was 763, and a total of 512 children spent time away from class. Only one adult developed influenza-like illness, so adults are omitted from the data and model. First, we read in the boarding school flu (bsflu) data:
 \ei
 
-<<load_bbs>>=
-bsflu_data <- read.table("bsflu_data.txt")
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{bsflu_data} \hlkwb{<-} \hlkwd{read.table}\hlstd{(}\hlstr{"bsflu_data.txt"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
 \bi
 
 \item  Our model is a variation on a basic SIR Markov chain, with state $X(t)=(S(t),I(t),R_1(t),R_2(t),R_3(t) )$ giving the number of individuals in the susceptible and infectious categories, and three stages of recovery. 
@@ -725,21 +744,31 @@ from 15 to 18 January. It would therefore be reasonable to initialize the epidem
 
 \begin{frame}[fragile]
 
-<<bsflu_names>>=
-@
+
 
 The observation names ($B$, $C$) are the names of the data variables:
 
-<<bsflu_obsnames>>=
-(bsflu_obsnames <- colnames(bsflu_data)[1:2])
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{(bsflu_obsnames} \hlkwb{<-} \hlkwd{colnames}\hlstd{(bsflu_data)[}\hlnum{1}\hlopt{:}\hlnum{2}\hlstd{])}
+\end{alltt}
+\begin{verbatim}
+## [1] "B" "C"
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
 
 We do not need a representation of $R_3$ since the total population size is fixed at $P=763$ and hence $R_3(t)=P-S(t)-I(t)-R_1(t)-R_2(t)$. 
 Now, we write the model code:
 
-<<csnippets_bsflu>>=
-source("bsflu2.R")
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{source}\hlstd{(}\hlstr{"bsflu2.R"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
 
 \end{frame}
 
@@ -750,15 +779,19 @@ source("bsflu2.R")
 \bi
 \item  To develop and debug code, it is nice to have a version that runs extra quickly, for which we set \code{run_level=1}.  Here, \code{Np} is the number of particles (i.e., sequential Monte Carlo sample size), and \code{Nmif} is the number of iterations of the optimization procedure carried out below. Empirically, \code{Np=5000} and \code{Nmif=200} are around the minimum required to get stable results with an error in the likelihood of order 1 log unit for this example; this is implemented by setting \code{run_level=2}. One can then ramp up to larger values for more refined computations, implemented here by \code{run_level=3}.
 \ei
-<<run_level>>=
-run_level <- 1
-switch(run_level, {
-  bsflu_Np=100; bsflu_Nmif=10; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10
-  }, 
-       {bsflu_Np=20000; bsflu_Nmif=100; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10}, 
-       {bsflu_Np=60000; bsflu_Nmif=300; bsflu_Neval=10; bsflu_Nglobal=100; bsflu_Nlocal=20}
-)
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{run_level} \hlkwb{<-} \hlnum{1}
+\hlkwd{switch}\hlstd{(run_level, \{}
+  \hlstd{bsflu_Np}\hlkwb{=}\hlnum{100}\hlstd{; bsflu_Nmif}\hlkwb{=}\hlnum{10}\hlstd{; bsflu_Neval}\hlkwb{=}\hlnum{10}\hlstd{; bsflu_Nglobal}\hlkwb{=}\hlnum{10}\hlstd{; bsflu_Nlocal}\hlkwb{=}\hlnum{10}
+  \hlstd{\},}
+       \hlstd{\{bsflu_Np}\hlkwb{=}\hlnum{20000}\hlstd{; bsflu_Nmif}\hlkwb{=}\hlnum{100}\hlstd{; bsflu_Neval}\hlkwb{=}\hlnum{10}\hlstd{; bsflu_Nglobal}\hlkwb{=}\hlnum{10}\hlstd{; bsflu_Nlocal}\hlkwb{=}\hlnum{10}\hlstd{\},}
+       \hlstd{\{bsflu_Np}\hlkwb{=}\hlnum{60000}\hlstd{; bsflu_Nmif}\hlkwb{=}\hlnum{300}\hlstd{; bsflu_Neval}\hlkwb{=}\hlnum{10}\hlstd{; bsflu_Nglobal}\hlkwb{=}\hlnum{100}\hlstd{; bsflu_Nlocal}\hlkwb{=}\hlnum{20}\hlstd{\}}
+\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
 
 \end{frame}
 
@@ -768,18 +801,26 @@ switch(run_level, {
 
 Before engaging in iterated filtering, it is often a good idea to check that the basic particle filter is working since iterated filtering builds on this technique. Here, carrying out slightly circular reasoning, we are going to test \code{pfilter} on a previously computed point estimate read in from \code{bsflu_params.csv}
 
-<<bsflu_params>>=
-bsflu_params <- data.matrix(
-  read.table("mif_bsflu_params.csv",
-  row.names=NULL,header=TRUE))
-bsflu_mle <- bsflu_params[which.max(bsflu_params[,"logLik"]),][bsflu_paramnames]
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{bsflu_params} \hlkwb{<-} \hlkwd{data.matrix}\hlstd{(}
+  \hlkwd{read.table}\hlstd{(}\hlstr{"mif_bsflu_params.csv"}\hlstd{,}
+  \hlkwc{row.names}\hlstd{=}\hlkwa{NULL}\hlstd{,}\hlkwc{header}\hlstd{=}\hlnum{TRUE}\hlstd{))}
+\hlstd{bsflu_mle} \hlkwb{<-} \hlstd{bsflu_params[}\hlkwd{which.max}\hlstd{(bsflu_params[,}\hlstr{"logLik"}\hlstd{]),][bsflu_paramnames]}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
 
 We are going to treat $\mu_{R_1}$ and  $\mu_{R_2}$ as known, fixed at the empirical mean of the bed-confinement and convalescence times for symptomatic cases:
 
-<<fixed_params>>=
-bsflu_fixed_params <- c(mu_R1=1/(sum(bsflu_data$B)/512),mu_R2=1/(sum(bsflu_data$C)/512))
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{bsflu_fixed_params} \hlkwb{<-} \hlkwd{c}\hlstd{(}\hlkwc{mu_R1}\hlstd{=}\hlnum{1}\hlopt{/}\hlstd{(}\hlkwd{sum}\hlstd{(bsflu_data}\hlopt{$}\hlstd{B)}\hlopt{/}\hlnum{512}\hlstd{),}\hlkwc{mu_R2}\hlstd{=}\hlnum{1}\hlopt{/}\hlstd{(}\hlkwd{sum}\hlstd{(bsflu_data}\hlopt{$}\hlstd{C)}\hlopt{/}\hlnum{512}\hlstd{))}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
 
 \end{frame}
 
@@ -795,12 +836,15 @@ bsflu_fixed_params <- c(mu_R1=1/(sum(bsflu_data$B)/512),mu_R2=1/(sum(bsflu_data$
     2. using the parallel for loop provided by 'foreach'.
 \ei
 
-<<parallel-setup,cache=FALSE>>=
-library(doParallel)
-registerDoParallel()
-library(doRNG)
-
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{library}\hlstd{(doParallel)}
+\hlkwd{registerDoParallel}\hlstd{()}
+\hlkwd{library}\hlstd{(doRNG)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
 
 \end{frame}
 
@@ -811,18 +855,26 @@ library(doRNG)
 \item  We proceed to carry out replicated particle filters at this tentative MLE:
 \ei
 
-<<pf>>=
-stew(file=sprintf("pf-%d.rda",run_level),{
-  t_pf <- system.time(
-    pf <- foreach(i=1:20,.packages='pomp') %dopar% try(
-                    pfilter(bsflu2,params=bsflu_mle,Np=bsflu_Np)
-                  )
-  )
-  
-},seed=1320290398,kind="L'Ecuyer")
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{stew}\hlstd{(}\hlkwc{file}\hlstd{=}\hlkwd{sprintf}\hlstd{(}\hlstr{"pf-%d.rda"}\hlstd{,run_level),\{}
+  \hlstd{t_pf} \hlkwb{<-} \hlkwd{system.time}\hlstd{(}
+    \hlstd{pf} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlnum{20}\hlstd{,}\hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{)} \hlopt{%dopar%} \hlkwd{try}\hlstd{(}
+                    \hlkwd{pfilter}\hlstd{(bsflu2,}\hlkwc{params}\hlstd{=bsflu_mle,}\hlkwc{Np}\hlstd{=bsflu_Np)}
+                  \hlstd{)}
+  \hlstd{)}
 
-(L_pf <- logmeanexp(sapply(pf,logLik),se=TRUE))
-@
+\hlstd{\},}\hlkwc{seed}\hlstd{=}\hlnum{1320290398}\hlstd{,}\hlkwc{kind}\hlstd{=}\hlstr{"L'Ecuyer"}\hlstd{)}
+
+\hlstd{(L_pf} \hlkwb{<-} \hlkwd{logmeanexp}\hlstd{(}\hlkwd{sapply}\hlstd{(pf,logLik),}\hlkwc{se}\hlstd{=}\hlnum{TRUE}\hlstd{))}
+\end{alltt}
+\begin{verbatim}
+##                      se 
+## -77.3381503   0.5328977
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
 \end{frame}
 
 \begin{frame}[fragile]
@@ -854,11 +906,15 @@ stew(file=sprintf("pf-%d.rda",run_level),{
 
 \ei
 
-<<set_cache, eval=FALSE>>=
-opts_chunk$set(
-  cache=TRUE,
-  )
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{opts_chunk}\hlopt{$}\hlkwd{set}\hlstd{(}
+  \hlkwc{cache}\hlstd{=}\hlnum{TRUE}\hlstd{,}
+  \hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
 
 \bi
 \item  Rmarkdown uses a library called \code{knitr} to process the Rmd file, so options for Rmarkdown are formally options for knitr.
@@ -916,34 +972,37 @@ Rmarkdown will get this wrong. \myemph{It will not recompute the chunk}.
 \item  Let's carry out a local search using \code{mif2} around this previously identified MLE. For that, we need to set the \code{rw.sd} and \code{cooling.fraction.50} algorithmic parameters:
 \ei
 
-<<box_search_local>>=
-bsflu_rw.sd <- 0.02
-bsflu_cooling.fraction.50 <- 0.5
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{bsflu_rw.sd} \hlkwb{<-} \hlnum{0.02}
+\hlstd{bsflu_cooling.fraction.50} \hlkwb{<-} \hlnum{0.5}
 
-stew(file=sprintf("local_search-%d.rda",run_level),{
-  
-  t_local <- system.time({
-    mifs_local <- foreach(i=1:bsflu_Nlocal,.packages='pomp', .combine=c) %dopar%  {
-      mif2(
-        bsflu2,
-        params=bsflu_mle,
-        Np=bsflu_Np,
-        Nmif=bsflu_Nmif,
-        cooling.type="geometric",
-        cooling.fraction.50=bsflu_cooling.fraction.50,
-        rw.sd=rw.sd(
-          Beta=bsflu_rw.sd,
-          mu_IR=bsflu_rw.sd,
-          rho=bsflu_rw.sd
-        )
-      )
-      
-    }
-  })
-  
-},seed=900242057,kind="L'Ecuyer")
+\hlkwd{stew}\hlstd{(}\hlkwc{file}\hlstd{=}\hlkwd{sprintf}\hlstd{(}\hlstr{"local_search-%d.rda"}\hlstd{,run_level),\{}
 
-@
+  \hlstd{t_local} \hlkwb{<-} \hlkwd{system.time}\hlstd{(\{}
+    \hlstd{mifs_local} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{bsflu_Nlocal,}\hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,} \hlkwc{.combine}\hlstd{=c)} \hlopt{%dopar%}  \hlstd{\{}
+      \hlkwd{mif2}\hlstd{(}
+        \hlstd{bsflu2,}
+        \hlkwc{params}\hlstd{=bsflu_mle,}
+        \hlkwc{Np}\hlstd{=bsflu_Np,}
+        \hlkwc{Nmif}\hlstd{=bsflu_Nmif,}
+        \hlkwc{cooling.type}\hlstd{=}\hlstr{"geometric"}\hlstd{,}
+        \hlkwc{cooling.fraction.50}\hlstd{=bsflu_cooling.fraction.50,}
+        \hlkwc{rw.sd}\hlstd{=}\hlkwd{rw.sd}\hlstd{(}
+          \hlkwc{Beta}\hlstd{=bsflu_rw.sd,}
+          \hlkwc{mu_IR}\hlstd{=bsflu_rw.sd,}
+          \hlkwc{rho}\hlstd{=bsflu_rw.sd}
+        \hlstd{)}
+      \hlstd{)}
+
+    \hlstd{\}}
+  \hlstd{\})}
+
+\hlstd{\},}\hlkwc{seed}\hlstd{=}\hlnum{900242057}\hlstd{,}\hlkwc{kind}\hlstd{=}\hlstr{"L'Ecuyer"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
 
 \end{frame}
 \begin{frame}[fragile]
@@ -953,27 +1012,46 @@ stew(file=sprintf("local_search-%d.rda",run_level),{
 \item  Therefore, we evaluate the likelihood, together with a standard error, using replicated particle filters at each point estimate:
 \ei
 
-<<lik_local_eval>>=
-stew(file=sprintf("lik_local-%d.rda",run_level),{
-    t_local_eval <- system.time({
-    liks_local <- foreach(i=1:bsflu_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
-      evals <- replicate(bsflu_Neval, logLik(pfilter(bsflu2,params=coef(mifs_local[[i]]),Np=bsflu_Np)))
-      logmeanexp(evals, se=TRUE)
-    }
-  })
-},seed=900242057,kind="L'Ecuyer")
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{stew}\hlstd{(}\hlkwc{file}\hlstd{=}\hlkwd{sprintf}\hlstd{(}\hlstr{"lik_local-%d.rda"}\hlstd{,run_level),\{}
+    \hlstd{t_local_eval} \hlkwb{<-} \hlkwd{system.time}\hlstd{(\{}
+    \hlstd{liks_local} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{bsflu_Nlocal,}\hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,}\hlkwc{.combine}\hlstd{=rbind)} \hlopt{%dopar%} \hlstd{\{}
+      \hlstd{evals} \hlkwb{<-} \hlkwd{replicate}\hlstd{(bsflu_Neval,} \hlkwd{logLik}\hlstd{(}\hlkwd{pfilter}\hlstd{(bsflu2,}\hlkwc{params}\hlstd{=}\hlkwd{coef}\hlstd{(mifs_local[[i]]),}\hlkwc{Np}\hlstd{=bsflu_Np)))}
+      \hlkwd{logmeanexp}\hlstd{(evals,} \hlkwc{se}\hlstd{=}\hlnum{TRUE}\hlstd{)}
+    \hlstd{\}}
+  \hlstd{\})}
+\hlstd{\},}\hlkwc{seed}\hlstd{=}\hlnum{900242057}\hlstd{,}\hlkwc{kind}\hlstd{=}\hlstr{"L'Ecuyer"}\hlstd{)}
 
-results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
-summary(results_local$logLik,digits=5)
-@
+\hlstd{results_local} \hlkwb{<-} \hlkwd{data.frame}\hlstd{(}\hlkwc{logLik}\hlstd{=liks_local[,}\hlnum{1}\hlstd{],}\hlkwc{logLik_se}\hlstd{=liks_local[,}\hlnum{2}\hlstd{],}\hlkwd{t}\hlstd{(}\hlkwd{sapply}\hlstd{(mifs_local,coef)))}
+\hlkwd{summary}\hlstd{(results_local}\hlopt{$}\hlstd{logLik,}\hlkwc{digits}\hlstd{=}\hlnum{5}\hlstd{)}
+\end{alltt}
+\begin{verbatim}
+##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##  -81.60  -79.00  -77.54  -76.97  -75.24  -71.34
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
 
 \bi
 \item  This investigation took  \code{r round(t_local["elapsed"]/60,1)} minutes for the maximization and \code{r round(t_local_eval["elapsed"]/60,1)} minutes for the likelihood evaluation. These repeated stochastic maximizations can also show us the geometry of the likelihood surface in a neighborhood of this point estimate:
 \ei
 
-<<pairs_local>>=
-pairs(~logLik+Beta+mu_IR+rho,data=subset(results_local,logLik>max(logLik)-50))
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{pairs}\hlstd{(}\hlopt{~}\hlstd{logLik}\hlopt{+}\hlstd{Beta}\hlopt{+}\hlstd{mu_IR}\hlopt{+}\hlstd{rho,}\hlkwc{data}\hlstd{=}\hlkwd{subset}\hlstd{(results_local,logLik}\hlopt{>}\hlkwd{max}\hlstd{(logLik)}\hlopt{-}\hlnum{50}\hlstd{))}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=\maxwidth]{tmp/figurepairs_local-1} 
+
+}
+
+
+
+\end{knitrout}
 
 \end{frame}   
 
@@ -990,13 +1068,17 @@ pairs(~logLik+Beta+mu_IR+rho,data=subset(results_local,logLik>max(logLik)-50))
 \item  For our flu model, a box containing reasonable parameter values might be
 \ei
 
-<<box>>=
-bsflu_box <- rbind(
-  Beta=c(0.001,0.01),
-  mu_IR=c(0.5,2),
-  rho = c(0.5,1)
-)
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{bsflu_box} \hlkwb{<-} \hlkwd{rbind}\hlstd{(}
+  \hlkwc{Beta}\hlstd{=}\hlkwd{c}\hlstd{(}\hlnum{0.001}\hlstd{,}\hlnum{0.01}\hlstd{),}
+  \hlkwc{mu_IR}\hlstd{=}\hlkwd{c}\hlstd{(}\hlnum{0.5}\hlstd{,}\hlnum{2}\hlstd{),}
+  \hlkwc{rho} \hlstd{=} \hlkwd{c}\hlstd{(}\hlnum{0.5}\hlstd{,}\hlnum{1}\hlstd{)}
+\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
 
 \bi
 
@@ -1004,17 +1086,21 @@ bsflu_box <- rbind(
 
 \ei
 
-<<box_eval>>=
-stew(file=sprintf("box_eval-%d.rda",run_level),{
-  
-  t_global <- system.time({
-    mifs_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp', .combine=c) %dopar%  mif2(
-      mifs_local[[1]],
-      params=c(apply(bsflu_box,1,function(x)runif(1,x[1],x[2])),bsflu_fixed_params)
-    )
-  })
-},seed=1270401374,kind="L'Ecuyer")
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{stew}\hlstd{(}\hlkwc{file}\hlstd{=}\hlkwd{sprintf}\hlstd{(}\hlstr{"box_eval-%d.rda"}\hlstd{,run_level),\{}
+
+  \hlstd{t_global} \hlkwb{<-} \hlkwd{system.time}\hlstd{(\{}
+    \hlstd{mifs_global} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{bsflu_Nglobal,}\hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,} \hlkwc{.combine}\hlstd{=c)} \hlopt{%dopar%}  \hlkwd{mif2}\hlstd{(}
+      \hlstd{mifs_local[[}\hlnum{1}\hlstd{]],}
+      \hlkwc{params}\hlstd{=}\hlkwd{c}\hlstd{(}\hlkwd{apply}\hlstd{(bsflu_box,}\hlnum{1}\hlstd{,}\hlkwa{function}\hlstd{(}\hlkwc{x}\hlstd{)}\hlkwd{runif}\hlstd{(}\hlnum{1}\hlstd{,x[}\hlnum{1}\hlstd{],x[}\hlnum{2}\hlstd{])),bsflu_fixed_params)}
+    \hlstd{)}
+  \hlstd{\})}
+\hlstd{\},}\hlkwc{seed}\hlstd{=}\hlnum{1270401374}\hlstd{,}\hlkwc{kind}\hlstd{=}\hlstr{"L'Ecuyer"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
 
 \bi
 
@@ -1022,39 +1108,62 @@ stew(file=sprintf("box_eval-%d.rda",run_level),{
 
 \ei
 
-<<lik_global_eval>>=
-stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
-  t_global_eval <- system.time({
-    liks_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp',.combine=rbind) %dopar% {
-      evals <- replicate(bsflu_Neval, logLik(pfilter(bsflu2,params=coef(mifs_global[[i]]),Np=bsflu_Np)))
-      logmeanexp(evals, se=TRUE)
-    }
-  })
-},seed=442141592,kind="L'Ecuyer")
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{stew}\hlstd{(}\hlkwc{file}\hlstd{=}\hlkwd{sprintf}\hlstd{(}\hlstr{"lik_global_eval-%d.rda"}\hlstd{,run_level),\{}
+  \hlstd{t_global_eval} \hlkwb{<-} \hlkwd{system.time}\hlstd{(\{}
+    \hlstd{liks_global} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{bsflu_Nglobal,}\hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,}\hlkwc{.combine}\hlstd{=rbind)} \hlopt{%dopar%} \hlstd{\{}
+      \hlstd{evals} \hlkwb{<-} \hlkwd{replicate}\hlstd{(bsflu_Neval,} \hlkwd{logLik}\hlstd{(}\hlkwd{pfilter}\hlstd{(bsflu2,}\hlkwc{params}\hlstd{=}\hlkwd{coef}\hlstd{(mifs_global[[i]]),}\hlkwc{Np}\hlstd{=bsflu_Np)))}
+      \hlkwd{logmeanexp}\hlstd{(evals,} \hlkwc{se}\hlstd{=}\hlnum{TRUE}\hlstd{)}
+    \hlstd{\}}
+  \hlstd{\})}
+\hlstd{\},}\hlkwc{seed}\hlstd{=}\hlnum{442141592}\hlstd{,}\hlkwc{kind}\hlstd{=}\hlstr{"L'Ecuyer"}\hlstd{)}
 
-results_global <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
-summary(results_global$logLik,digits=5)
-@
+\hlstd{results_global} \hlkwb{<-} \hlkwd{data.frame}\hlstd{(}\hlkwc{logLik}\hlstd{=liks_global[,}\hlnum{1}\hlstd{],}\hlkwc{logLik_se}\hlstd{=liks_global[,}\hlnum{2}\hlstd{],}\hlkwd{t}\hlstd{(}\hlkwd{sapply}\hlstd{(mifs_global,coef)))}
+\hlkwd{summary}\hlstd{(results_global}\hlopt{$}\hlstd{logLik,}\hlkwc{digits}\hlstd{=}\hlnum{5}\hlstd{)}
+\end{alltt}
+\begin{verbatim}
+##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+## -137.26  -98.26  -96.09  -98.62  -88.89  -80.15
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
 
 \bi
 \item  It is good practice to build up a file of successful optimization results for subsequent investigation:
 \ei
 
-<<save_params,eval=FALSE>>=
-if (run_level>2) 
-  write.table(rbind(results_local,results_global),
-              file="mif_bsflu_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwa{if} \hlstd{(run_level}\hlopt{>}\hlnum{2}\hlstd{)}
+  \hlkwd{write.table}\hlstd{(}\hlkwd{rbind}\hlstd{(results_local,results_global),}
+              \hlkwc{file}\hlstd{=}\hlstr{"mif_bsflu_params.csv"}\hlstd{,}\hlkwc{append}\hlstd{=}\hlnum{TRUE}\hlstd{,}\hlkwc{col.names}\hlstd{=}\hlnum{FALSE}\hlstd{,}\hlkwc{row.names}\hlstd{=}\hlnum{FALSE}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
 
 \bi
 
-\item  Evaluation of the best result of this search gives a likelihood of \code{r round(max(results_global$logLik),1)} with a standard error of \Sexpr{round(results_global$logLik_se[which.max(results_global$logLik)],1)}. This took in \Sexpr{round(t_global["elapsed"]/60,1)} minutes for the maximization and \Sexpr{round(t_global_eval["elapsed"]/60,1)} minutes for the evaluation.  Plotting these diverse parameter estimates can help to give a feel for the global geometry of the likelihood surface 
+\item  Evaluation of the best result of this search gives a likelihood of \code{r round(max(results_global$logLik),1)} with a standard error of 0.7. This took in 0 minutes for the maximization and 0 minutes for the evaluation.  Plotting these diverse parameter estimates can help to give a feel for the global geometry of the likelihood surface 
 
 \ei
 
-<<pairs_global>>=
-pairs(~logLik+Beta+mu_IR+rho,data=subset(results_global,logLik>max(logLik)-250))
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{pairs}\hlstd{(}\hlopt{~}\hlstd{logLik}\hlopt{+}\hlstd{Beta}\hlopt{+}\hlstd{mu_IR}\hlopt{+}\hlstd{rho,}\hlkwc{data}\hlstd{=}\hlkwd{subset}\hlstd{(results_global,logLik}\hlopt{>}\hlkwd{max}\hlstd{(logLik)}\hlopt{-}\hlnum{250}\hlstd{))}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=\maxwidth]{tmp/figurepairs_global-1} 
+
+}
+
+
+
+\end{knitrout}
 
 \bi
 
@@ -1077,17 +1186,58 @@ pairs(~logLik+Beta+mu_IR+rho,data=subset(results_global,logLik>max(logLik)-250))
 \item  Above, we built a list of mif2d.pomp objects for the global maximum likelihood search, fitting a model to the boarding school flu data. Let's first check the classes of the resulting objects.
 \ei
 
-<<class_mifs_global>>=
-class(mifs_global)
-class(mifs_global[[1]])
-class(c(mifs_global[[1]],mifs_global[[2]]))
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{class}\hlstd{(mifs_global)}
+\end{alltt}
+\begin{verbatim}
+## [1] "mif2List"
+## attr(,"package")
+## [1] "pomp"
+\end{verbatim}
+\begin{alltt}
+\hlkwd{class}\hlstd{(mifs_global[[}\hlnum{1}\hlstd{]])}
+\end{alltt}
+\begin{verbatim}
+## [1] "mif2d_pomp"
+## attr(,"package")
+## [1] "pomp"
+\end{verbatim}
+\begin{alltt}
+\hlkwd{class}\hlstd{(}\hlkwd{c}\hlstd{(mifs_global[[}\hlnum{1}\hlstd{]],mifs_global[[}\hlnum{2}\hlstd{]]))}
+\end{alltt}
+\begin{verbatim}
+## [1] "mif2List"
+## attr(,"package")
+## [1] "pomp"
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
 \bi
 \item  Now, we can look at the diagnostics.
 \ei
-<<mifs_global_plot>>=
-plot(mifs_global)
-@
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{plot}\hlstd{(mifs_global)}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=\maxwidth]{tmp/figuremifs_global_plot-1} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=\maxwidth]{tmp/figuremifs_global_plot-2} 
+
+}
+
+
+
+\end{knitrout}
 
 \end{frame}
 
@@ -1197,7 +1347,7 @@ We cannot directly evaluate $e$, since there is also Monte Carlo error in our ev
 \frametitle{Acknowledgments and License}
 
 \bi
-\item Produced with R version \Sexpr{ getRversion()} and \package{pomp} version \Sexpr{ packageVersion("pomp")}.
+\item Produced with R version 3.6.2 and \package{pomp} version 2.7.
 
 \item These notes build on previous versions at \url{ionides.github.io/531w16} and \url{ionides.github.io/531w18}. 
 \item Those notes draw on material developed for a short course on Simulation-based Inference for Epidemiological Dynamics (\url{http://kingaa.github.io/sbied/}) by Aaron King and Edward Ionides, taught at the University of Washington Summer Institute in Statistics and Modeling in Infectious Diseases, from 2015 through 2019.

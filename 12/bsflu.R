@@ -16,10 +16,10 @@ sir_step <- Csnippet("
 sir_skel <- Csnippet("
   double dN_SIdt = Beta*S*I/N;
   double dN_IRdt = mu_IR*I;
-  DS -= dN_SIdt;
-  DI += dN_SIdt - dN_IRdt;
-  DR += dN_IRdt;
-  DH += dN_IRdt;
+  DS = -dN_SIdt;
+  DI = dN_SIdt - dN_IRdt;
+  DR = dN_IRdt;
+  DH = dN_IRdt;
 ")
 
 sir_rinit <- Csnippet("
@@ -45,33 +45,33 @@ sir <- pomp(subset(sir_data,select=c(day,B)),
   partrans=parameter_trans(log=c("Beta","mu_IR","N"),logit="rho")
 ) 
 
-sir_test <- 2
+sir_test <- 0
 
 if(sir_test==1){
-  sims <- simulate(sir,params=c(Beta=1.5,mu_IR=1,rho=0.9,N=2600),
+  sims <- simulate(sir,params=c(Beta=1.8,mu_IR=1,rho=0.9,N=2600),
     nsim=20,format="data.frame",include=TRUE)
   ggplot(sims,mapping=aes(x=day,y=B,group=.id,color=.id=="data"))+
     geom_line()+guides(color=FALSE)
 }
 
 if(sir_test==2){
- coef(sir) <- c(Beta=1.5,mu_IR=1,rho=0.9,N=2600)
+ coef(sir) <- c(Beta=1.8,mu_IR=1,rho=0.9,N=2600)
  x <- trajectory(sir) 
- y <- cbind(as.data.frame(sir),x=x["cases",1,])
- mutate(y,xlab=sprintf("x[%d]",time),
-       ylab=sprintf("y[%d]",time)) -> y
+ y <- cbind(as.data.frame(sir),x=x["H",1,])
+ mutate(y,xlab=sprintf("H[%d]",day),
+       ylab=sprintf("B[%d]",day)) -> y
 
  ggplot(data=y,
-       mapping=aes(x=time,xend=time))+
-  geom_point(aes(y=reports),color='black',alpha=0.5)+
+       mapping=aes(x=day,xend=day))+
+  geom_point(aes(y=B),color='black',alpha=0.5)+
   geom_point(aes(y=x),color='red',alpha=0.5)+
-  geom_line(aes(y=reports),color='black',alpha=0.5)+
+  geom_line(aes(y=B),color='black',alpha=0.5)+
   geom_line(aes(y=x),color='red',alpha=0.5)+
-  geom_text(aes(y=reports,label=ylab,vjust=ifelse(time>=10,2,-1)),
+  geom_text(aes(y=B,label=ylab,vjust=ifelse(day>=10,2,-1)),
     parse=TRUE,color='black')+
-  geom_text(aes(y=x,label=xlab,vjust=ifelse(time>=10,-1,2)),
+  geom_text(aes(y=x,label=xlab,vjust=ifelse(day>=10,-1,2)),
     parse=TRUE,color='red')+
-  geom_segment(aes(y=x,yend=reports),color='blue',linetype=2,alpha=0.3,
+  geom_segment(aes(y=x,yend=B),color='blue',linetype=2,alpha=0.3,
                arrow=grid::arrow(length=grid::unit(0.02,"npc")))+
   expand_limits(y=c(-20,320))+
   labs(y="")

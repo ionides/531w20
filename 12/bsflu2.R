@@ -35,7 +35,7 @@ bsflu2 <- pomp(
   data=bsflu_data,
   times="day",
   t0=0,
-  rprocess=euler.sim(
+  rprocess=euler(
     step.fun=Csnippet(bsflu_rprocess),
     delta.t=1/12
   ),
@@ -44,7 +44,7 @@ bsflu2 <- pomp(
   partrans=parameter_trans(log=c("Beta","mu_IR","mu_R1","mu_R2"),logit="rho"),
   statenames=bsflu_statenames,
   paramnames=bsflu_paramnames,
-  rinit=Csnippet(bsflu_initializer)
+  rinit=Csnippet(bsflu_rinit)
 )
 
 

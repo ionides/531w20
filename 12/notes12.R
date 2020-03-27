@@ -37,65 +37,60 @@ stopifnot(packageVersion("pomp")>="2.0")
 
 
 ## ----sir-sim1-----------------------------------------------------------------
-sims <- simulate(sir,params=c(Beta=2,gamma=1,rho=0.8,N=2600),nsim=20,
-                 as.data.frame=TRUE,include.data=TRUE)
-
-ggplot(sims,mapping=aes(x=time,y=B,group=sim,color=sim=="data"))+
-  geom_line()+guides(color=FALSE)
+  sims <- simulate(sir,params=c(Beta=1.8,mu_IR=1,rho=0.9,N=2600),
+    nsim=20,format="data.frame",include=TRUE)
+  ggplot(sims,mapping=aes(x=day,y=B,group=.id,color=.id=="data"))+
+    geom_line()+guides(color=FALSE)
 
 
 ## ----sir-pfilter-1,results='markup',cache=T-----------------------------------
-pf <- pfilter(sir,Np=5000,params=c(Beta=2,gamma=1,rho=0.8,N=2600))
+pf <- pfilter(sir,Np=5000,params=c(Beta=2,mu_IR=1,rho=0.8,N=2600))
 logLik(pf)
 
 
 ## ----sir-pfilter-2,results='markup',cache=T-----------------------------------
-pf <- replicate(10,pfilter(sir,Np=5000,params=c(Beta=2,gamma=1,rho=0.8,N=2600)))
+pf <- replicate(10,pfilter(sir,Np=5000,params=c(Beta=2,mu_IR=1,rho=0.8,N=2600)))
 ll <- sapply(pf,logLik); ll
 logmeanexp(ll,se=TRUE)
 
 
 ## ----sir-like-slice,cache=TRUE,results='hide'---------------------------------
 sliceDesign(
-  c(Beta=2,gamma=1,rho=0.8,N=2600),
+  c(Beta=2,mu_IR=1,rho=0.8,N=2600),
   Beta=rep(seq(from=0.5,to=4,length=40),each=3),
-  gamma=rep(seq(from=0.5,to=2,length=40),each=3)) -> p
+  mu_IR=rep(seq(from=0.5,to=2,length=40),each=3)) -> p
 
-require(foreach)
-require(doMC)
+# library(foreach)
+library(doParallel)
+registerDoParallel()
 
-registerDoMC(cores=5)        
-## number of cores 
-## usually the number of cores on your machine, or slightly smaller
+library(doRNG)
+registerDoRNG(3899882)
 
-set.seed(998468235L,kind="L'Ecuyer")
-mcopts <- list(preschedule=FALSE,set.seed=TRUE)
-
-foreach (theta=iter(p,"row"),.combine=rbind,
-         .inorder=FALSE,.options.multicore=mcopts) %dopar% 
- {
-   pfilter(sir,params=unlist(theta),Np=5000) -> pf
-   theta$loglik <- logLik(pf)
-   theta
- } -> p
+foreach (theta=iter(p,"row"),
+  .combine=rbind,.inorder=FALSE) %dopar% {
+    pfilter(sir,params=unlist(theta),Np=5000) -> pf
+    theta$loglik <- logLik(pf)
+    theta
+  } -> p
 
 
 ## ----sir-like-slice-plot,cache=TRUE,results="hide"----------------------------
-foreach (v=c("Beta","gamma")) %do% 
+foreach (v=c("Beta","mu_IR")) %do% 
 {
   x <- subset(p,slice==v)
   plot(x[[v]],x$loglik,xlab=v,ylab="loglik")
 }
 
 
-## ----sir-grid1----------------------------------------------------------------
+## ----sir-grid1,cache=TRUE-----------------------------------------------------
 expand.grid(Beta=seq(from=1,to=4,length=50),
-            gamma=seq(from=0.7,to=3,length=50),
+            mu_IR=seq(from=0.7,to=3,length=50),
             rho=0.8,
             N=2600) -> p
 
 foreach (theta=iter(p,"row"),.combine=rbind,
-         .inorder=FALSE,.options.multicore=mcopts) %dopar% 
+         .inorder=FALSE) %dopar% 
  {
    pfilter(sir,params=unlist(theta),Np=5000) -> pf
    theta$loglik <- logLik(pf)
@@ -103,13 +98,13 @@ foreach (theta=iter(p,"row"),.combine=rbind,
  } -> p
 
 
-## ----sir-grid1-plot-----------------------------------------------------------
+## ----sir-grid1-plot,cache=TRUE------------------------------------------------
 pp <- mutate(p,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
-ggplot(data=pp,mapping=aes(x=Beta,y=gamma,z=loglik,fill=loglik))+
+ggplot(data=pp,mapping=aes(x=Beta,y=mu_IR,z=loglik,fill=loglik))+
   geom_tile(color=NA)+
   geom_contour(color='black',binwidth=3)+
   scale_fill_gradient()+
-  labs(x=expression(beta),y=expression(gamma))
+  labs(x=expression(beta),y=expression(mu_IR))
 
 
 
@@ -120,8 +115,6 @@ bsflu_data <- read.table("bsflu_data.txt")
 
 
 ## ----bsflu_names--------------------------------------------------------------
-bsflu_statenames <- c("S","I","R1","R2")
-bsflu_paramnames <- c("Beta","mu_I","rho","mu_R1","mu_R2")
 
 
 ## ----bsflu_obsnames-----------------------------------------------------------
@@ -129,80 +122,23 @@ bsflu_paramnames <- c("Beta","mu_I","rho","mu_R1","mu_R2")
 
 
 ## ----csnippets_bsflu----------------------------------------------------------
-bsflu_dmeasure <- "
-  lik = dpois(B,rho*R1+1e-6,give_log);
-"
-
-bsflu_rmeasure <- "
-  B = rpois(rho*R1+1e-6);
-  C = rpois(rho*R2);
-"
-
-bsflu_rprocess <- "
-  double t1 = rbinom(S,1-exp(-Beta*I*dt));
-  double t2 = rbinom(I,1-exp(-dt*mu_I));
-  double t3 = rbinom(R1,1-exp(-dt*mu_R1));
-  double t4 = rbinom(R2,1-exp(-dt*mu_R2));
-  S -= t1;
-  I += t1 - t2;
-  R1 += t2 - t3;
-  R2 += t3 - t4;
-"
-
-bsflu_fromEstimationScale <- "
- TBeta = exp(Beta);
- Tmu_I = exp(mu_I);
- Trho = expit(rho);
-"
-
-bsflu_toEstimationScale <- "
- TBeta = log(Beta);
- Tmu_I = log(mu_I);
- Trho = logit(rho);
-"
-
-bsflu_initializer <- "
- S=762;
- I=1;
- R1=0;
- R2=0;
-"
-
-
-## ----pomp_bsflu---------------------------------------------------------------
-require(pomp)
-stopifnot(packageVersion("pomp")>="0.75-1")
-bsflu2 <- pomp(
-  data=bsflu_data,
-  times="day",
-  t0=0,
-  rprocess=euler.sim(
-    step.fun=Csnippet(bsflu_rprocess),
-    delta.t=1/12
-  ),
-  rmeasure=Csnippet(bsflu_rmeasure),
-  dmeasure=Csnippet(bsflu_dmeasure),
-  fromEstimationScale=Csnippet(bsflu_fromEstimationScale),
-  toEstimationScale=Csnippet(bsflu_toEstimationScale),
-  obsnames = bsflu_obsnames,
-  statenames=bsflu_statenames,
-  paramnames=bsflu_paramnames,
-  initializer=Csnippet(bsflu_initializer)
-)
-plot(bsflu2)
+source("bsflu2.R")
 
 
 ## ----run_level----------------------------------------------------------------
-run_level <- 3
-switch(run_level,
-       {bsflu_Np=100; bsflu_Nmif=10; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10}, 
+run_level <- 1
+switch(run_level, {
+  bsflu_Np=100; bsflu_Nmif=10; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10
+  }, 
        {bsflu_Np=20000; bsflu_Nmif=100; bsflu_Neval=10; bsflu_Nglobal=10; bsflu_Nlocal=10}, 
        {bsflu_Np=60000; bsflu_Nmif=300; bsflu_Neval=10; bsflu_Nglobal=100; bsflu_Nlocal=20}
 )
 
 
 ## ----bsflu_params-------------------------------------------------------------
-bsflu_params <- data.matrix(read.table("mif_bsflu_params.csv",row.names=NULL,header=TRUE))
+bsflu_params <- data.matrix(
+  read.table("mif_bsflu_params.csv",
+  row.names=NULL,header=TRUE))
 bsflu_mle <- bsflu_params[which.max(bsflu_params[,"logLik"]),][bsflu_paramnames]
 
 
@@ -211,24 +147,16 @@ bsflu_fixed_params <- c(mu_R1=1/(sum(bsflu_data$B)/512),mu_R2=1/(sum(bsflu_data$
 
 
 ## ----parallel-setup,cache=FALSE-----------------------------------------------
-require(doParallel)
-cores <- 20  # The number of cores on this machine 
-registerDoParallel(cores)
-mcopts <- list(set.seed=TRUE)
+library(doParallel)
+registerDoParallel()
+library(doRNG)
 
-set.seed(396658101,kind="L'Ecuyer")
-
-
-## ----alternative_parallel, eval=FALSE-----------------------------------------
-## require(doMC)
-## registerDoMC(cores=20)
 
 
 ## ----pf-----------------------------------------------------------------------
 stew(file=sprintf("pf-%d.rda",run_level),{
   t_pf <- system.time(
-    pf <- foreach(i=1:20,.packages='pomp',
-                  .options.multicore=mcopts) %dopar% try(
+    pf <- foreach(i=1:20,.packages='pomp') %dopar% try(
                     pfilter(bsflu2,params=bsflu_mle,Np=bsflu_Np)
                   )
   )
@@ -251,18 +179,17 @@ bsflu_cooling.fraction.50 <- 0.5
 stew(file=sprintf("local_search-%d.rda",run_level),{
   
   t_local <- system.time({
-    mifs_local <- foreach(i=1:bsflu_Nlocal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  {
+    mifs_local <- foreach(i=1:bsflu_Nlocal,.packages='pomp', .combine=c) %dopar%  {
       mif2(
         bsflu2,
-        start=bsflu_mle,
+        params=bsflu_mle,
         Np=bsflu_Np,
         Nmif=bsflu_Nmif,
         cooling.type="geometric",
         cooling.fraction.50=bsflu_cooling.fraction.50,
-        transform=TRUE,
         rw.sd=rw.sd(
           Beta=bsflu_rw.sd,
-          mu_I=bsflu_rw.sd,
+          mu_IR=bsflu_rw.sd,
           rho=bsflu_rw.sd
         )
       )
@@ -289,13 +216,13 @@ summary(results_local$logLik,digits=5)
 
 
 ## ----pairs_local--------------------------------------------------------------
-pairs(~logLik+Beta+mu_I+rho,data=subset(results_local,logLik>max(logLik)-50))
+pairs(~logLik+Beta+mu_IR+rho,data=subset(results_local,logLik>max(logLik)-50))
 
 
 ## ----box----------------------------------------------------------------------
 bsflu_box <- rbind(
   Beta=c(0.001,0.01),
-  mu_I=c(0.5,2),
+  mu_IR=c(0.5,2),
   rho = c(0.5,1)
 )
 
@@ -304,9 +231,9 @@ bsflu_box <- rbind(
 stew(file=sprintf("box_eval-%d.rda",run_level),{
   
   t_global <- system.time({
-    mifs_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp', .combine=c, .options.multicore=mcopts) %dopar%  mif2(
+    mifs_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp', .combine=c) %dopar%  mif2(
       mifs_local[[1]],
-      start=c(apply(bsflu_box,1,function(x)runif(1,x[1],x[2])),bsflu_fixed_params)
+      params=c(apply(bsflu_box,1,function(x)runif(1,x[1],x[2])),bsflu_fixed_params)
     )
   })
 },seed=1270401374,kind="L'Ecuyer")
@@ -315,7 +242,7 @@ stew(file=sprintf("box_eval-%d.rda",run_level),{
 ## ----lik_global_eval----------------------------------------------------------
 stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
   t_global_eval <- system.time({
-    liks_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp',.combine=rbind, .options.multicore=mcopts) %dopar% {
+    liks_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp',.combine=rbind) %dopar% {
       evals <- replicate(bsflu_Neval, logLik(pfilter(bsflu2,params=coef(mifs_global[[i]]),Np=bsflu_Np)))
       logmeanexp(evals, se=TRUE)
     }
@@ -333,7 +260,7 @@ summary(results_global$logLik,digits=5)
 
 
 ## ----pairs_global-------------------------------------------------------------
-pairs(~logLik+Beta+mu_I+rho,data=subset(results_global,logLik>max(logLik)-250))
+pairs(~logLik+Beta+mu_IR+rho,data=subset(results_global,logLik>max(logLik)-250))
 
 
 ## ----class_mifs_global--------------------------------------------------------
