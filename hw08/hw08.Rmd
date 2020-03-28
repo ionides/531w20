@@ -1,0 +1,62 @@
+---
+title: "Homework 8, due Mon 4/13"
+author: "Stats 531, Winter 2020"
+output:
+  html_document:
+    theme: flatly
+    toc: no
+---
+
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\data[1]{#1^*}
+
+--------
+
+
+<big><big>Objectives</big></big>
+
+To modify and run a maximum likelihood analysis for a nonlinear POMP model of sufficient size and complexity to provide a foundation for the final project.
+
+
+------
+
+
+All the following questions relate to the case study in Chapter 12 of the notes, using iterated filtering to maximize the likelihood for the boarding school influenza model represented by the pomp object `bsflu2`.
+
+Carry out the following exercises, and write an Rmd file presenting your code and explanations. Use `stew` or `bake` to carry out the computations. Scale your computations to a reasonable runtime given the computational resources you have available. Submit to Canvas a zip file with the Rmd file and additional files containing the R objects cached by `stew` or `bake`.
+
+It is recommended, but not required, to carry out the final version of the computations using the Great Lakes cluster. You can develop and debug your code on a different machine and then run a longer version, with a larger Monte Carlo effort, on Great Lakes.
+
+-----
+
+
+**<big>Question 8.1</big>. Assessing and improving algorithmic parameters. **
+
+Use the diagnostic plots on slide 57 of Chapter 12 to form a hypothesis on how you might be able to improve the choice of the algorithmic parameters (i.e., the arguments to the call to `mif2` that relate to the operation of the algorithm and are not part of the model). Compare the diagnostic plots with and without your proposed modification, to assess the success of your hypothesis.
+
+-----------
+
+**<big>Question 8.2</big>.  Finding sharp peaks in the likelihood surface. **
+
+Even in the small, 3 parameter, boarding school influenza example, it takes a considerable amount of computation to find the global maximum (with values of $\beta$ around 0.004) starting from uniform draws in the specified parameter box. The problem is that, on the scale on which "uniform" is defined, the peak around $\beta\approx 0.004$ is very narrow. Propose and implement a more favorable way to draw starting parameters for the global search, which is less dependent on the scale. Your solution may involve taking logarithms, since this converts scale factors to additive factors: ranges that are uniform on a logarithmic scale therefore have good scale invariance properties.
+
+-----------
+
+**<big>Question 8.3</big>.  Construct a profile likelihood. **
+
+How strong is the evidence about the specific value of the contact rate, $\beta$, given the `bsflu2` model and data? Use `mif2` to construct a profile likelihood and corresponding approximate confidence interval for this parameter.
+
+----------
+
+**<big>Question 8.4</big>. This feedback question is worth credit. **
+
+(a) Explain which parts of your responses above made use of a source, meaning anything or anyone you consulted (including classmates or office hours) to help you write or check your answers. All sources are permitted. To encourage responsible use of these sources while maintaining class integrity, we require a response to this question, even if this may occasionally just say that you worked out everything entirely by yourself. See the syllabus for additional information on grading.
+
+(b) How long did this homework take? Report on any technical difficulties that arose.
+
+--------
+--------
+

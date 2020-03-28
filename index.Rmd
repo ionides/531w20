@@ -86,6 +86,10 @@ Recording:
 12. Practical likelihood-based inference for POMP models.
 [ pdf. ](12/notes12.pdf)
 [ R script. ](12/notes12.R)
+Recording:
+[ part 1. ](https://drive.google.com/open?id=1yQGF6WFZzuaydikoQ4iUimwPieyuCjVW)
+
+
 
 <!--
 13. [Time series models with covariates, and a case study of polio](13/notes13.html). [(R script)](13/notes13.R)

@@ -33,8 +33,8 @@
 <<knitr_opts,echo=F,cache=F,purl=F>>=
 library(knitr)
 opts_chunk$set(
-#  cache=FALSE,
-  cache=TRUE,
+  cache=FALSE,
+#  cache=TRUE,
   eval=TRUE,
   include=TRUE,
   echo=TRUE,
@@ -879,12 +879,10 @@ bsflu_paramnames <- c("Beta","mu_IR","rho","mu_R1","mu_R2")
 \begin{frame}[fragile]
 
 <<Csnippets_bsflu2>>=
-
 bsflu_data <- read.table("bsflu_data.txt")
-bsflu_data <- subset(bsflu_data,select=c(day,B))
 
 bsflu2 <- pomp(
-  data=bsflu_data,
+  data=subset(bsflu_data,select=c(day,B)),
   times="day",
   t0=0,
   rprocess=euler(
@@ -899,7 +897,6 @@ bsflu2 <- pomp(
   paramnames=bsflu_paramnames,
   rinit=Csnippet(bsflu_rinit)
 )
-
 @
 
 \end{frame}
@@ -916,7 +913,7 @@ bsflu2 <- pomp(
 \item For more precise time-consuming computations, \code{run_level=3}.
 \ei
 <<run_level>>=
-run_level <- 3
+run_level <- 2
 switch(run_level, {
   bsflu_Np=100; bsflu_Nmif=10; bsflu_Neval=10;
   bsflu_Nglobal=10; bsflu_Nlocal=10
