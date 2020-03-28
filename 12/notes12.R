@@ -103,19 +103,27 @@ foreach (theta=iter(p,"row"),.combine=rbind,
   } -> p
 
 
+<<<<<<< HEAD
 ## ----sir-grid1-plot,cache=TRUE,out.width="10cm"--------------------------
+=======
+## ----sir-grid1-plot,cache=TRUE,out.width="11cm"-------------------------------
+>>>>>>> 4337266b8eff5b3c0ca0d2e8839194785f6f3d17
 pp <- mutate(p,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
 ggplot(data=pp,mapping=aes(x=Beta,y=mu_IR,z=loglik,fill=loglik))+
   geom_tile(color=NA)+
-  geom_contour(color='black',binwidth=3)+
   scale_fill_gradient()+
+  geom_contour(color='black',binwidth=3)+
   labs(x=expression(beta),y=expression(mu[IR]))
 
 
+<<<<<<< HEAD
 
 
 
 ## ----bsflu_rprocess------------------------------------------------------
+=======
+## ----bsflu_rprocess-----------------------------------------------------------
+>>>>>>> 4337266b8eff5b3c0ca0d2e8839194785f6f3d17
 bsflu_rprocess <- "
   double dN_SI = rbinom(S,1-exp(-Beta*I*dt));
   double dN_IR1 = rbinom(I,1-exp(-dt*mu_IR));
@@ -203,7 +211,11 @@ bsflu_fixed_params <- c(mu_R1=1/(sum(bsflu_data$B)/512),
   mu_R2=1/(sum(bsflu_data$C)/512) )
 
 
+<<<<<<< HEAD
 ## ----pf------------------------------------------------------------------
+=======
+## ----pf,cache=FALSE-----------------------------------------------------------
+>>>>>>> 4337266b8eff5b3c0ca0d2e8839194785f6f3d17
 stew(file=sprintf("pf-%d.rda",run_level),{
   t_pf <- system.time(
     pf <- foreach(i=1:20,.packages='pomp') %dopar% try(
@@ -222,7 +234,11 @@ stew(file=sprintf("pf-%d.rda",run_level),{
 ##   )
 
 
+<<<<<<< HEAD
 ## ----box_search_local----------------------------------------------------
+=======
+## ----box_search_local,cache=FALSE---------------------------------------------
+>>>>>>> 4337266b8eff5b3c0ca0d2e8839194785f6f3d17
 bsflu_rw.sd <- 0.02; bsflu_cooling.fraction.50 <- 0.5
 stew(file=sprintf("local_search-%d.rda",run_level),{
   t_local <- system.time({
@@ -243,7 +259,11 @@ stew(file=sprintf("local_search-%d.rda",run_level),{
 },seed=900242057,kind="L'Ecuyer")
 
 
+<<<<<<< HEAD
 ## ----lik_local_eval------------------------------------------------------
+=======
+## ----lik_local_eval,cache=FALSE-----------------------------------------------
+>>>>>>> 4337266b8eff5b3c0ca0d2e8839194785f6f3d17
 stew(file=sprintf("lik_local-%d.rda",run_level),{
   t_local_eval <- system.time({
   liks_local <- foreach(i=1:bsflu_Nlocal,.combine=rbind)%dopar% {
@@ -280,7 +300,11 @@ bsflu_box <- rbind(
 )
 
 
+<<<<<<< HEAD
 ## ----box_eval------------------------------------------------------------
+=======
+## ----box_eval,cache=FALSE-----------------------------------------------------
+>>>>>>> 4337266b8eff5b3c0ca0d2e8839194785f6f3d17
 stew(file=sprintf("box_eval-%d.rda",run_level),{
   t_global <- system.time({
     mifs_global <- foreach(i=1:bsflu_Nglobal,.combine=c) %dopar% {
@@ -294,7 +318,11 @@ stew(file=sprintf("box_eval-%d.rda",run_level),{
 },seed=1270401374,kind="L'Ecuyer")
 
 
+<<<<<<< HEAD
 ## ----lik_global_eval-----------------------------------------------------
+=======
+## ----lik_global_eval,cache=FALSE----------------------------------------------
+>>>>>>> 4337266b8eff5b3c0ca0d2e8839194785f6f3d17
 stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
   t_global_eval <- system.time({
     liks_global <- foreach(i=1:bsflu_Nglobal,
