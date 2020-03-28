@@ -223,50 +223,53 @@ stew(file=sprintf("pf-%d.rda",run_level),{
 
 
 ## ----box_search_local---------------------------------------------------------
-bsflu_rw.sd <- 0.02
-bsflu_cooling.fraction.50 <- 0.5
-
+bsflu_rw.sd <- 0.02; bsflu_cooling.fraction.50 <- 0.5
 stew(file=sprintf("local_search-%d.rda",run_level),{
-  
   t_local <- system.time({
-    mifs_local <- foreach(i=1:bsflu_Nlocal,.packages='pomp', .combine=c) %dopar%  {
-      mif2(
-        bsflu2,
+  mifs_local <- foreach(i=1:bsflu_Nlocal,
+    .packages='pomp', .combine=c) %dopar%  {
+      mif2(bsflu2,
         params=bsflu_mle,
         Np=bsflu_Np,
         Nmif=bsflu_Nmif,
-        cooling.type="geometric",
         cooling.fraction.50=bsflu_cooling.fraction.50,
         rw.sd=rw.sd(
           Beta=bsflu_rw.sd,
           mu_IR=bsflu_rw.sd,
-          rho=bsflu_rw.sd
-        )
+          rho=bsflu_rw.sd)
       )
-      
     }
   })
-  
 },seed=900242057,kind="L'Ecuyer")
-
 
 
 ## ----lik_local_eval-----------------------------------------------------------
 stew(file=sprintf("lik_local-%d.rda",run_level),{
-    t_local_eval <- system.time({
-    liks_local <- foreach(i=1:bsflu_Nlocal,.packages='pomp',.combine=rbind) %dopar% {
-      evals <- replicate(bsflu_Neval, logLik(pfilter(bsflu2,params=coef(mifs_local[[i]]),Np=bsflu_Np)))
-      logmeanexp(evals, se=TRUE)
+  t_local_eval <- system.time({
+  liks_local <- foreach(i=1:bsflu_Nlocal,.combine=rbind)%dopar% {
+    evals <- replicate(bsflu_Neval, logLik(
+      pfilter(bsflu2,params=coef(mifs_local[[i]]),Np=bsflu_Np)))
+    logmeanexp(evals, se=TRUE)
     }
   })
 },seed=900242057,kind="L'Ecuyer")
 
-results_local <- data.frame(logLik=liks_local[,1],logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+results_local <- data.frame(logLik=liks_local[,1],
+  logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+
+
+## ----lik_local_summary--------------------------------------------------------
 summary(results_local$logLik,digits=5)
 
 
-## ----pairs_local--------------------------------------------------------------
-pairs(~logLik+Beta+mu_IR+rho,data=subset(results_local,logLik>max(logLik)-50))
+## ----pairs_local_code,eval=FALSE,echo=T---------------------------------------
+## pairs(~logLik+Beta+mu_IR+rho,
+##   data=subset(results_local,logLik>max(logLik)-50))
+
+
+## ----pairs_local_plot,eval=TRUE,echo=FALSE,out.width="12cm"-------------------
+pairs(~logLik+Beta+mu_IR+rho,
+  data=subset(results_local,logLik>max(logLik)-50))
 
 
 ## ----box----------------------------------------------------------------------
@@ -279,12 +282,14 @@ bsflu_box <- rbind(
 
 ## ----box_eval-----------------------------------------------------------------
 stew(file=sprintf("box_eval-%d.rda",run_level),{
-  
   t_global <- system.time({
-    mifs_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp', .combine=c) %dopar%  mif2(
-      mifs_local[[1]],
-      params=c(apply(bsflu_box,1,function(x)runif(1,x[1],x[2])),bsflu_fixed_params)
-    )
+    mifs_global <- foreach(i=1:bsflu_Nglobal,.combine=c) %dopar% {
+      mif2(
+        mifs_local[[1]],
+        params=c(
+          apply(bsflu_box,1,function(x)runif(1,x[1],x[2])),
+	  bsflu_fixed_params)
+      )}
   })
 },seed=1270401374,kind="L'Ecuyer")
 
@@ -292,33 +297,44 @@ stew(file=sprintf("box_eval-%d.rda",run_level),{
 ## ----lik_global_eval----------------------------------------------------------
 stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
   t_global_eval <- system.time({
-    liks_global <- foreach(i=1:bsflu_Nglobal,.packages='pomp',.combine=rbind) %dopar% {
-      evals <- replicate(bsflu_Neval, logLik(pfilter(bsflu2,params=coef(mifs_global[[i]]),Np=bsflu_Np)))
-      logmeanexp(evals, se=TRUE)
+    liks_global <- foreach(i=1:bsflu_Nglobal,
+      .combine=rbind) %dopar% {
+        evals <- replicate(bsflu_Neval,
+          logLik(pfilter(bsflu2,
+	    params=coef(mifs_global[[i]]),Np=bsflu_Np)))
+        logmeanexp(evals, se=TRUE)
     }
   })
 },seed=442141592,kind="L'Ecuyer")
 
-results_global <- data.frame(logLik=liks_global[,1],logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+results_global <- data.frame(
+  logLik=liks_global[,1],
+  logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
 summary(results_global$logLik,digits=5)
 
 
 ## ----save_params,eval=FALSE---------------------------------------------------
 ## if (run_level>2)
 ##   write.table(rbind(results_local,results_global),
-##               file="mif_bsflu_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+##     file="mif_bsflu_params.csv",
+##       append=TRUE,col.names=FALSE,row.names=FALSE)
 
 
-## ----pairs_global-------------------------------------------------------------
-pairs(~logLik+Beta+mu_IR+rho,data=subset(results_global,logLik>max(logLik)-250))
+## ----pairs_global_code,echo=TRUE,eval=FALSE-----------------------------------
+## pairs(~logLik+Beta+mu_IR+rho,
+##   data=subset(results_global,logLik>max(logLik)-250))
+
+
+## ----pairs_global,echo=FALSE,eval=TRUE,out.width="12cm"-----------------------
+pairs(~logLik+Beta+mu_IR+rho,
+  data=subset(results_global,logLik>max(logLik)-250))
 
 
 ## ----class_mifs_global--------------------------------------------------------
 class(mifs_global)
 class(mifs_global[[1]])
-class(c(mifs_global[[1]],mifs_global[[2]]))
 
 
-## ----mifs_global_plot---------------------------------------------------------
+## ----mifs_global_plot,out.width="8cm",echo=FALSE------------------------------
 plot(mifs_global)
 

@@ -83,9 +83,11 @@ Recording:
 [ part 1. ](https://drive.google.com/open?id=1_R5BNaqtX0comQ_0jHNDQwAF3f8CtmmP)
 [ part 2. ](https://drive.google.com/open?id=1GDce46Ucx4TKEwAhz4fClUKmpCQdZJ1k)
 
-<!--
-12. [Practical likelihood-based inference for POMP models](12/notes12.html). [(R script)](12/notes12.R)
+12. Practical likelihood-based inference for POMP models.
+[ pdf. ](12/notes12.pdf)
+[ R script. ](12/notes12.R)
 
+<!--
 13. [Time series models with covariates, and a case study of polio](13/notes13.html). [(R script)](13/notes13.R)
 
 14. [Case study: POMP modeling to investigate financial volatility](14/notes14.html). [(R script)](notes15/notes15.R)
