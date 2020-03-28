@@ -6,6 +6,7 @@
 
 \newcommand\CHAPTER{12}
 
+\setbeamertemplate{footline}[frame number]
 
 \newcommand\eqspace{\quad\quad\quad}
 \newcommand\eqskip{\vspace{2.5mm}}
@@ -476,53 +477,26 @@ foreach (theta=iter(p,"row"),.combine=rbind,
 \begin{frame}[fragile]
 
 
-<<sir-grid1-plot,cache=TRUE,out.width="10cm">>=
+<<sir-grid1-plot,cache=TRUE,out.width="11cm">>=
 pp <- mutate(p,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
 ggplot(data=pp,mapping=aes(x=Beta,y=mu_IR,z=loglik,fill=loglik))+
   geom_tile(color=NA)+
-  geom_contour(color='black',binwidth=3)+
   scale_fill_gradient()+
+  geom_contour(color='black',binwidth=3)+
   labs(x=expression(beta),y=expression(mu[IR]))
 @
 
 \end{frame}
 
 
-\begin{frame}[fragile]
-
-<<sir-grid2,eval=FALSE,include=FALSE,purl=FALSE,fig.show=FALSE,cache=TRUE>>=
-expand.grid(Beta=seq(from=1,to=3,length=50),
-            mu_IR=1,
-            rho=0.8,
-            N=seq(from=1600,to=3000,length=50)) -> p
-
-foreach (theta=iter(p,"row"),.combine=rbind,
-         .inorder=FALSE) %dopar% 
- {
-   pfilter(sir,params=unlist(theta),Np=5000) -> pf
-   theta$loglik <- logLik(pf)
-   theta
- } -> p
-
-@
-<<sir-grid2-plot,eval=FALSE,include=FALSE,purl=FALSE>>=
-pp <- mutate(p,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
-ggplot(data=pp,mapping=aes(x=Beta,y=N,z=loglik,fill=loglik))+
-  geom_tile(color=NA)+
-  geom_contour(color='black',binwidth=3)+
-  scale_fill_gradient()+
-  labs(x=expression(beta),y=expression(N))
-@
-
-\end{frame}
 
 \begin{frame}[fragile]
 
-\frametitle{Likelihood maximization for the boarding school flu example}
+\frametitle{Likelihood maximization}
 \bi
 \item  We saw above that the default parameter set for the 'bsflu' pomp object is not particularly close to the MLE.
 
-\item  One way to find the MLE is to try optimizing the estimated likelihood, computed by the particle filter, directly.
+\item  One approach to find the MLE is to apply an optimizer to the particle filter estimate of the likelihood.
 
 \item  There are many optimization algorithms to choose from, and many implemented in R.
 
@@ -994,7 +968,7 @@ bsflu_fixed_params <- c(mu_R1=1/(sum(bsflu_data$B)/512),
 \item  We proceed to carry out replicated particle filters at this tentative MLE:
 \ei
 
-<<pf>>=
+<<pf,cache=FALSE>>=
 stew(file=sprintf("pf-%d.rda",run_level),{
   t_pf <- system.time(
     pf <- foreach(i=1:20,.packages='pomp') %dopar% try(
@@ -1101,7 +1075,7 @@ Rmarkdown will get this wrong. \myemph{It will not recompute the chunk}.
 
 \vspace{-2mm}
 
-<<box_search_local>>=
+<<box_search_local,cache=FALSE>>=
 bsflu_rw.sd <- 0.02; bsflu_cooling.fraction.50 <- 0.5
 stew(file=sprintf("local_search-%d.rda",run_level),{
   t_local <- system.time({
@@ -1132,7 +1106,7 @@ Partly, because some parameter perturbations remain in the last filtering iterat
 \item  Therefore, we evaluate the likelihood, together with a standard error, using replicated particle filters at each point estimate:
 \ei
 
-<<lik_local_eval>>=
+<<lik_local_eval,cache=FALSE>>=
 stew(file=sprintf("lik_local-%d.rda",run_level),{
   t_local_eval <- system.time({
   liks_local <- foreach(i=1:bsflu_Nlocal,.combine=rbind)%dopar% {
@@ -1224,7 +1198,7 @@ bsflu_box <- rbind(
 
 \begin{frame}[fragile]
 
-<<box_eval>>=
+<<box_eval,cache=FALSE>>=
 stew(file=sprintf("box_eval-%d.rda",run_level),{
   t_global <- system.time({
     mifs_global <- foreach(i=1:bsflu_Nglobal,.combine=c) %dopar% {
@@ -1244,7 +1218,7 @@ stew(file=sprintf("box_eval-%d.rda",run_level),{
 
 \frametitle{Repeated likelihood evaluations at each point estimate}
 
-<<lik_global_eval>>=
+<<lik_global_eval,cache=FALSE>>=
 stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
   t_global_eval <- system.time({
     liks_global <- foreach(i=1:bsflu_Nglobal,

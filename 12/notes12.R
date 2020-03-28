@@ -103,16 +103,13 @@ foreach (theta=iter(p,"row"),.combine=rbind,
   } -> p
 
 
-## ----sir-grid1-plot,cache=TRUE,out.width="10cm"-------------------------------
+## ----sir-grid1-plot,cache=TRUE,out.width="11cm"-------------------------------
 pp <- mutate(p,loglik=ifelse(loglik>max(loglik)-100,loglik,NA))
 ggplot(data=pp,mapping=aes(x=Beta,y=mu_IR,z=loglik,fill=loglik))+
   geom_tile(color=NA)+
-  geom_contour(color='black',binwidth=3)+
   scale_fill_gradient()+
+  geom_contour(color='black',binwidth=3)+
   labs(x=expression(beta),y=expression(mu[IR]))
-
-
-
 
 
 ## ----bsflu_rprocess-----------------------------------------------------------
@@ -203,7 +200,7 @@ bsflu_fixed_params <- c(mu_R1=1/(sum(bsflu_data$B)/512),
   mu_R2=1/(sum(bsflu_data$C)/512) )
 
 
-## ----pf-----------------------------------------------------------------------
+## ----pf,cache=FALSE-----------------------------------------------------------
 stew(file=sprintf("pf-%d.rda",run_level),{
   t_pf <- system.time(
     pf <- foreach(i=1:20,.packages='pomp') %dopar% try(
@@ -222,7 +219,7 @@ stew(file=sprintf("pf-%d.rda",run_level),{
 ##   )
 
 
-## ----box_search_local---------------------------------------------------------
+## ----box_search_local,cache=FALSE---------------------------------------------
 bsflu_rw.sd <- 0.02; bsflu_cooling.fraction.50 <- 0.5
 stew(file=sprintf("local_search-%d.rda",run_level),{
   t_local <- system.time({
@@ -243,7 +240,7 @@ stew(file=sprintf("local_search-%d.rda",run_level),{
 },seed=900242057,kind="L'Ecuyer")
 
 
-## ----lik_local_eval-----------------------------------------------------------
+## ----lik_local_eval,cache=FALSE-----------------------------------------------
 stew(file=sprintf("lik_local-%d.rda",run_level),{
   t_local_eval <- system.time({
   liks_local <- foreach(i=1:bsflu_Nlocal,.combine=rbind)%dopar% {
@@ -280,7 +277,7 @@ bsflu_box <- rbind(
 )
 
 
-## ----box_eval-----------------------------------------------------------------
+## ----box_eval,cache=FALSE-----------------------------------------------------
 stew(file=sprintf("box_eval-%d.rda",run_level),{
   t_global <- system.time({
     mifs_global <- foreach(i=1:bsflu_Nglobal,.combine=c) %dopar% {
@@ -294,7 +291,7 @@ stew(file=sprintf("box_eval-%d.rda",run_level),{
 },seed=1270401374,kind="L'Ecuyer")
 
 
-## ----lik_global_eval----------------------------------------------------------
+## ----lik_global_eval,cache=FALSE----------------------------------------------
 stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
   t_global_eval <- system.time({
     liks_global <- foreach(i=1:bsflu_Nglobal,
