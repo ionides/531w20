@@ -28,7 +28,8 @@ All the following questions relate to the case study in Chapter 12 of the notes,
 
 Carry out the following exercises, and write an Rmd file presenting your code and explanations. Use `stew` or `bake` to carry out the computations. Scale your computations to a reasonable runtime given the computational resources you have available. Submit to Canvas a zip file with the Rmd file and additional files containing the R objects cached by `stew` or `bake`.
 
-It is recommended, but not required, to carry out the final version of the computations using the Great Lakes cluster. You can develop and debug your code on a different machine and then run a longer version, with a larger Monte Carlo effort, on Great Lakes.
+Optionally, you can carry out the final version of the computations using the Great Lakes cluster. You can develop and debug your code on a different machine and then run a longer version, with a larger Monte Carlo effort, on Great Lakes. This will be a useful skill for the final project, but not essential. 
+
 
 -----
 
@@ -58,5 +59,6 @@ How strong is the evidence about the specific value of the contact rate, $\beta$
 (b) How long did this homework take? Report on any technical difficulties that arose.
 
 --------
+
 --------
 

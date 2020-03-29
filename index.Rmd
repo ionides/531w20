@@ -88,8 +88,8 @@ Recording:
 [ R script. ](12/notes12.R)
 Recording:
 [ part 1. ](https://drive.google.com/open?id=1yQGF6WFZzuaydikoQ4iUimwPieyuCjVW)
-
-
+[ part 2. ](https://drive.google.com/open?id=1FXdDcLQFGXBj6y0gzSmZ2Cqez0OZ8PUT)
+[ part 3. ](https://drive.google.com/open?id=12aq_lxdtNWbaZAdBfVRawwEkTk32Cy_O)
 
 <!--
 13. [Time series models with covariates, and a case study of polio](13/notes13.html). [(R script)](13/notes13.R)
@@ -129,11 +129,12 @@ Please read the [grading policy in the syllabus](syllabus.html) before turning i
 
 <!--
 [Solution](hw07/sol07.html).
+-->
 
-* [Homework 8](hw08/hw08.html), to be carried out by Monday 4/2.
+* [Homework 8](hw08/hw08.html), due 5pm on Mon Apr 13.
 
-* [Homework 9](hw09/hw09.html), due on Monday 4/16. [Solution](hw09/sol09.html).
-
+<!--
+[Solution](hw08/sol08.html).
 -->
 
 
