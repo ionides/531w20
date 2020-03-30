@@ -109,15 +109,15 @@ csl: ecology.csl
 
 46. [Time Series Analysis on Mothly Crime Numbers in Seattle from 2008 to 2018](https://ionides.github.io/531w20/midterm_project/project46/MT2.html)
 
-47. [Estimating Value-at-Risk and Expected Shortfall](https://ionides.github.io/531w20/midterm_project/project46/midterm_project.html)
+47. [Estimating Value-at-Risk and Expected Shortfall](https://ionides.github.io/531w20/midterm_project/project47/midterm_project.html)
 
-48. [Study of household electricity consumption data](https://ionides.github.io/531w20/midterm_project/project46/pro.html)
+48. [Study of household electricity consumption data](https://ionides.github.io/531w20/midterm_project/project48/pro.html)
 
-49. [Toronto Temperature Time Series Exploration](https://ionides.github.io/531w20/midterm_project/project46/midtermproject_out.html)
+49. [Toronto Temperature Time Series Exploration](https://ionides.github.io/531w20/midterm_project/project49/midtermproject_out.html)
 
-50. [Monthly sunspot dataset](https://ionides.github.io/531w20/midterm_project/project46/Mid_pro.html)
+50. [Monthly sunspot dataset](https://ionides.github.io/531w20/midterm_project/project50/Mid_pro.html)
 
-51. [Time Series Analysis of Exchange Rate of Euro-USD with respect to Brexit](https://ionides.github.io/531w20/midterm_project/project46/midterm_stats531.html)
+51. [Time Series Analysis of Exchange Rate of Euro-USD with respect to Brexit](https://ionides.github.io/531w20/midterm_project/project51/midterm_stats531.html)
 
 ----------
 
