@@ -577,7 +577,7 @@ Fixing some parameters at known, scienficially reasonable values is tempting. Ho
 
 \bi
 
-\item  We use the IF2 algorithm of \citep{ionides15}.
+\item  We use the IF2 algorithm of \citet{ionides15}.
 
 \item  A particle filter is carried out with the parameter vector for each particle doing a random walk.
 
@@ -605,7 +605,7 @@ data, $y^*_{1:N}$
 \myemph{algorithmic parameters}:
 Number of iterations, $M$;
 number of particles, $J$;
-initial parameter swarm, $\{\Theta^0_j, j=1,\dots,J\}$;
+starting parameter swarm, $\{\Theta^0_j, j=1,\dots,J\}$;
 perturbation density, $h_n(\theta|\varphi;\sigma)$;
 perturbation scale, $\sigma_{1{:}M}$ 
 
@@ -677,7 +677,7 @@ Final parameter swarm, $\{\Theta^M_j, j=1,\dots,J\}$
 \frametitle{Choosing the algorithmic settings for IF2}
 
 \bi
-\item  The initial parameter swarm, $\{ \Theta^0_j, j=1,\dots,J\}$, usually consists of $J$ identical replications of some starting parameter vector.
+\item  The starting parameter swarm, $\{ \Theta^0_j, j=1,\dots,J\}$, usually consists of $J$ identical replications of some starting parameter vector.
 
 \item  $J$ should be sufficient for particle filtering. By the last iteration ($m=M$) one should not have effective sample size close to 1. 
 
@@ -754,12 +754,9 @@ $$
 
 \item  The recovery stages, $R_1$, $R_2$ and $R_3$, are all modeled to be non-contagious. 
 
-\item  $R_1$ consists of individuals who are bed-confined if they show symptoms. 
+\item  $R_1$ counts individuals who are bed-confined if they show symptoms; $R_2$ counts individuals who are convalescent if they showed symptoms; $R_3$ counts recovered individuals who have returned to schoolwork if they were symtomatic.  
 
-\item  $R_2$ consists of individuals who are convalescent if they showed symptoms.
-
-\item  $R_3$ consists of recovered individuals who have returned to schoolwork if they were symtomatic.  
-
+\item We use abbreviations $\mu_{IR}=\mu_{IR_1}$, $\mu_{R_1}=\mu_{R_1R_2}$, $\mu_{R_2}=\mu_{R_2R_3}$.
 
 \ei
 
@@ -984,7 +981,7 @@ stew(file=sprintf("pf-%d.rda",run_level),{
 
 \bi
 
-\item  In  \Sexpr{round(t_pf["elapsed"],1)} seconds, we obtain an unbiased likelihood estimate of \Sexpr{round(L_pf[1],2)} with a Monte standard error of \Sexpr{round(L_pf[2],2)}.
+\item  In  \Sexpr{round(t_pf["elapsed"],1)} seconds, we obtain an unbiased likelihood estimate of \Sexpr{round(L_pf[1],2)} with a Monte~Carlo standard error of \Sexpr{round(L_pf[2],2)}.
 
 \item  It is not unusual for computations in a POMP analysis to take hours to run on many cores.
 
