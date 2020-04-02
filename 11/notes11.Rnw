@@ -566,7 +566,7 @@ In this case, we'll assume that the stochasticity is purely demographic, i.e., t
 
 \item The number of individuals, $\dlta{N_{SI}}$, moving from S to I over interval $\dlta{t}$ as $$\dlta{N_{SI}} \sim \dist{Binomial}{S,1-e^{-\lambda\dlta{t}}},$$ and the number moving from I to R as $$\dlta{N_{IR}} \sim \dist{Binomial}{I,1-e^{-\gamma\dlta{t}}}.$$
 \ei
-<<rproc1,purl=FALSE>>=
+<<rproc1>>=
 sir_step <- Csnippet("
   double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt));
   double dN_IR = rbinom(I,1-exp(-gamma*dt));
@@ -581,7 +581,7 @@ sir_step <- Csnippet("
 \frametitle{Initial conditions}
 At day zero, we'll assume that $I=1$ and $R=0$, but we don't know how big the school is, so we treat $N$ as a parameter to be estimated and let $S(0)=N-1$.
 Thus an initializer \code{Csnippet} is
-<<init1,purl=FALSE>>=
+<<init1>>=
 sir_rinit <- Csnippet("
   S = N-1;
   I = 1;
@@ -589,7 +589,7 @@ sir_rinit <- Csnippet("
 ")
 @
 We fold these \code{Csnippet}s, with the data, into a \code{pomp} object thus:
-<<rproc1-pomp,purl=FALSE>>=
+<<rproc1-pomp>>=
 pomp(subset(bsflu,select=c(day,B)),
      time="day",t0=0,rprocess=euler(sir_step,delta.t=1/6),
      rinit=sir_rinit,paramnames=c("N","Beta","gamma"),

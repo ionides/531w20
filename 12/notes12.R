@@ -34,6 +34,28 @@ library(pomp)
 stopifnot(packageVersion("pomp")>="2.0")
 
 
+## ----det-example,echo=FALSE,results="hide",out.width="12cm"-------------------
+source("bsflu.R")
+ coef(sir) <- c(Beta=1.8,mu_IR=1,rho=0.9,N=2600)
+ x <- trajectory(sir) 
+ y <- cbind(as.data.frame(sir),x=x["H",1,])
+ mutate(y,xlab=sprintf("H[%d]",day),
+       ylab=sprintf("B[%d]",day)) -> y
+
+ ggplot(data=y,
+       mapping=aes(x=day,xend=day))+
+  geom_point(aes(y=B),color='black',alpha=0.5)+
+  geom_point(aes(y=x),color='red',alpha=0.5)+
+  geom_line(aes(y=B),color='black',alpha=0.5)+
+  geom_line(aes(y=x),color='red',alpha=0.5)+
+  geom_text(aes(y=B,label=ylab,vjust=ifelse(day>=10,2,-1)),
+    parse=TRUE,color='black')+
+  geom_text(aes(y=x,label=xlab,vjust=ifelse(day>=10,-1,2)),
+    parse=TRUE,color='red')+
+  geom_segment(aes(y=x,yend=B),color='blue',linetype=2,alpha=0.3,
+               arrow=grid::arrow(length=grid::unit(0.02,"npc")))+
+  expand_limits(y=c(-20,320))+
+  labs(y="")
 
 
 ## ----sir-sim1,out.width="10cm"------------------------------------------------

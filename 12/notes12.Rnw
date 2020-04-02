@@ -169,7 +169,7 @@ $$\loglik(\theta) = \log\lik(\theta) = \sum_{n} \log f_{Y_n|X_n}(y_n^*\given x_n
 
 \frametitle{The skeleton of an SIR compared to the flu dataset}
 
-<<det-example,echo=FALSE,results="hide",purl=FALSE,out.width="12cm">>=
+<<det-example,echo=FALSE,results="hide",out.width="12cm">>=
 source("bsflu.R")
  coef(sir) <- c(Beta=1.8,mu_IR=1,rho=0.9,N=2600)
  x <- trajectory(sir) 
