@@ -192,9 +192,9 @@ plot(polio)
 
 
 ## ----run_level----------------------------------------------------------------
-run_level=2
-polio_Np <-          switch(run_level,100, 1e3, 1e4)
-polio_Nmif <-        switch(run_level, 10, 100, 400)
+run_level=3
+polio_Np <-          switch(run_level,100, 1e3, 5e3)
+polio_Nmif <-        switch(run_level, 10, 100, 200)
 polio_Nreps_eval <-  switch(run_level,  2,  10,  20)
 polio_Nreps_local <- switch(run_level, 10,  20,  40)
 polio_Nreps_global <-switch(run_level, 10,  20, 100)
