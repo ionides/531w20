@@ -92,9 +92,11 @@ recording:
 [ part 3. ](https://drive.google.com/open?id=12aq_lxdtNWbaZAdBfVRawwEkTk32Cy_O)
 
 
+13. Time series models with covariates, and a case study of polio.
+[ pdf. ](13/notes13.pdf)
+[ R script. ](13/notes13.R)
 
 <!--
-13. [Time series models with covariates, and a case study of polio](13/notes13.html). [(R script)](13/notes13.R)
 
 14. [Case study: POMP modeling to investigate financial volatility](14/notes14.html). [(R script)](notes15/notes15.R)
 
