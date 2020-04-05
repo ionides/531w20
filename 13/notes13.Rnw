@@ -539,7 +539,7 @@ polio_fixed_params <- c(delta=1/60,K=polio_K,
 
 \bi
 \item We have to start somewhere for our search in parameter space.
-\item Here, a natural starting point is the MLE reported by \citet{martinez-bakker15}.
+\item The following parameter vector is based on informal model exploration and prior research:
 \ei
 
 <<polio_read_mle>>=
@@ -746,25 +746,12 @@ L1 <- logmeanexp(sapply(pf1,logLik),se=TRUE)
 
 \bi
 
-\item In  \Sexpr{round(t1["elapsed"],1)} seconds, we obtain an unbiased likelihood estimate of \Sexpr{round(L1[1],2)} with a Monte standard error of \Sexpr{round(L1[2],2)}.
+\item In  \Sexpr{round(t1["elapsed"],1)} seconds, we obtain a log likelihood estimate of \Sexpr{round(L1[1],2)} with a Monte standard error of \Sexpr{round(L1[2],2)}.
 
 \ei
 
 \end{frame}
 
-\begin{frame}[fragile]
-
-\frametitle{Comparison  of our implementation with \citet{martinez-bakker15}}
-
-\bi
-\item 
-This setup has minor differences in notation, model construction and code compared to \citet{martinez-bakker15}.
-\item
-The MLE reported for these data by \citet{martinez-bakker15} is -794.34, with Monte Carlo evaluation error of 0.18.
-\item This is similar to the log likelihood at their MLE for our model (\Sexpr{round(L1[1],2)} with Monte Carlo evaluation error \Sexpr{round(L1[2],2)}).
-\item The differences between the two implementations do not substantially improve or decrease the fit of our model compared to  \citet{martinez-bakker15}, demonstrating reproducibility of both results.
-\ei
-\end{frame}
 
 \begin{frame}[fragile]
 
@@ -801,7 +788,9 @@ imports_sim <- coef(polio)["psi"]*mean(sapply(sim,
     +states(po)["SB5",]+states(po)["SB6",])))/12
 @
 
- For the data, there were \Sexpr{no_cases_data} months with no reported cases, similar to the mean of \Sexpr{round(no_cases_sim,1)} for simulations from the fitted model. Months with no asyptomatic infections for the simulations were rare, on average \Sexpr{round(fadeout1_sim,1)} months per simulation. Months with fewer than 100 infections averaged \Sexpr{round(fadeout100_sim,1)} per simulation, which in the context of a reporting rate of \Sexpr{signif(coef(polio)["rho"],3)} can explain the absences of case reports. For this model, the mean monthly infections due to importations. modeled by $\psi$, is \Sexpr{round(imports_sim,1)}. This does not give much opportunity for local elimination of poliovirus. One could profile over $\psi$ to investigate how sensitive this conclusion is to values of $\psi$ consistent with the data.
+\vspace{-1mm}
+
+ For the data, there were \Sexpr{no_cases_data} months with no reported cases, similar to the mean of \Sexpr{round(no_cases_sim,1)} for simulations from the fitted model. Months with no asyptomatic infections for the simulations were rare, on average \Sexpr{round(fadeout1_sim,1)} months per simulation. Months with fewer than 100 infections averaged \Sexpr{round(fadeout100_sim,1)} per simulation, which in the context of a reporting rate of \Sexpr{signif(coef(polio)["rho"],3)} can explain the absences of case reports. The mean monthly infections due to importations, modeled by $\psi$, is \Sexpr{round(imports_sim,1)}. This does not give much opportunity for local elimination of poliovirus. A profile over $\psi$ would show how sensitive this conclusion is to values of $\psi$ consistent with the data.
 
 
 \end{frame}
@@ -920,6 +909,20 @@ pairs(~logLik+psi+rho+tau+sigma_dem+sigma_env,
 
 \begin{frame}[fragile]
 
+\frametitle{Comparison  of our implementation with \citet{martinez-bakker15}}
+
+\bi
+\item 
+This setup has minor differences in notation, model construction and code compared to \citet{martinez-bakker15}.
+\item
+The maximized likelihood reported for these data by \citet{martinez-bakker15} was -794.34, with Monte Carlo evaluation error of 0.18.
+\item This is similar to the value \Sexpr{myround(max(r2$logLik),digits=2)} found by this search.
+\item The differences between the two implementations do not substantially improve or decrease the fit of our model compared to  \citet{martinez-bakker15}, demonstrating reproducibility of both results.
+\ei
+\end{frame}
+
+\begin{frame}[fragile]
+
 \frametitle{Global likelihood maximization}
 
 Practical parameter estimation involves trying many starting values for the parameters. One can specify a large box in parameter space that contains all parameter vectors which seem remotely sensible. If an estimation method gives stable conclusions with starting values drawn randomly from this box, this gives some confidence that an adequate global search has been carried out. 
@@ -1031,7 +1034,8 @@ nb_mle <- optim(c(0,-5),nb_lik)
 
 <<arma>>=
 log_y <- log(as.vector(obs(polio))+1)
-arma_fit <- arima(log_y,order=c(2,0,2),seasonal=list(order=c(1,0,1),period=12))
+arma_fit <- arima(log_y,order=c(2,0,2),
+  seasonal=list(order=c(1,0,1),period=12))
 arma_fit$loglik-sum(log_y)
 @
 

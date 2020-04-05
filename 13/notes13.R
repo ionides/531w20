@@ -340,7 +340,8 @@ nb_mle <- optim(c(0,-5),nb_lik)
 
 ## ----arma---------------------------------------------------------------------
 log_y <- log(as.vector(obs(polio))+1)
-arma_fit <- arima(log_y,order=c(2,0,2),seasonal=list(order=c(1,0,1),period=12))
+arma_fit <- arima(log_y,order=c(2,0,2),
+  seasonal=list(order=c(1,0,1),period=12))
 arma_fit$loglik-sum(log_y)
 
 

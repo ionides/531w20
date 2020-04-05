@@ -95,6 +95,9 @@ recording:
 13. Time series models with covariates, and a case study of polio.
 [ pdf. ](13/notes13.pdf)
 [ R script. ](13/notes13.R)
+recording:
+[ part 1. ](https://drive.google.com/open?id=15lw9xbcl7jI_bA1-XnHK1jZEwS0cGEYR)
+[ part 2. ](https://drive.google.com/open?id=1Wphv9RITzQGl00dvYM_zNK6iicHeN2Rw)
 
 <!--
 
