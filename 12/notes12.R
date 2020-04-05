@@ -94,7 +94,7 @@ p <- sliceDesign(
   Beta=rep(seq(from=0.5,to=4,length=40),each=3),
   mu_IR=rep(seq(from=0.5,to=2,length=40),each=3)) 
 
-foreach (theta=iter(p,"row"),
+foreach (theta=iter(p,"row"), .packages='pomp',
   .combine=rbind,.inorder=FALSE) %dopar% {
     pfilter(sir,params=unlist(theta),Np=5000) -> pf
     theta$loglik <- logLik(pf)
@@ -117,7 +117,7 @@ expand.grid(Beta=seq(from=1,to=4,length=50),
             rho=0.8,
             N=2600) -> p
 
-foreach (theta=iter(p,"row"),.combine=rbind,
+foreach (theta=iter(p,"row"),.combine=rbind,.packages='pomp',
   .inorder=FALSE) %dopar% {
      pfilter(sir,params=unlist(theta),Np=5000) -> pf
      theta$loglik <- logLik(pf)
@@ -262,7 +262,8 @@ stew(file=sprintf("local_search-%d.rda",run_level),{
 ## ----lik_local_eval,cache=FALSE-----------------------------------------------
 stew(file=sprintf("lik_local-%d.rda",run_level),{
   t_local_eval <- system.time({
-  liks_local <- foreach(i=1:bsflu_Nlocal,.combine=rbind)%dopar% {
+  liks_local <- foreach(i=1:bsflu_Nlocal,
+    .combine=rbind,.packages='pomp')%dopar% {
     evals <- replicate(bsflu_Neval, logLik(
       pfilter(bsflu2,params=coef(mifs_local[[i]]),Np=bsflu_Np)))
     logmeanexp(evals, se=TRUE)
@@ -299,7 +300,8 @@ bsflu_box <- rbind(
 ## ----box_eval,cache=FALSE-----------------------------------------------------
 stew(file=sprintf("box_eval-%d.rda",run_level),{
   t_global <- system.time({
-    mifs_global <- foreach(i=1:bsflu_Nglobal,.combine=c) %dopar% {
+    mifs_global <- foreach(i=1:bsflu_Nglobal,
+      .combine=c,.packages='pomp') %dopar% {
       mif2(
         mifs_local[[1]],
         params=c(
@@ -314,7 +316,7 @@ stew(file=sprintf("box_eval-%d.rda",run_level),{
 stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
   t_global_eval <- system.time({
     liks_global <- foreach(i=1:bsflu_Nglobal,
-      .combine=rbind) %dopar% {
+      .combine=rbind, .packages='pomp') %dopar% {
         evals <- replicate(bsflu_Neval,
           logLik(pfilter(bsflu2,
 	    params=coef(mifs_global[[i]]),Np=bsflu_Np)))
