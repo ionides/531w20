@@ -1,0 +1,572 @@
+%\documentclass[handout]{beamer}
+\documentclass{beamer}
+\usepackage{natbib}
+\bibliographystyle{dcu}
+\input{../header.tex}
+
+\newcommand\CHAPTER{14}
+
+\setbeamertemplate{footline}[frame number]
+
+\newcommand\eqspace{\quad\quad\quad}
+\newcommand\eqskip{\vspace{2.5mm}}
+
+\newcommand\dist[2]{\mathrm{#1}\left(#2\right)}
+\newcommand\dlta{\Delta}
+
+\newcommand\myeq{\hspace{10mm}}
+
+% \newcommand\answer[2]{\textcolor{blue}{#2}} % to show answers
+% \newcommand\answer[2]{{\color{blue}{#2}}} % to show answers
+\newcommand\answer[2]{#1} % to show blank space
+
+
+
+\usepackage{bbm} % for blackboard bold 1
+
+\begin{document}
+
+% knitr set up
+
+
+
+
+
+
+
+
+
+\begin{frame}[fragile]
+\frametitle{Chapter \CHAPTER. Case study: POMP modeling to investigate financial volatility}
+
+\hspace{3cm} {\large \bf Objectives}
+
+\vspace{3mm}
+
+\begin{enumerate}
+
+\item Introduce financial volatility and some models used to study it.
+
+\item Define ARCH, GARCH, and stochastic volatility models. 
+
+\item Provide a case study in using \package{pomp} to study a stochastic volatility model.
+
+\item Discuss this case study as an example of a broader class of nonlinear POMP models, derived from adding stochastically time varying parameters to a linear or nonlinear time series model.
+
+\item Discuss this case study as an example of an extension of the POMP framework which allows feedback from the observation process to the state process.
+
+\end{enumerate}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Introduction}
+
+\bi
+
+\item Returns on investments in stock market indices or large companies are often found to be approximately uncorrelated. 
+
+\item If investment returns are substantially correlated, that provides an opportunity for investors to study their time series behavior and make money. 
+
+\item If the investment is non-liquid (i.e., not reliably tradeable), or expensive to trade, then it might be hard to make money even if you can statistically predict a positive expected return.
+
+\item Otherwise, the market will likely notice a favorable investment opportunity. More buyers will push up the price, and so the favorable situation will disappear.
+
+\item Consequently, most liquid and widely traded investments (such as stock market indices, or stock of large companies) have close to uncorrelated returns.
+
+\item However, the variability of the returns (called the volatility) can fluctuate considerably. Understanding this volatility is important for quantifying and managing the risk of investments. 
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Data}
+
+\bi
+
+\item Recall the daily S&P 500 data that we saw earlier, in Chapter 3, downloaded from \url{yahoo.com}.
+
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{dat} \hlkwb{<-} \hlkwd{read.table}\hlstd{(}\hlstr{"sp500.csv"}\hlstd{,}\hlkwc{sep}\hlstd{=}\hlstr{","}\hlstd{,}\hlkwc{header}\hlstd{=}\hlnum{TRUE}\hlstd{)}
+\hlstd{N} \hlkwb{<-} \hlkwd{nrow}\hlstd{(dat)}
+\hlstd{sp500} \hlkwb{<-} \hlstd{dat}\hlopt{$}\hlstd{Close[N}\hlopt{:}\hlnum{1}\hlstd{]} \hlcom{# data are in reverse order in sp500.csv}
+\hlkwd{par}\hlstd{(}\hlkwc{mfrow}\hlstd{=}\hlkwd{c}\hlstd{(}\hlnum{1}\hlstd{,}\hlnum{2}\hlstd{))}
+\hlkwd{plot}\hlstd{(sp500,}\hlkwc{type}\hlstd{=}\hlstr{"l"}\hlstd{)}
+\hlkwd{plot}\hlstd{(}\hlkwd{log}\hlstd{(sp500),}\hlkwc{type}\hlstd{=}\hlstr{"l"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=\maxwidth]{tmp/figuresp500-1} 
+
+}
+
+
+
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Returns, absolute returns, and autocorrelation}
+
+\bi
+
+\item We write $\{\data{z}_n,n=1,\dots,N\}$ for the data.
+
+\item We write the return on the S&P 500 index, i.e., the difference of the log of the index, as
+$$ \data{y_n}=\log(\data{z_n})-\log(\data{z_{n-1}}).$$
+
+* We saw, in [Section 3.5](http://ionides.github.io/531w18/03/notes03.html#a-random-walk-model), that $\data{y_{2:N}}$ has negligible sample autocorrelation.
+
+\item However, the absolute deviations from average, 
+$$ \data{a_n} = \left| \data{y_n} - \frac{1}{N-1}\sum_{k=2}^N \data{y_k} \right|$$
+have considerable sample autocorrelation.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+
+\myquestion. Fitting a stationarity model to stock market returns.
+
+\bi
+
+\item Look at the plots in  [Section 3.5](http://ionides.github.io/531w18/03/notes03.html#a-random-walk-model). 
+
+\item Is it appropriate to fit a stationary model to $\data{y_{2:N}}$, or do we have evidence for violation of stationarity? Explain.
+
+\ei
+
+\answer{\vspace{30mm}}{todo}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{ARCH and GARCH models}
+
+\bi
+
+\item The ARCH and GARCH models have become widely used for financial time series modeling. Here, we follow @cowpertwait09 to introduce these models and corresponding computations in R. See also, Section 5.4 of Shumway and Stoffer (3rd edition). 
+
+\item An order $p$ autoregressive conditional heteroskedasticity model, known as ARCH(p), has the form
+$$ Y_n = \epsilon_n \sqrt{V_n},$$
+where
+$$ V_n = \alpha_0 + \sum_{j=1}^p \alpha_j Y_{n-j}^2$$
+and $\epsilon_{1:N}$ is white noise.
+
+\item If $\epsilon_{1:N}$ is Gaussian, then $Y_{1:N}$ is called a Gaussian ARCH(p). Note, however, that a Gaussian ARCH model is not a Gaussian process, just a process driven by Gaussian noise.
+
+\item If  $Y_{1:N}$ is a Gaussian ARCH(p), then  $Y_{1:N}^2$ is AR(p), but not Gaussian AR(p).
+
+\item The generalized ARCH model, known as GARCH(p,q), has the form
+$$ Y_n = \epsilon_n \sqrt{V_n},$$
+where
+$$ V_n = \alpha_0 + \sum_{j=1}^p \alpha_j Y_{n-j}^2 + \sum_{k=1}^q \beta_k V_{n-k}$$
+and $\epsilon_{1:N}$ is white noise.
+
+
+\item The GARCH(1.1) model is a popular choice \citep{cowpertwait09} which can be fitted as follows.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Fitting a GARCH model}
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{require}\hlstd{(tseries)}
+\hlstd{fit.garch} \hlkwb{<-} \hlkwd{garch}\hlstd{(sp500,}\hlkwc{grad} \hlstd{=} \hlstr{"numerical"}\hlstd{,} \hlkwc{trace} \hlstd{=} \hlnum{FALSE}\hlstd{)}
+\hlstd{L.garch} \hlkwb{<-} \hlkwd{logLik}\hlstd{(fit.garch)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\bi
+
+\item This 3-parameter model has a maximized log likelihood of $NA$.
+
+\ei
+
+\myquestion. It is usually inappropriate to present numerical results to seven significant figures. Is this appropriate for reporting the log likelihood here? Why?
+
+\answer{\vspace{10mm}}{todo}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+
+\item We are now in a position to employ the framework of likelihood-based inference for GARCH models. In particular, profile likelihood, likelihood ratio tests, and AIC are available.
+
+\item We can readily simulate from a fitted GARCH model, if we want to investigate properties of a fitted model that we don't know how to compute analytically.
+
+\item However, GARCH is a black-box model, in the sense that the parameters don't have clear interpretation. We can develop an appropriate GARCH(p,q) model, and that may be useful for forecasting, but it won't help us understand more about how financial markets work. 
+
+\item To develop and test a hypothesis that goes beyond the class of GARCH models, it is useful to have the POMP framework available.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+
+\frametitle{Financial leverage}
+
+\bi
+
+\item It is a fairly well established empirical observation that negative shocks to a stockmarket index are associated with a subsequent increase in volatility. 
+
+\item This phenomenon is called \myemph{leverage}.
+
+\item Here, we formally define leverage, $R_n$ on day $n$ as the correlation between index return on day $n-1$ and the increase in the log volatility from day $n-1$ to day $n$.
+
+\item Models have been proposed which incorporate leverage into the dynamics \citep{breto14}.
+
+\item We present a pomp implementation of @breto14, which models $R_n$ as a random walk on a transformed scale,
+$$R_n= \frac{\exp\{2G_n\} -1}{\exp\{2G_n\}+1},$$
+where $\{G_n\}$ is the usual, Gaussian random walk.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+
+\frametitle{Time-varying parameters}
+
+\bi
+
+\item A special case of this model, with the Gaussian random walk having standard deviation zero, is a fixed leverage model.
+
+\item The POMP framework provides a general approach to time-varying parameters. Considering a parameter as a latent, unobserved random process that can progressively change its value over time (following a random walk, or some other stochastic process) leads to a POMP model. The resulting POMP model is usually nonlinear.
+
+\item Many real-world systems are non-stationary and could be investigated using models with time-varying parameters. 
+
+\item Some of the midterm projects discovered examples of this.
+
+\item This is one possible thing to explore in your final project.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+
+\item We fit the time-varying leverage model to demeaned daily returns for the S&P 500 index, using the data that were downloaded, detrended and analyzed by \citet{breto14}. 
+
+\item Here, we just analyze 2002-2012, though it is also interesting to fit to longer intervals, or to compare fits to different intervals.
+
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{load}\hlstd{(}\hlkwc{file}\hlstd{=}\hlstr{"sp500-2002-2012.rda"}\hlstd{)}
+\hlkwd{plot}\hlstd{(sp500.ret.demeaned,}\hlkwc{xlab}\hlstd{=}\hlstr{"business day (2002-2012)"}\hlstd{,}\hlkwc{ylab}\hlstd{=}\hlstr{"demeaned S&P 500 return"}\hlstd{,} \hlkwc{type}\hlstd{=}\hlstr{"l"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=\maxwidth]{tmp/figuredata-1} 
+
+}
+
+
+
+\end{knitrout}
+
+\bi
+
+\item We see high volatility around the 2008 financial crisis, and some other episodes.
+
+\item Following the notation and model representation in equation (4) of \citet{breto14}, we propose a model,
+$$
+\begin{align} 
+Y_n &= \exp\{H_n/2\} \epsilon_n, \\
+H_n &= \mu_h(1-\phi) + \phi H_{n-1} +
+\beta_{n-1}R_n\exp\{-H_{n-1}/2\} + \omega_n,\\
+G_n &= G_{n-1}+\nu_n,
+\end{align}
+$$
+where $\beta_n=Y_n\sigma_\eta\sqrt{1-\phi^2}$, $\{\epsilon_n\}$ is an iid $N(0,1)$ sequence, $\{\nu_n\}$ is an iid $N(0,\sigma_{\nu}^2)$ sequence, and $\{\omega_n\}$ is an iid $N(0,\sigma_\omega^2)$ sequence.
+
+\item Here, $H_n$ is the log volatility.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Building a POMP model}
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{require}\hlstd{(pomp)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\bi
+
+\item A complication is that transitions of the latent variables from $(G_n,H_n)$ to $(G_{n+1},H_{n+1})$ depends on the observable variable $Y_{n}$. 
+
+\item Formally, therefore, we use the state variable $X_n=(G_{n},H_{n},Y_{n})$ and model the measurement process as a perfect observation of the $Y_n$ component of the state space. 
+
+\item To define a recursive particle filter, we write filter particle $j$ at time $n-1$ as 
+$$ X^F_{n-1,j}=(G^F_{n-1,j},H^F_{n-1,j},\data{y}_{n-1}).$$
+
+\item Now we can construct prediction particles at time $n$,
+$$(G^P_{n,j},H^P_{n,j})\sim f_{G_{n},H_n|G_{n-1},H_{n-1},Y_{n-1}}(g_n|G^F_{n-1,j},H^F_{n-1,j},\data{y}_{n-1})$$
+with corresponding weight 
+$$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
+
+\item Resampling with probability proportional to these weights gives an SMC representation of the filtering distribution at time $n$.
+
+\item A derivation of this is given as an Appendix. 
+
+
+\ei
+
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+
+\item We can coerce the basic sequential Monte Carlo algorithm, implemented as \code{pfilter} in \package{pomp}, into carrying out this calculation by building two different \code{pomp} objects, one to do filtering and another to do simulation.
+
+\item For the implementation in \package{pomp}, we proceed to write Csnippet code for the two versions of \code{rprocess}. 
+
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{sp500_statenames} \hlkwb{<-} \hlkwd{c}\hlstd{(}\hlstr{"H"}\hlstd{,}\hlstr{"G"}\hlstd{,}\hlstr{"Y_state"}\hlstd{)}
+\hlstd{sp500_rp_names} \hlkwb{<-} \hlkwd{c}\hlstd{(}\hlstr{"sigma_nu"}\hlstd{,}\hlstr{"mu_h"}\hlstd{,}\hlstr{"phi"}\hlstd{,}\hlstr{"sigma_eta"}\hlstd{)}
+\hlstd{sp500_ivp_names} \hlkwb{<-} \hlkwd{c}\hlstd{(}\hlstr{"G_0"}\hlstd{,}\hlstr{"H_0"}\hlstd{)}
+\hlstd{sp500_paramnames} \hlkwb{<-} \hlkwd{c}\hlstd{(sp500_rp_names,sp500_ivp_names)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{rproc1} \hlkwb{<-} \hlstr{"
+  double beta,omega,nu;
+  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * sqrt(1-tanh(G)*tanh(G)));
+  nu = rnorm(0, sigma_nu);
+  G += nu;
+  beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+  H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) * exp(-H/2) + omega;
+"}
+\hlstd{rproc2.sim} \hlkwb{<-} \hlstr{"
+  Y_state = rnorm( 0,exp(H/2) );
+ "}
+
+\hlstd{rproc2.filt} \hlkwb{<-} \hlstr{"
+  Y_state = covaryt;
+ "}
+\hlstd{sp500_rproc.sim} \hlkwb{<-} \hlkwd{paste}\hlstd{(rproc1,rproc2.sim)}
+\hlstd{sp500_rproc.filt} \hlkwb{<-} \hlkwd{paste}\hlstd{(rproc1,rproc2.filt)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{sp500_rinit} \hlkwb{<-} \hlstr{"
+  G = G_0;
+  H = H_0;
+  Y_state = rnorm( 0,exp(H/2) );
+"}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{sp500_rmeasure} \hlkwb{<-} \hlstr{"
+   y=Y_state;
+"}
+
+\hlstd{sp500_dmeasure} \hlkwb{<-} \hlstr{"
+   lik=dnorm(y,0,exp(H/2),give_log);
+"}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Parameter transformations}
+
+\bi
+
+\item For optimization procedures such as iterated filtering, it is convenient to transform parameters to be defined on the whole real line. 
+
+\item We therefore write transformation functions for $\sigma_\eta$, $\sigma_\nu$ and $\phi$,
+
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{sp500_partrans} \hlkwb{<-} \hlkwd{parameter_trans}\hlstd{(}
+  \hlkwc{log}\hlstd{=}\hlkwd{c}\hlstd{(}\hlstr{"sigma_eta"}\hlstd{,}\hlstr{"sigma_nu"}\hlstd{),}
+  \hlkwc{logit}\hlstd{=}\hlstr{"phi"}
+\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+
+\item We can now build a pomp object suitable for filtering, and parameter estimation by iterated filtering or particle MCMC. 
+
+\item Note that the data are also placed in a covariate slot. 
+
+\item This is a devise to allow the state process evolution to depend on the data. In a POMP model, the latent process evolution depends only on the current latent state. In \package{pomp}, the consequence of this structure is that \code{rprocess} doesn't have access to the observation process. 
+
+\item However, a POMP model does allow for the possibility for the basic elements to depend on arbitrary covariates. In \package{pomp}, this means \code{rprocess} has access to a covariate slot.
+
+\item The code below gives an example of how to fill the covariate slot and how to use it in \code{rprocess}.
+
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{sp500.filt} \hlkwb{<-} \hlkwd{pomp}\hlstd{(}\hlkwc{data}\hlstd{=}\hlkwd{data.frame}\hlstd{(}
+    \hlkwc{y}\hlstd{=sp500.ret.demeaned,}\hlkwc{time}\hlstd{=}\hlnum{1}\hlopt{:}\hlkwd{length}\hlstd{(sp500.ret.demeaned)),}
+  \hlkwc{statenames}\hlstd{=sp500_statenames,}
+  \hlkwc{paramnames}\hlstd{=sp500_paramnames,}
+  \hlkwc{times}\hlstd{=}\hlstr{"time"}\hlstd{,}
+  \hlkwc{t0}\hlstd{=}\hlnum{0}\hlstd{,}
+  \hlkwc{covar}\hlstd{=}\hlkwd{covariate_table}\hlstd{(}
+    \hlkwc{time}\hlstd{=}\hlnum{0}\hlopt{:}\hlkwd{length}\hlstd{(sp500.ret.demeaned),}
+    \hlkwc{covaryt}\hlstd{=}\hlkwd{c}\hlstd{(}\hlnum{0}\hlstd{,sp500.ret.demeaned),}
+    \hlkwc{times}\hlstd{=}\hlstr{"time"}\hlstd{),}
+  \hlkwc{rmeasure}\hlstd{=}\hlkwd{Csnippet}\hlstd{(sp500_rmeasure),}
+  \hlkwc{dmeasure}\hlstd{=}\hlkwd{Csnippet}\hlstd{(sp500_dmeasure),}
+  \hlkwc{rprocess}\hlstd{=}\hlkwd{discrete_time}\hlstd{(}\hlkwc{step.fun}\hlstd{=}\hlkwd{Csnippet}\hlstd{(sp500_rproc.filt),}\hlkwc{delta.t}\hlstd{=}\hlnum{1}\hlstd{),}
+  \hlkwc{rinit}\hlstd{=}\hlkwd{Csnippet}\hlstd{(sp500_rinit),}
+  \hlkwc{partrans}\hlstd{=sp500_partrans}
+\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+
+\item Simulating from the model is convenient for developing and testing the code, as well as to investigate a fitted model. We can do this as follows:
+
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{expit}\hlkwb{<-}\hlkwa{function}\hlstd{(}\hlkwc{real}\hlstd{)\{}\hlnum{1}\hlopt{/}\hlstd{(}\hlnum{1}\hlopt{+}\hlkwd{exp}\hlstd{(}\hlopt{-}\hlstd{real))\}}
+\hlstd{logit}\hlkwb{<-}\hlkwa{function}\hlstd{(}\hlkwc{p.arg}\hlstd{)\{}\hlkwd{log}\hlstd{(p.arg}\hlopt{/}\hlstd{(}\hlnum{1}\hlopt{-}\hlstd{p.arg))\}}
+\hlstd{params_test} \hlkwb{<-} \hlkwd{c}\hlstd{(}
+     \hlkwc{sigma_nu} \hlstd{=} \hlkwd{exp}\hlstd{(}\hlopt{-}\hlnum{4.5}\hlstd{),}
+     \hlkwc{mu_h} \hlstd{=} \hlopt{-}\hlnum{0.25}\hlstd{,}
+     \hlkwc{phi} \hlstd{=} \hlkwd{expit}\hlstd{(}\hlnum{4}\hlstd{),}
+     \hlkwc{sigma_eta} \hlstd{=} \hlkwd{exp}\hlstd{(}\hlopt{-}\hlnum{0.07}\hlstd{),}
+     \hlkwc{G_0} \hlstd{=} \hlnum{0}\hlstd{,}
+     \hlkwc{H_0}\hlstd{=}\hlnum{0}
+  \hlstd{)}
+
+\hlstd{sim1.sim} \hlkwb{<-} \hlkwd{pomp}\hlstd{(sp500.filt,}
+  \hlkwc{statenames}\hlstd{=sp500_statenames,}
+  \hlkwc{paramnames}\hlstd{=sp500_paramnames,}
+  \hlkwc{rprocess}\hlstd{=}\hlkwd{discrete_time}\hlstd{(}
+    \hlkwc{step.fun}\hlstd{=}\hlkwd{Csnippet}\hlstd{(sp500_rproc.sim),}\hlkwc{delta.t}\hlstd{=}\hlnum{1}\hlstd{)}
+\hlstd{)}
+
+\hlstd{sim1.sim} \hlkwb{<-} \hlkwd{simulate}\hlstd{(sim1.sim,}\hlkwc{seed}\hlstd{=}\hlnum{1}\hlstd{,}\hlkwc{params}\hlstd{=params_test)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+
+\item Now. to build the filtering object from \code{sim1.sim}, we need to copy the new simulated data into the covariate slot, and put back the appropriate version of \code{rprocess}.
+
+
+\ei
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
