@@ -157,7 +157,7 @@ stopifnot(packageVersion("pomp")>="2.0")
 
 \bi
 
-\item Recall the daily S&P 500 data that we saw earlier, in Chapter 3, downloaded from \url{yahoo.com}.
+\item Recall the daily S\&P 500 data that we saw earlier, in Chapter 3, downloaded from \url{yahoo.com}.
 
 \ei
 
@@ -180,10 +180,10 @@ plot(log(sp500),type="l")
 
 \item We write $\{\data{z}_n,n=1,\dots,N\}$ for the data.
 
-\item We write the return on the S&P 500 index, i.e., the difference of the log of the index, as
+\item We write the return on the S\&P 500 index, i.e., the difference of the log of the index, as
 $$ \data{y_n}=\log(\data{z_n})-\log(\data{z_{n-1}}).$$
 
-* We saw, in [Section 3.5](http://ionides.github.io/531w18/03/notes03.html#a-random-walk-model), that $\data{y_{2:N}}$ has negligible sample autocorrelation.
+* We saw in Chapter 3 that $\data{y_{2:N}}$ has negligible sample autocorrelation.
 
 \item However, the absolute deviations from average, 
 $$ \data{a_n} = \left| \data{y_n} - \frac{1}{N-1}\sum_{k=2}^N \data{y_k} \right|$$
@@ -200,7 +200,7 @@ have considerable sample autocorrelation.
 
 \bi
 
-\item Look at the plots in  [Section 3.5](http://ionides.github.io/531w18/03/notes03.html#a-random-walk-model). 
+\item Look at the plots for the S\&P data when we considered the random walk model in Chapter 3 of the notes.
 
 \item Is it appropriate to fit a stationary model to $\data{y_{2:N}}$, or do we have evidence for violation of stationarity? Explain.
 
@@ -327,7 +327,7 @@ where $\{G_n\}$ is the usual, Gaussian random walk.
 
 \bi
 
-\item We fit the time-varying leverage model to demeaned daily returns for the S&P 500 index, using the data that were downloaded, detrended and analyzed by \citet{breto14}. 
+\item We fit the time-varying leverage model to demeaned daily returns for the S\&P 500 index, using the data that were downloaded, detrended and analyzed by \citet{breto14}. 
 
 \item Here, we just analyze 2002-2012, though it is also interesting to fit to longer intervals, or to compare fits to different intervals.
 
@@ -343,14 +343,12 @@ plot(sp500.ret.demeaned,xlab="business day (2002-2012)",ylab="demeaned S&P 500 r
 \item We see high volatility around the 2008 financial crisis, and some other episodes.
 
 \item Following the notation and model representation in equation (4) of \citet{breto14}, we propose a model,
-$$
 \begin{align} 
 Y_n &= \exp\{H_n/2\} \epsilon_n, \\
 H_n &= \mu_h(1-\phi) + \phi H_{n-1} +
 \beta_{n-1}R_n\exp\{-H_{n-1}/2\} + \omega_n,\\
 G_n &= G_{n-1}+\nu_n,
 \end{align}
-$$
 where $\beta_n=Y_n\sigma_\eta\sqrt{1-\phi^2}$, $\{\epsilon_n\}$ is an iid $N(0,1)$ sequence, $\{\nu_n\}$ is an iid $N(0,\sigma_{\nu}^2)$ sequence, and $\{\omega_n\}$ is an iid $N(0,\sigma_\omega^2)$ sequence.
 
 \item Here, $H_n$ is the log volatility.
@@ -565,13 +563,13 @@ sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
 <<build_sim1.filt>>=
 
 sim1.filt <- pomp(sim1.sim, 
-  covar=data.frame(
+  covar=covariate_table(
+    time=c(timezero(sim1.sim),time(sim1.sim)),
     covaryt=c(obs(sim1.sim),NA),
-    time=c(timezero(sim1.sim),time(sim1.sim))),
+    times="time"),
   statenames=sp500_statenames,
   paramnames=sp500_paramnames,
-  covarnames=sp500_covarnames,
-  rprocess=discrete.time.sim(step.fun=Csnippet(sp500_rproc.filt),delta.t=1)
+  rprocess=discrete_time(step.fun=Csnippet(sp500_rproc.filt),delta.t=1)
 )
 
 
@@ -624,9 +622,9 @@ registerDoParallel()
 <<pf1>>=
 stew(file=sprintf("pf1.rda",run_level),{
   t.pf1 <- system.time(
-    pf1 <- foreach(i=1:sp500_Nreps_eval[run_level],.packages='pomp',
+    pf1 <- foreach(i=1:sp500_Nreps_eval,.packages='pomp',
                    .options.multicore=list(set.seed=TRUE)) %dopar% try(
-                     pfilter(sim1.filt,Np=sp500_Np[run_level])
+                     pfilter(sim1.filt,Np=sp500_Np)
                    )
   )
 },seed=493536993,kind="L'Ecuyer")
@@ -657,7 +655,7 @@ stew(file=sprintf("pf1.rda",run_level),{
 
 \bi
 
-\item We are now ready to try out iterated filtering on the S&P500 data. We will use the IF2 algorithm of @ionides15, implemented by \code{mif2}.
+\item We are now ready to try out iterated filtering on the S\&P500 data. We will use the IF2 algorithm of @ionides15, implemented by \code{mif2}.
 
 \ei
 
@@ -668,36 +666,26 @@ sp500_cooling.fraction.50 <- 0.5
 
 stew("mif1.rda",{
    t.if1 <- system.time({
-   if1 <- foreach(i=1:sp500_Nreps_local[run_level],
-                  .packages='pomp', .combine=c,
-                  .options.multicore=list(set.seed=TRUE)) %dopar% try(
-                    mif2(sp500.filt,
-                         start=params_test,
-                         Np=sp500_Np[run_level],
-                         Nmif=sp500_Nmif[run_level],
-                         cooling.type="geometric",
-                         cooling.fraction.50=sp500_cooling.fraction.50,
-                         transform=TRUE,
-                         rw.sd = rw.sd(
+   if1 <- foreach(i=1:sp500_Nreps_local,
+     .packages='pomp', .combine=c) %dopar% mif2(sp500.filt,
+          params=params_test,
+          Np=sp500_Np,
+          Nmif=sp500_Nmif,
+          cooling.fraction.50=sp500_cooling.fraction.50,
+          rw.sd = rw.sd(
                             sigma_nu  = sp500_rw.sd_rp,
                             mu_h      = sp500_rw.sd_rp,
                             phi       = sp500_rw.sd_rp,
                             sigma_eta = sp500_rw.sd_rp,
                             G_0       = ivp(sp500_rw.sd_ivp),
                             H_0       = ivp(sp500_rw.sd_ivp)
-                         )
-                    )
-                  )
-    
-    L.if1 <- foreach(i=1:sp500_Nreps_local[run_level],.packages='pomp',
-                      .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
-                      {
-                        logmeanexp(
-                          replicate(sp500_Nreps_eval[run_level],
-                                    logLik(pfilter(sp500.filt,params=coef(if1[[i]]),Np=sp500_Np[run_level]))
-                          ),
-                          se=TRUE)
-                      }
+          )
+       )
+   L.if1 <- foreach(i=1:sp500_Nreps_local,
+     .packages='pomp', .combine=rbind) %dopar% logmeanexp(
+       replicate(sp500_Nreps_eval,
+         logLik(pfilter(sp500.filt,params=coef(if1[[i]]),Np=sp500_Np))
+       ), se=TRUE)
   })
 },seed=318817883,kind="L'Ecuyer")
 
@@ -763,19 +751,19 @@ sp500_box <- rbind(
 <<box_eval>>=
 stew(file="box_eval.rda",{
   t.box <- system.time({
-    if.box <- foreach(i=1:sp500_Nreps_global[run_level],.packages='pomp',.combine=c,
-                  .options.multicore=list(set.seed=TRUE)) %dopar%  
+    if.box <- foreach(i=1:sp500_Nreps_global,
+      .packages='pomp',.combine=c) %dopar%  
       mif2(
         if1[[1]],
-        start=apply(sp500_box,1,function(x)runif(1,x))
+        params=apply(sp500_box,1,function(x)runif(1,x))
       )
     
-    L.box <- foreach(i=1:sp500_Nreps_global[run_level],.packages='pomp',.combine=rbind,
-                      .options.multicore=list(set.seed=TRUE)) %dopar% {
+    L.box <- foreach(i=1:sp500_Nreps_global,
+      .packages='pomp',.combine=rbind) %dopar% {
                         set.seed(87932+i)
                         logmeanexp(
-                          replicate(sp500_Nreps_eval[run_level],
-                                    logLik(pfilter(sp500.filt,params=coef(if.box[[i]]),Np=sp500_Np[run_level]))
+                          replicate(sp500_Nreps_eval,
+                                    logLik(pfilter(sp500.filt,params=coef(if.box[[i]]),Np=sp500_Np))
                           ), 
                           se=TRUE)
                       }
@@ -913,7 +901,7 @@ $$
 
 \ei
 
-\end[frame}
+\end{frame}
 
 \begin{frame}[fragile]
 

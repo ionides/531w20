@@ -64,7 +64,6 @@ sp500_statenames <- c("H","G","Y_state")
 sp500_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta")
 sp500_ivp_names <- c("G_0","H_0")
 sp500_paramnames <- c(sp500_rp_names,sp500_ivp_names)
-sp500_covarnames <- "covaryt"
 
 
 ## ----rproc---------------------------------------------------------------
@@ -108,26 +107,26 @@ sp500_dmeasure <- "
 ## ----transforms----------------------------------------------------------
 sp500_partrans <- parameter_trans(
   log=c("sigma_eta","sigma_nu"),
-  logit="phi")
+  logit="phi"
 )
 
 
 ## ----sp_pomp-------------------------------------------------------------
-sp500.filt <- pomp(data=data.frame(y=sp500.ret.demeaned,
-                     time=1:length(sp500.ret.demeaned)),
-              statenames=sp500_statenames,
-              paramnames=sp500_paramnames,
-              covarnames=sp500_covarnames,
-              times="time",
-              t0=0,
-              covar=data.frame(covaryt=c(0,sp500.ret.demeaned),
-                     time=0:length(sp500.ret.demeaned)),
-              tcovar="time",
-              rmeasure=Csnippet(sp500_rmeasure),
-              dmeasure=Csnippet(sp500_dmeasure),
-              rprocess=discrete.time(step.fun=Csnippet(sp500_rproc.filt),delta.t=1),
-              rinit=Csnippet(sp500_rinit),
-              partrans=Csnippet(sp500_partrans)
+sp500.filt <- pomp(data=data.frame(
+    y=sp500.ret.demeaned,time=1:length(sp500.ret.demeaned)),
+  statenames=sp500_statenames,
+  paramnames=sp500_paramnames,
+  times="time",
+  t0=0,
+  covar=covariate_table(
+    time=0:length(sp500.ret.demeaned),
+    covaryt=c(0,sp500.ret.demeaned),
+    times="time"),
+  rmeasure=Csnippet(sp500_rmeasure),
+  dmeasure=Csnippet(sp500_dmeasure),
+  rprocess=discrete_time(step.fun=Csnippet(sp500_rproc.filt),delta.t=1),
+  rinit=Csnippet(sp500_rinit),
+  partrans=sp500_partrans
 )
 
 
@@ -144,10 +143,10 @@ params_test <- c(
   )
 
 sim1.sim <- pomp(sp500.filt, 
-               statenames=sp500_statenames,
-               paramnames=sp500_paramnames,
-               covarnames=sp500_covarnames,
-               rprocess=discrete.time.sim(step.fun=Csnippet(sp500_rproc.sim),delta.t=1)
+  statenames=sp500_statenames,
+  paramnames=sp500_paramnames,
+  rprocess=discrete_time(
+    step.fun=Csnippet(sp500_rproc.sim),delta.t=1)
 )
 
 sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
@@ -156,14 +155,13 @@ sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
 ## ----build_sim1.filt-----------------------------------------------------
 
 sim1.filt <- pomp(sim1.sim, 
-  covar=data.frame(
+  covar=covariate_table(
+    time=c(timezero(sim1.sim),time(sim1.sim)),
     covaryt=c(obs(sim1.sim),NA),
-    time=c(timezero(sim1.sim),time(sim1.sim))),
-  tcovar="time",
+    times="time"),
   statenames=sp500_statenames,
   paramnames=sp500_paramnames,
-  covarnames=sp500_covarnames,
-  rprocess=discrete.time.sim(step.fun=Csnippet(sp500_rproc.filt),delta.t=1)
+  rprocess=discrete_time(step.fun=Csnippet(sp500_rproc.filt),delta.t=1)
 )
 
 
@@ -186,9 +184,9 @@ registerDoParallel()
 ## ----pf1-----------------------------------------------------------------
 stew(file=sprintf("pf1.rda",run_level),{
   t.pf1 <- system.time(
-    pf1 <- foreach(i=1:sp500_Nreps_eval[run_level],.packages='pomp',
+    pf1 <- foreach(i=1:sp500_Nreps_eval,.packages='pomp',
                    .options.multicore=list(set.seed=TRUE)) %dopar% try(
-                     pfilter(sim1.filt,Np=sp500_Np[run_level])
+                     pfilter(sim1.filt,Np=sp500_Np)
                    )
   )
 },seed=493536993,kind="L'Ecuyer")
@@ -202,36 +200,26 @@ sp500_cooling.fraction.50 <- 0.5
 
 stew("mif1.rda",{
    t.if1 <- system.time({
-   if1 <- foreach(i=1:sp500_Nreps_local[run_level],
-                  .packages='pomp', .combine=c,
-                  .options.multicore=list(set.seed=TRUE)) %dopar% try(
-                    mif2(sp500.filt,
-                         start=params_test,
-                         Np=sp500_Np[run_level],
-                         Nmif=sp500_Nmif[run_level],
-                         cooling.type="geometric",
-                         cooling.fraction.50=sp500_cooling.fraction.50,
-                         transform=TRUE,
-                         rw.sd = rw.sd(
+   if1 <- foreach(i=1:sp500_Nreps_local,
+     .packages='pomp', .combine=c) %dopar% mif2(sp500.filt,
+          params=params_test,
+          Np=sp500_Np,
+          Nmif=sp500_Nmif,
+          cooling.fraction.50=sp500_cooling.fraction.50,
+          rw.sd = rw.sd(
                             sigma_nu  = sp500_rw.sd_rp,
                             mu_h      = sp500_rw.sd_rp,
                             phi       = sp500_rw.sd_rp,
                             sigma_eta = sp500_rw.sd_rp,
                             G_0       = ivp(sp500_rw.sd_ivp),
                             H_0       = ivp(sp500_rw.sd_ivp)
-                         )
-                    )
-                  )
-    
-    L.if1 <- foreach(i=1:sp500_Nreps_local[run_level],.packages='pomp',
-                      .combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% 
-                      {
-                        logmeanexp(
-                          replicate(sp500_Nreps_eval[run_level],
-                                    logLik(pfilter(sp500.filt,params=coef(if1[[i]]),Np=sp500_Np[run_level]))
-                          ),
-                          se=TRUE)
-                      }
+          )
+       )
+   L.if1 <- foreach(i=1:sp500_Nreps_local,
+     .packages='pomp', .combine=rbind) %dopar% logmeanexp(
+       replicate(sp500_Nreps_eval,
+         logLik(pfilter(sp500.filt,params=coef(if1[[i]]),Np=sp500_Np))
+       ), se=TRUE)
   })
 },seed=318817883,kind="L'Ecuyer")
 
@@ -259,19 +247,19 @@ sp500_box <- rbind(
 ## ----box_eval------------------------------------------------------------
 stew(file="box_eval.rda",{
   t.box <- system.time({
-    if.box <- foreach(i=1:sp500_Nreps_global[run_level],.packages='pomp',.combine=c,
-                  .options.multicore=list(set.seed=TRUE)) %dopar%  
+    if.box <- foreach(i=1:sp500_Nreps_global,
+      .packages='pomp',.combine=c) %dopar%  
       mif2(
         if1[[1]],
-        start=apply(sp500_box,1,function(x)runif(1,x))
+        params=apply(sp500_box,1,function(x)runif(1,x))
       )
     
-    L.box <- foreach(i=1:sp500_Nreps_global[run_level],.packages='pomp',.combine=rbind,
-                      .options.multicore=list(set.seed=TRUE)) %dopar% {
+    L.box <- foreach(i=1:sp500_Nreps_global,
+      .packages='pomp',.combine=rbind) %dopar% {
                         set.seed(87932+i)
                         logmeanexp(
-                          replicate(sp500_Nreps_eval[run_level],
-                                    logLik(pfilter(sp500.filt,params=coef(if.box[[i]]),Np=sp500_Np[run_level]))
+                          replicate(sp500_Nreps_eval,
+                                    logLik(pfilter(sp500.filt,params=coef(if.box[[i]]),Np=sp500_Np))
                           ), 
                           se=TRUE)
                       }
@@ -289,7 +277,7 @@ pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,data=subset(r.box,logLik>max(
 
 
 ## ----garch_benchmark-----------------------------------------------------
-require(tseries)
+library(tseries)
 fit.garch.benchmark <- garch(sp500.ret.demeaned,grad = "numerical", trace = FALSE)
 L.garch.benchmark <- logLik(fit.garch.benchmark)
 

@@ -1,5 +1,55 @@
 %\documentclass[handout]{beamer}
-\documentclass{beamer}
+\documentclass{beamer}\usepackage[]{graphicx}\usepackage[]{color}
+% maxwidth is the original width if it is less than linewidth
+% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+\makeatletter
+\def\maxwidth{ %
+  \ifdim\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \Gin@nat@width
+  \fi
+}
+\makeatother
+
+\definecolor{fgcolor}{rgb}{0.345, 0.345, 0.345}
+\newcommand{\hlnum}[1]{\textcolor[rgb]{0.686,0.059,0.569}{#1}}%
+\newcommand{\hlstr}[1]{\textcolor[rgb]{0.192,0.494,0.8}{#1}}%
+\newcommand{\hlcom}[1]{\textcolor[rgb]{0.678,0.584,0.686}{\textit{#1}}}%
+\newcommand{\hlopt}[1]{\textcolor[rgb]{0,0,0}{#1}}%
+\newcommand{\hlstd}[1]{\textcolor[rgb]{0.345,0.345,0.345}{#1}}%
+\newcommand{\hlkwa}[1]{\textcolor[rgb]{0.161,0.373,0.58}{\textbf{#1}}}%
+\newcommand{\hlkwb}[1]{\textcolor[rgb]{0.69,0.353,0.396}{#1}}%
+\newcommand{\hlkwc}[1]{\textcolor[rgb]{0.333,0.667,0.333}{#1}}%
+\newcommand{\hlkwd}[1]{\textcolor[rgb]{0.737,0.353,0.396}{\textbf{#1}}}%
+\let\hlipl\hlkwb
+
+\usepackage{framed}
+\makeatletter
+\newenvironment{kframe}{%
+ \def\at@end@of@kframe{}%
+ \ifinner\ifhmode%
+  \def\at@end@of@kframe{\end{minipage}}%
+  \begin{minipage}{\columnwidth}%
+ \fi\fi%
+ \def\FrameCommand##1{\hskip\@totalleftmargin \hskip-\fboxsep
+ \colorbox{shadecolor}{##1}\hskip-\fboxsep
+     % There is no \\@totalrightmargin, so:
+     \hskip-\linewidth \hskip-\@totalleftmargin \hskip\columnwidth}%
+ \MakeFramed {\advance\hsize-\width
+   \@totalleftmargin\z@ \linewidth\hsize
+   \@setminipage}}%
+ {\par\unskip\endMakeFramed%
+ \at@end@of@kframe}
+\makeatother
+
+\definecolor{shadecolor}{rgb}{.97, .97, .97}
+\definecolor{messagecolor}{rgb}{0, 0, 0}
+\definecolor{warningcolor}{rgb}{1, 0, 1}
+\definecolor{errorcolor}{rgb}{1, 0, 0}
+\newenvironment{knitrout}{}{} % an empty environment to be redefined in TeX
+
+\usepackage{alltt}
 \usepackage{natbib}
 \bibliographystyle{dcu}
 \input{../header.tex}
@@ -23,7 +73,7 @@
 
 
 \usepackage{bbm} % for blackboard bold 1
-
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
 \begin{document}
 
 % knitr set up
@@ -87,7 +137,7 @@
 
 \bi
 
-\item Recall the daily S&P 500 data that we saw earlier, in Chapter 3, downloaded from \url{yahoo.com}.
+\item Recall the daily S\&P 500 data that we saw earlier, in Chapter 3, downloaded from \url{yahoo.com}.
 
 \ei
 
@@ -121,10 +171,10 @@
 
 \item We write $\{\data{z}_n,n=1,\dots,N\}$ for the data.
 
-\item We write the return on the S&P 500 index, i.e., the difference of the log of the index, as
+\item We write the return on the S\&P 500 index, i.e., the difference of the log of the index, as
 $$ \data{y_n}=\log(\data{z_n})-\log(\data{z_{n-1}}).$$
 
-* We saw, in [Section 3.5](http://ionides.github.io/531w18/03/notes03.html#a-random-walk-model), that $\data{y_{2:N}}$ has negligible sample autocorrelation.
+* We saw in Chapter 3 that $\data{y_{2:N}}$ has negligible sample autocorrelation.
 
 \item However, the absolute deviations from average, 
 $$ \data{a_n} = \left| \data{y_n} - \frac{1}{N-1}\sum_{k=2}^N \data{y_k} \right|$$
@@ -141,7 +191,7 @@ have considerable sample autocorrelation.
 
 \bi
 
-\item Look at the plots in  [Section 3.5](http://ionides.github.io/531w18/03/notes03.html#a-random-walk-model). 
+\item Look at the plots for the S\&P data when we considered the random walk model in Chapter 3 of the notes.
 
 \item Is it appropriate to fit a stationary model to $\data{y_{2:N}}$, or do we have evidence for violation of stationarity? Explain.
 
@@ -272,7 +322,7 @@ where $\{G_n\}$ is the usual, Gaussian random walk.
 
 \bi
 
-\item We fit the time-varying leverage model to demeaned daily returns for the S&P 500 index, using the data that were downloaded, detrended and analyzed by \citet{breto14}. 
+\item We fit the time-varying leverage model to demeaned daily returns for the S\&P 500 index, using the data that were downloaded, detrended and analyzed by \citet{breto14}. 
 
 \item Here, we just analyze 2002-2012, though it is also interesting to fit to longer intervals, or to compare fits to different intervals.
 
@@ -299,14 +349,12 @@ where $\{G_n\}$ is the usual, Gaussian random walk.
 \item We see high volatility around the 2008 financial crisis, and some other episodes.
 
 \item Following the notation and model representation in equation (4) of \citet{breto14}, we propose a model,
-$$
 \begin{align} 
 Y_n &= \exp\{H_n/2\} \epsilon_n, \\
 H_n &= \mu_h(1-\phi) + \phi H_{n-1} +
 \beta_{n-1}R_n\exp\{-H_{n-1}/2\} + \omega_n,\\
 G_n &= G_{n-1}+\nu_n,
 \end{align}
-$$
 where $\beta_n=Y_n\sigma_\eta\sqrt{1-\phi^2}$, $\{\epsilon_n\}$ is an iid $N(0,1)$ sequence, $\{\nu_n\}$ is an iid $N(0,\sigma_{\nu}^2)$ sequence, and $\{\omega_n\}$ is an iid $N(0,\sigma_\omega^2)$ sequence.
 
 \item Here, $H_n$ is the log volatility.
@@ -550,23 +598,457 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \ei
 
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{sim1.filt} \hlkwb{<-} \hlkwd{pomp}\hlstd{(sim1.sim,}
+  \hlkwc{covar}\hlstd{=}\hlkwd{covariate_table}\hlstd{(}
+    \hlkwc{time}\hlstd{=}\hlkwd{c}\hlstd{(}\hlkwd{timezero}\hlstd{(sim1.sim),}\hlkwd{time}\hlstd{(sim1.sim)),}
+    \hlkwc{covaryt}\hlstd{=}\hlkwd{c}\hlstd{(}\hlkwd{obs}\hlstd{(sim1.sim),}\hlnum{NA}\hlstd{),}
+    \hlkwc{times}\hlstd{=}\hlstr{"time"}\hlstd{),}
+  \hlkwc{statenames}\hlstd{=sp500_statenames,}
+  \hlkwc{paramnames}\hlstd{=sp500_paramnames,}
+  \hlkwc{rprocess}\hlstd{=}\hlkwd{discrete_time}\hlstd{(}\hlkwc{step.fun}\hlstd{=}\hlkwd{Csnippet}\hlstd{(sp500_rproc.filt),}\hlkwc{delta.t}\hlstd{=}\hlnum{1}\hlstd{)}
+\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Filtering on simulated data}
+
+\bi
+
+\item Let's check that we can indeed filter and re-estimate parameters successfully for this simulated data.  
+
+\item To develop and debug code, it is nice to have a version that runs extra quickly, for which we set \code{run_level=1}. Here, \code{Np} is the number of particles (i.e., sequential Monte Carlo sample size), and \code{Nmif} is the number of iterations of the optimization procedure carried out below. Empirically, \code{Np=5000} and \code{Nmif=200} are around the minimum required to get stable results with an error in the likelihood of order 1 log unit for this example; this is implemented by setting \code{run_level=2}. One can then ramp up to larger values for more refined computations, implemented here by \code{run_level=3}
+
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{run_level} \hlkwb{<-} \hlnum{1}
+\hlstd{sp500_Np} \hlkwb{<-}           \hlkwd{switch}\hlstd{(run_level,}\hlnum{100}\hlstd{,}\hlnum{1e3}\hlstd{,}\hlnum{2e3}\hlstd{)}
+\hlstd{sp500_Nmif} \hlkwb{<-}         \hlkwd{switch}\hlstd{(run_level,}\hlnum{10}\hlstd{,} \hlnum{100}\hlstd{,}\hlnum{200}\hlstd{)}
+\hlstd{sp500_Nreps_eval} \hlkwb{<-}   \hlkwd{switch}\hlstd{(run_level,}\hlnum{4}\hlstd{,}  \hlnum{10}\hlstd{,}  \hlnum{20}\hlstd{)}
+\hlstd{sp500_Nreps_local} \hlkwb{<-}  \hlkwd{switch}\hlstd{(run_level,}\hlnum{10}\hlstd{,} \hlnum{20}\hlstd{,} \hlnum{20}\hlstd{)}
+\hlstd{sp500_Nreps_global} \hlkwb{<-} \hlkwd{switch}\hlstd{(run_level,}\hlnum{10}\hlstd{,} \hlnum{20}\hlstd{,} \hlnum{100}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+
+\item We'll carry out replications to assess Monte Carlo error. Since most modern machines have multiple cores, it is convenient to do some parallelization when generating replications. 
+
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{require}\hlstd{(doParallel)}
+\hlkwd{registerDoParallel}\hlstd{()}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\bi
+
+\item By default, \code{doParallel} enrolls half the available cores. Now, we filter. 
+
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{stew}\hlstd{(}\hlkwc{file}\hlstd{=}\hlkwd{sprintf}\hlstd{(}\hlstr{"pf1.rda"}\hlstd{,run_level),\{}
+  \hlstd{t.pf1} \hlkwb{<-} \hlkwd{system.time}\hlstd{(}
+    \hlstd{pf1} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{sp500_Nreps_eval,}\hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,}
+                   \hlkwc{.options.multicore}\hlstd{=}\hlkwd{list}\hlstd{(}\hlkwc{set.seed}\hlstd{=}\hlnum{TRUE}\hlstd{))} \hlopt{%dopar%} \hlkwd{try}\hlstd{(}
+                     \hlkwd{pfilter}\hlstd{(sim1.filt,}\hlkwc{Np}\hlstd{=sp500_Np)}
+                   \hlstd{)}
+  \hlstd{)}
+\hlstd{\},}\hlkwc{seed}\hlstd{=}\hlnum{493536993}\hlstd{,}\hlkwc{kind}\hlstd{=}\hlstr{"L'Ecuyer"}\hlstd{)}
+\hlstd{(L.pf1} \hlkwb{<-} \hlkwd{logmeanexp}\hlstd{(}\hlkwd{sapply}\hlstd{(pf1,logLik),}\hlkwc{se}\hlstd{=}\hlnum{TRUE}\hlstd{))}
+\end{alltt}
+\begin{verbatim}
+##                        se 
+## -3664.273257     1.925115
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+
+\item In  1.4 seconds, we obtain a log likelihood estimate of -3664.27 with a Monte standard error of 1.93. Notice that the replications are averaged using the \code{logmeanexp} function, since the likelihood estimate is unbiased on the natural scale but not the log scale.
+
+\item We could test the numerical performance of an iterated filtering likelihood maximization algorithm on simulated data. 
+
+\item We could also study the statistical performance of maximum likelihood estimators and profile likelihood confidence intervals on simulated data. 
+
+\item However, here we are going to cut to the chase and start fitting models to data. 
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Fitting the stochastic leverage model to S\&P500 data}
+
+\bi
+
+\item We are now ready to try out iterated filtering on the S\&P500 data. We will use the IF2 algorithm of @ionides15, implemented by \code{mif2}.
+
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{sp500_rw.sd_rp} \hlkwb{<-} \hlnum{0.02}
+\hlstd{sp500_rw.sd_ivp} \hlkwb{<-} \hlnum{0.1}
+\hlstd{sp500_cooling.fraction.50} \hlkwb{<-} \hlnum{0.5}
+
+\hlkwd{stew}\hlstd{(}\hlstr{"mif1.rda"}\hlstd{,\{}
+   \hlstd{t.if1} \hlkwb{<-} \hlkwd{system.time}\hlstd{(\{}
+   \hlstd{if1} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{sp500_Nreps_local,}
+     \hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,} \hlkwc{.combine}\hlstd{=c)} \hlopt{%dopar%} \hlkwd{mif2}\hlstd{(sp500.filt,}
+          \hlkwc{params}\hlstd{=params_test,}
+          \hlkwc{Np}\hlstd{=sp500_Np,}
+          \hlkwc{Nmif}\hlstd{=sp500_Nmif,}
+          \hlkwc{cooling.fraction.50}\hlstd{=sp500_cooling.fraction.50,}
+          \hlkwc{rw.sd} \hlstd{=} \hlkwd{rw.sd}\hlstd{(}
+                            \hlkwc{sigma_nu}  \hlstd{= sp500_rw.sd_rp,}
+                            \hlkwc{mu_h}      \hlstd{= sp500_rw.sd_rp,}
+                            \hlkwc{phi}       \hlstd{= sp500_rw.sd_rp,}
+                            \hlkwc{sigma_eta} \hlstd{= sp500_rw.sd_rp,}
+                            \hlkwc{G_0}       \hlstd{=} \hlkwd{ivp}\hlstd{(sp500_rw.sd_ivp),}
+                            \hlkwc{H_0}       \hlstd{=} \hlkwd{ivp}\hlstd{(sp500_rw.sd_ivp)}
+          \hlstd{)}
+       \hlstd{)}
+   \hlstd{L.if1} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{sp500_Nreps_local,}
+     \hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,} \hlkwc{.combine}\hlstd{=rbind)} \hlopt{%dopar%} \hlkwd{logmeanexp}\hlstd{(}
+       \hlkwd{replicate}\hlstd{(sp500_Nreps_eval,}
+         \hlkwd{logLik}\hlstd{(}\hlkwd{pfilter}\hlstd{(sp500.filt,}\hlkwc{params}\hlstd{=}\hlkwd{coef}\hlstd{(if1[[i]]),}\hlkwc{Np}\hlstd{=sp500_Np))}
+       \hlstd{),} \hlkwc{se}\hlstd{=}\hlnum{TRUE}\hlstd{)}
+  \hlstd{\})}
+\hlstd{\},}\hlkwc{seed}\hlstd{=}\hlnum{318817883}\hlstd{,}\hlkwc{kind}\hlstd{=}\hlstr{"L'Ecuyer"}\hlstd{)}
+
+\hlstd{r.if1} \hlkwb{<-} \hlkwd{data.frame}\hlstd{(}\hlkwc{logLik}\hlstd{=L.if1[,}\hlnum{1}\hlstd{],}\hlkwc{logLik_se}\hlstd{=L.if1[,}\hlnum{2}\hlstd{],}\hlkwd{t}\hlstd{(}\hlkwd{sapply}\hlstd{(if1,coef)))}
+\hlkwa{if} \hlstd{(run_level}\hlopt{>}\hlnum{1}\hlstd{)}
+  \hlkwd{write.table}\hlstd{(r.if1,}\hlkwc{file}\hlstd{=}\hlstr{"sp500_params.csv"}\hlstd{,}\hlkwc{append}\hlstd{=}\hlnum{TRUE}\hlstd{,}\hlkwc{col.names}\hlstd{=}\hlnum{FALSE}\hlstd{,}\hlkwc{row.names}\hlstd{=}\hlnum{FALSE}\hlstd{)}
+\hlkwd{summary}\hlstd{(r.if1}\hlopt{$}\hlstd{logLik,}\hlkwc{digits}\hlstd{=}\hlnum{5}\hlstd{)}
+\end{alltt}
+\begin{verbatim}
+##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##   -4016   -4008   -3998   -3996   -3985   -3973
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+
+\item This investigation took  0.3 minutes. 
+
+\item The repeated stochastic maximizations can also show us the geometry of the likelihood surface in a neighborhood of this point estimate:
+
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{pairs}\hlstd{(}\hlopt{~}\hlstd{logLik}\hlopt{+}\hlstd{sigma_nu}\hlopt{+}\hlstd{mu_h}\hlopt{+}\hlstd{phi}\hlopt{+}\hlstd{sigma_eta,}\hlkwc{data}\hlstd{=}\hlkwd{subset}\hlstd{(r.if1,logLik}\hlopt{>}\hlkwd{max}\hlstd{(logLik)}\hlopt{-}\hlnum{20}\hlstd{))}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=\maxwidth]{tmp/figurepairs-1} 
+
+}
 
 
 
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Likelihood maximization using randomized starting values}
+
+\bi
+
+\item When carrying out parameter estimation for dynamic systems, we need to specify beginning values for both the dynamic system (in the state space) and the parameters (in the parameter space). 
+
+\item Practical parameter estimation involves trying many starting values for the parameters. One can specify a large box in parameter space that contains all parameter vectors which seem remotely sensible. If an estimation method gives stable conclusions with starting values drawn randomly from this box, this gives some confidence that an adequate global search has been carried out. 
+
+\item For our volatility model, a box containing reasonable parameter values might be
+
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlstd{sp500_box} \hlkwb{<-} \hlkwd{rbind}\hlstd{(}
+ \hlkwc{sigma_nu}\hlstd{=}\hlkwd{c}\hlstd{(}\hlnum{0.005}\hlstd{,}\hlnum{0.05}\hlstd{),}
+ \hlkwc{mu_h}    \hlstd{=}\hlkwd{c}\hlstd{(}\hlopt{-}\hlnum{1}\hlstd{,}\hlnum{0}\hlstd{),}
+ \hlkwc{phi} \hlstd{=} \hlkwd{c}\hlstd{(}\hlnum{0.95}\hlstd{,}\hlnum{0.99}\hlstd{),}
+ \hlkwc{sigma_eta} \hlstd{=} \hlkwd{c}\hlstd{(}\hlnum{0.5}\hlstd{,}\hlnum{1}\hlstd{),}
+ \hlkwc{G_0} \hlstd{=} \hlkwd{c}\hlstd{(}\hlopt{-}\hlnum{2}\hlstd{,}\hlnum{2}\hlstd{),}
+ \hlkwc{H_0} \hlstd{=} \hlkwd{c}\hlstd{(}\hlopt{-}\hlnum{1}\hlstd{,}\hlnum{1}\hlstd{)}
+\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\bi
+
+\item We then carry out a search identical to the local one except for the starting parameter values. This can be succinctly coded by calling \code{mif2} on the previously constructed object, \code{if1[[1]]}, with a reset starting value:
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{stew}\hlstd{(}\hlkwc{file}\hlstd{=}\hlstr{"box_eval.rda"}\hlstd{,\{}
+  \hlstd{t.box} \hlkwb{<-} \hlkwd{system.time}\hlstd{(\{}
+    \hlstd{if.box} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{sp500_Nreps_global,}
+      \hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,}\hlkwc{.combine}\hlstd{=c)} \hlopt{%dopar%}
+      \hlkwd{mif2}\hlstd{(}
+        \hlstd{if1[[}\hlnum{1}\hlstd{]],}
+        \hlkwc{params}\hlstd{=}\hlkwd{apply}\hlstd{(sp500_box,}\hlnum{1}\hlstd{,}\hlkwa{function}\hlstd{(}\hlkwc{x}\hlstd{)}\hlkwd{runif}\hlstd{(}\hlnum{1}\hlstd{,x))}
+      \hlstd{)}
+
+    \hlstd{L.box} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{sp500_Nreps_global,}
+      \hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,}\hlkwc{.combine}\hlstd{=rbind)} \hlopt{%dopar%} \hlstd{\{}
+                        \hlkwd{set.seed}\hlstd{(}\hlnum{87932}\hlopt{+}\hlstd{i)}
+                        \hlkwd{logmeanexp}\hlstd{(}
+                          \hlkwd{replicate}\hlstd{(sp500_Nreps_eval,}
+                                    \hlkwd{logLik}\hlstd{(}\hlkwd{pfilter}\hlstd{(sp500.filt,}\hlkwc{params}\hlstd{=}\hlkwd{coef}\hlstd{(if.box[[i]]),}\hlkwc{Np}\hlstd{=sp500_Np))}
+                          \hlstd{),}
+                          \hlkwc{se}\hlstd{=}\hlnum{TRUE}\hlstd{)}
+                      \hlstd{\}}
+  \hlstd{\})}
+\hlstd{\},}\hlkwc{seed}\hlstd{=}\hlnum{290860873}\hlstd{,}\hlkwc{kind}\hlstd{=}\hlstr{"L'Ecuyer"}\hlstd{)}
+
+
+\hlstd{r.box} \hlkwb{<-} \hlkwd{data.frame}\hlstd{(}\hlkwc{logLik}\hlstd{=L.box[,}\hlnum{1}\hlstd{],}\hlkwc{logLik_se}\hlstd{=L.box[,}\hlnum{2}\hlstd{],}\hlkwd{t}\hlstd{(}\hlkwd{sapply}\hlstd{(if.box,coef)))}
+\hlkwa{if}\hlstd{(run_level}\hlopt{>}\hlnum{1}\hlstd{)} \hlkwd{write.table}\hlstd{(r.box,}\hlkwc{file}\hlstd{=}\hlstr{"sp500_params.csv"}\hlstd{,}\hlkwc{append}\hlstd{=}\hlnum{TRUE}\hlstd{,}\hlkwc{col.names}\hlstd{=}\hlnum{FALSE}\hlstd{,}\hlkwc{row.names}\hlstd{=}\hlnum{FALSE}\hlstd{)}
+\hlkwd{summary}\hlstd{(r.box}\hlopt{$}\hlstd{logLik,}\hlkwc{digits}\hlstd{=}\hlnum{5}\hlstd{)}
+\end{alltt}
+\begin{verbatim}
+##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##   -4058   -4004   -3996   -3997   -3976   -3973
+\end{verbatim}
+\end{kframe}
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+
+\item This search took  0.3 minutes. 
+
+\item The best likelihood found was -3972.7 with a standard error of 1.6. 
+
+\item We see that optimization attempts from diverse remote starting points can approach our MLE, but do not exceed it. This gives us some reasonable confidence in our MLE. 
+
+\item Plotting these diverse parameter estimates can help to give a feel for the global geometry of the likelihood surface 
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{pairs}\hlstd{(}\hlopt{~}\hlstd{logLik}\hlopt{+}\hlkwd{log}\hlstd{(sigma_nu)}\hlopt{+}\hlstd{mu_h}\hlopt{+}\hlstd{phi}\hlopt{+}\hlstd{sigma_eta}\hlopt{+}\hlstd{H_0,}\hlkwc{data}\hlstd{=}\hlkwd{subset}\hlstd{(r.box,logLik}\hlopt{>}\hlkwd{max}\hlstd{(logLik)}\hlopt{-}\hlnum{10}\hlstd{))}
+\end{alltt}
+\end{kframe}
+
+{\centering \includegraphics[width=\maxwidth]{tmp/figurepairs_global-1} 
+
+}
 
 
 
+\end{knitrout}
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+
+\item This preliminary analysis does not show clear evidence for the hypothesis that $\sigma_\nu > 0$. 
+
+\item That is likely because we are studying only a subset of the 1988 to 2012 dataset analyzed by @breto14. 
+
+\item Also, it might help to refine our inference be computing a likelihood profile over $\sigma_\nu$.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Benchmark likelihoods for alternative models}
+
+\bi
+
+\item To assess the overall success of the model, it is helpful to put the log likelihoods in the context of simpler models
+
+\item This use of fitting a simpler model is called a \myemph{benchmark}. 
+
+\item Benchmarks provide a complementary approach to residual analysis, and studying simulations from the fitted model.
+
+\item Our stochastic volatility model, with time-varying leverage, model has a maximized log likelihood of -3972.7 with 6 fitted parameters.
 
 
+\item Refitting the GARCH(1,1) model to this exact dataset,
+
+\ei
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{library}\hlstd{(tseries)}
+\hlstd{fit.garch.benchmark} \hlkwb{<-} \hlkwd{garch}\hlstd{(sp500.ret.demeaned,}\hlkwc{grad} \hlstd{=} \hlstr{"numerical"}\hlstd{,} \hlkwc{trace} \hlstd{=} \hlnum{FALSE}\hlstd{)}
+\hlstd{L.garch.benchmark} \hlkwb{<-} \hlkwd{logLik}\hlstd{(fit.garch.benchmark)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\bi
+
+\item The GARCH(1,1) model has a maximizes likelihood of NA with 3 fitted parameters.
+
+\item Here, AIC favors the stochastic volatility model.
+
+\item A model which both fits better and has meaningful interpretation has clear advantages over a simple statistical model. 
+
+\item The disadvantage of the sophisticated modeling and inference is the extra effort required.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Can a mechanistic model be helpful if it loses to a non-mechanistic alternative?}
+
+\bi
+
+\item Sometimes, the mechanistic model does not beat simple benchmark models. That does not necessarily mean the mechanistic model is entirely useless. 
+
+\item We may be able to learn about the system under investigation from what a scientifically interpretable model fails to explain.
+
+\item We may be able to use preliminary results to improve the model, and subsequently beat the benchmarks.
+
+\item If the mechanistic model fits disastrously compared to the benchmark, our model is probably missing something important. We must reconsider the model, based on clues we might obtain by carrying out residual analysis and looking at simulations from the fitted model.
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{Appendix: Proper weighting for a partially plug-and-play algorithm with a perfectly observed state space component}
+
+\bi
+
+\item Suppose a POMP model with latent variable $X_n=(U_n,V_n)$ and observed varaible $Y_n$ having conditional density $f_{Y_n|V_n}(y_n|v_n)$ depending only on $V_n$. 
+
+\item The proper weight \citep{liu98} for an SMC proposal density $q_n(x_n|x_{n-1})$ is
+$$ 
+w_{n}(x_n|x_{n-1}) = \frac{f_{Y_n|X_n}(\data{y}_n|x_n)f_{X_n|X_{n-1}}(x_n|x_{n-1})}{q_n(x_n|x_{n-1})}.
+$$
+
+\item Consider the  proposal,
+$$
+q_n(u_n,v_n|x_{n-1}) = f_{U_n|X_{n-1}}(u_n|x_{n-1}) g_n(v_n).
+$$
+This is partially plug-and-play, in the sense that the $U_n$ part of the proposal is drawn from a simulator of the dynamic system. 
+
+\item Computing the weights, we see that the transition density for the $U_n$ component cancels out and does not have to be computed, i.e., 
+$$\begin{aligned}
+w_{n}(x_n|x_{n-1}) &= \frac{f_{Y_n|V_n}(\data{y}_n|v_n)f_{U_n|X_{n-1}}(u_n|x_{n-1})f_{V_n|U_n,X_{n-1}}(v_n|u_n,x_{n-1})}{f_{U_n|X_{n-1}}(u_n|x_{n-1}) g_n(v_n)} \\
+&= \frac{f_{Y_n|V_n}(\data{y}_n|v_n)f_{V_n|U_n,X_{n-1}}(v_n|u_n,x_{n-1})}{ g_n(v_n)}.
+\end{aligned} 
+$$
+
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\bi
+
+\item Now consider the case where the $V_n$ component of the state space is perfectly observed, i.e., $Y_n=V_n$. In this case, 
+$$ 
+f_{Y_n|V_n}(y_n|v_n) = \delta(y_n-v_n),
+$$
+interpreted as a point mass at $v_n$ in the discrete case and a singular density at $v_n$ in the continuous case. 
+
+\item We can choose $g_n(v_n)$ to depend on the data, and a natural choice is 
+$$
+g_n(v_n)=\delta(\data{y}_n-v_n),
+$$
+for which the proper weight is
+$$
+w_{n}(x_n|x_{n-1}) = f_{Y_n|U_n,X_{n-1}}(\data{y}_n|u_n,x_{n-1}).
+$$
+
+\item This is the situation in the context of our case study, with $U_n=(G_n,H_n)$ and $V_n=Y_n$.
 
 
+\ei
+
+\end{frame}  
+
+\begin{frame}[fragile]
+\frametitle{Acknowledgments and License}
+
+\bi
+\item Produced with R version 3.6.2 and \package{pomp} version 2.3.
+
+\item These notes build on previous versions at \url{ionides.github.io/531w16} and \url{ionides.github.io/531w18}. 
+\item
+Licensed under the Creative Commons attribution-noncommercial license, \url{http://creativecommons.org/licenses/by-nc/3.0/}.
+Please share and remix noncommercially, mentioning its origin.  
+\includegraphics[width=2cm]{cc-by-nc.png}
+\ei
+
+\end{frame}
 
 
+\begin{frame}[allowframebreaks]
+\frametitle{References}
+\bibliography{notes14.bib}
+\end{frame}
 
-
-
-
-
-
-
-
+\end{document}
