@@ -1,4 +1,3 @@
-%\documentclass[handout]{beamer}
 \documentclass{beamer}
 \usepackage{natbib}
 \bibliographystyle{dcu}
@@ -901,7 +900,7 @@ pairs(~logLik+psi+rho+tau+sigma_dem+sigma_env,
 
 \bi
 
-\item We see strong tradeoffs between $\psi$, $\rho$ and $\sigma_\mathrm{dem}$. By itself, in the absence of other assumptions, the pathogen immigration rate $\psi$ is fairly weakly identified. However, the reporting rate $\rho$ is essentially the fraction of poliovirus infections leading to acute flaccid paralysis, which is known to be around 1%. This plot suggests that fixing an assumed value of $\rho$ might lead to much more precise inference on $\psi$; the rate of pathogen immigration presumably being important for understanding disease persistence. These hypotheses could be investigated more formally by construction of profile likelihood plots and likelihood ratio tests.
+\item We see strong tradeoffs between $\psi$, $\rho$ and $\sigma_\mathrm{dem}$. By itself, in the absence of other assumptions, the pathogen immigration rate $\psi$ is fairly weakly identified. However, the reporting rate $\rho$ is essentially the fraction of poliovirus infections leading to acute flaccid paralysis, which is known to be around 1\%. This plot suggests that fixing an assumed value of $\rho$ might lead to much more precise inference on $\psi$; the rate of pathogen immigration presumably being important for understanding disease persistence. These hypotheses could be investigated more formally by construction of profile likelihood plots and likelihood ratio tests.
 
 \ei
 
