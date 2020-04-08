@@ -115,9 +115,7 @@ stopifnot(packageVersion("pomp")>="2.0")
 
 \begin{enumerate}
 
-\item Introduce financial volatility and some models used to study it.
-
-\item Define ARCH, GARCH, and stochastic volatility models. 
+\item Introduce financial volatility and some models used to study it: ARCH, GARCH, and stochastic volatility models. 
 
 \item Provide a case study in using \package{pomp} to study a stochastic volatility model.
 
@@ -137,15 +135,15 @@ stopifnot(packageVersion("pomp")>="2.0")
 
 \item Returns on investments in stock market indices or large companies are often found to be approximately uncorrelated. 
 
-\item If investment returns are substantially correlated, that provides an opportunity for investors to study their time series behavior and make money. 
+\item If investment returns are substantially correlated, investors can study their time series behavior and make money. 
 
 \item If the investment is non-liquid (i.e., not reliably tradeable), or expensive to trade, then it might be hard to make money even if you can statistically predict a positive expected return.
 
-\item Otherwise, the market will likely notice a favorable investment opportunity. More buyers will push up the price, and so the favorable situation will disappear.
+\item Otherwise, the market may notice a favorable investment opportunity. More buyers will lead to higher prices, and the opportunity will disappear.
 
-\item Consequently, most liquid and widely traded investments (such as stock market indices, or stock of large companies) have close to uncorrelated returns.
+\item Consequently, most readily traded investments (e.g., stock market indices, or stock of large companies) have close to uncorrelated returns.
 
-\item However, the variability of the returns (called the volatility) can fluctuate considerably. Understanding this volatility is important for quantifying and managing the risk of investments. 
+\item The variability of the returns (called the volatility) can fluctuate considerably. Understanding this volatility is important for quantifying and managing the risk of investments. 
 
 \ei
 
@@ -153,21 +151,25 @@ stopifnot(packageVersion("pomp")>="2.0")
 
 \begin{frame}[fragile]
 
-\frametitle{Data}
-
 \bi
 
-\item Recall the daily S\&P 500 data that we saw earlier, in Chapter 3, downloaded from \url{yahoo.com}.
+\item Recall the daily S\&P 500 data that we saw earlier, in Chapter 3.
 
 \ei
 
-<<sp500>>=
+<<sp500_plot_code,echo=T,eval=F>>=
 dat <- read.table("sp500.csv",sep=",",header=TRUE)
 N <- nrow(dat)
 sp500 <- dat$Close[N:1] # data are in reverse order in sp500.csv
-par(mfrow=c(1,2))
 plot(sp500,type="l")
 plot(log(sp500),type="l")
+@
+
+\vspace{-2mm}
+
+<<sp500_plot,out.width="10cm",echo=F>>=
+par(mfrow=c(1,2),mai=c(0.8,0.8,0.1,0.3))
+<<sp500_plot_code>>
 @
 
 \end{frame}
@@ -196,29 +198,44 @@ have considerable sample autocorrelation.
 \begin{frame}[fragile]
 
 
-\myquestion. Fitting a stationarity model to stock market returns.
+
 
 \bi
 
-\item Look at the plots for the S\&P data when we considered the random walk model in Chapter 3 of the notes.
+\item We fit models to the demeaned daily returns for the S\&P 500 index for 2002-2012, to compare with \citet{breto14}. 
 
-\item Is it appropriate to fit a stationary model to $\data{y_{2:N}}$, or do we have evidence for violation of stationarity? Explain.
+\vspace{-2mm}
 
 \ei
+<<data_rda_code,echo=T,eval=F>>=
+load(file="sp500-2002-2012.rda")
+plot(sp500.ret.demeaned, type="l",
+  xlab="business day (2002-2012)",ylab="demeaned S&P 500 return")
+@
+
+\vspace{-2mm}
+
+<<data_rda_plot,out.width="8cm",echo=F>>=
+par(mai=c(0.8,0.8,0.1,0.1))
+<<data_rda_code>>
+@
+
+\myquestion. Is it appropriate to fit a stationary model to this series, or do we have evidence for violation of stationarity? Explain.
 
 \answer{\vspace{30mm}}{todo}
 
 \end{frame}
 
+
 \begin{frame}[fragile]
 
-\frametitle{ARCH and GARCH models}
+\frametitle{The ARCH model}
 
 \bi
 
 \item The ARCH and GARCH models have become widely used for financial time series modeling. Here, we follow @cowpertwait09 to introduce these models and corresponding computations in R. See also, Section 5.4 of Shumway and Stoffer (3rd edition). 
 
-\item An order $p$ autoregressive conditional heteroskedasticity model, known as ARCH(p), has the form
+\item An order $p$ \myemph{autoregressive conditional heteroskedasticity} model, known as ARCH(p), has the form
 $$ Y_n = \epsilon_n \sqrt{V_n},$$
 where
 $$ V_n = \alpha_0 + \sum_{j=1}^p \alpha_j Y_{n-j}^2$$
@@ -228,14 +245,24 @@ and $\epsilon_{1:N}$ is white noise.
 
 \item If  $Y_{1:N}$ is a Gaussian ARCH(p), then  $Y_{1:N}^2$ is AR(p), but not Gaussian AR(p).
 
-\item The generalized ARCH model, known as GARCH(p,q), has the form
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{The GARCH model}
+
+\bi
+
+\item The \myemph{generalized ARCH} model, known as GARCH(p,q), has the form
 $$ Y_n = \epsilon_n \sqrt{V_n},$$
 where
 $$ V_n = \alpha_0 + \sum_{j=1}^p \alpha_j Y_{n-j}^2 + \sum_{k=1}^q \beta_k V_{n-k}$$
 and $\epsilon_{1:N}$ is white noise.
 
 
-\item The GARCH(1.1) model is a popular choice \citep{cowpertwait09} which can be fitted as follows.
+\item The GARCH(1.1) model is a popular choice \citep{cowpertwait09} which can be fitted using \code{garch()} in the \code{tseries} R package.
 
 \ei
 
@@ -247,19 +274,25 @@ and $\epsilon_{1:N}$ is white noise.
 
 <<garch>>=
 require(tseries)
-fit.garch <- garch(sp500,grad = "numerical", trace = FALSE)
-L.garch <- logLik(fit.garch)
+fit.garch <- garch(sp500.ret.demeaned,grad = "numerical", trace = FALSE)
+L.garch <- tseries:::logLik.garch(fit.garch)
 @
 
 \bi
 
-\item This 3-parameter model has a maximized log likelihood of $\Sexpr{format(round(L.garch,1), scientific=FALSE)}$.
+\item This 3-parameter model has a maximized log likelihood of $\Sexpr{myround(L.garch,1)}$.
+
+\item It appears that a bug in this version of \code{tseries} means that simply \code{logLik(fit.garch)} does not work.
+
+\item From \code{?garch} we learn this is actually a conditional log likelihood given the first $\max(p,q)$ values.
 
 \ei
 
-\myquestion. It is usually inappropriate to present numerical results to seven significant figures. Is this appropriate for reporting the log likelihood here? Why?
+\vspace{3mm}
 
-\answer{\vspace{10mm}}{todo}
+\myquestion. It is usually inappropriate to present numerical results to five significant figures. Is this appropriate for reporting the log likelihood here? Why?
+
+\answer{\vspace{30mm}}{todo}
 
 \end{frame}
 
@@ -279,8 +312,8 @@ L.garch <- logLik(fit.garch)
 
 \end{frame}
 
-\begin{frame}[fragile]
 
+\begin{frame}[fragile]
 
 \frametitle{Financial leverage}
 
@@ -327,21 +360,6 @@ where $\{G_n\}$ is the usual, Gaussian random walk.
 
 \bi
 
-\item We fit the time-varying leverage model to demeaned daily returns for the S\&P 500 index, using the data that were downloaded, detrended and analyzed by \citet{breto14}. 
-
-\item Here, we just analyze 2002-2012, though it is also interesting to fit to longer intervals, or to compare fits to different intervals.
-
-\ei
-
-<<data>>=
-load(file="sp500-2002-2012.rda")
-plot(sp500.ret.demeaned,xlab="business day (2002-2012)",ylab="demeaned S&P 500 return", type="l")
-@
-
-\bi
-
-\item We see high volatility around the 2008 financial crisis, and some other episodes.
-
 \item Following the notation and model representation in equation (4) of \citet{breto14}, we propose a model,
 \begin{align} 
 Y_n &= \exp\{H_n/2\} \epsilon_n, \\
@@ -361,9 +379,7 @@ where $\beta_n=Y_n\sigma_\eta\sqrt{1-\phi^2}$, $\{\epsilon_n\}$ is an iid $N(0,1
 
 \frametitle{Building a POMP model}
 
-<<load_pomp>>=
-require(pomp)
-@
+\vspace{-2mm}
 
 \bi
 
@@ -371,7 +387,7 @@ require(pomp)
 
 \item Formally, therefore, we use the state variable $X_n=(G_{n},H_{n},Y_{n})$ and model the measurement process as a perfect observation of the $Y_n$ component of the state space. 
 
-\item To define a recursive particle filter, we write filter particle $j$ at time $n-1$ as 
+\item To define a recursive particle filter, we write the filtered particle $j$ at time $n-1$ as 
 $$ X^F_{n-1,j}=(G^F_{n-1,j},H^F_{n-1,j},\data{y}_{n-1}).$$
 
 \item Now we can construct prediction particles at time $n$,
@@ -523,22 +539,20 @@ sp500.filt <- pomp(data=data.frame(
 
 \bi
 
-\item Simulating from the model is convenient for developing and testing the code, as well as to investigate a fitted model. We can do this as follows:
+\item Simulating from the model is convenient for developing and testing the code, as well as to investigate a fitted model:
 
 \ei
 
 <<sim_pomp>>=
-expit<-function(real){1/(1+exp(-real))}
-logit<-function(p.arg){log(p.arg/(1-p.arg))}
 params_test <- c(
-     sigma_nu = exp(-4.5),  
-     mu_h = -0.25,  	 
-     phi = expit(4),	 
-     sigma_eta = exp(-0.07),
-     G_0 = 0,
-     H_0=0
-  )
-
+  sigma_nu = exp(-4.5),  
+  mu_h = -0.25,  	 
+  phi = expit(4),	 
+  sigma_eta = exp(-0.07),
+  G_0 = 0,
+  H_0=0
+)
+  
 sim1.sim <- pomp(sp500.filt, 
   statenames=sp500_statenames,
   paramnames=sp500_paramnames,
@@ -569,7 +583,8 @@ sim1.filt <- pomp(sim1.sim,
     times="time"),
   statenames=sp500_statenames,
   paramnames=sp500_paramnames,
-  rprocess=discrete_time(step.fun=Csnippet(sp500_rproc.filt),delta.t=1)
+  rprocess=discrete_time(
+    step.fun=Csnippet(sp500_rproc.filt),delta.t=1)
 )
 
 
@@ -585,7 +600,7 @@ sim1.filt <- pomp(sim1.sim,
 
 \item Let's check that we can indeed filter and re-estimate parameters successfully for this simulated data.  
 
-\item To develop and debug code, it is nice to have a version that runs extra quickly, for which we set \code{run_level=1}. Here, \code{Np} is the number of particles (i.e., sequential Monte Carlo sample size), and \code{Nmif} is the number of iterations of the optimization procedure carried out below. Empirically, \code{Np=5000} and \code{Nmif=200} are around the minimum required to get stable results with an error in the likelihood of order 1 log unit for this example; this is implemented by setting \code{run_level=2}. One can then ramp up to larger values for more refined computations, implemented here by \code{run_level=3}
+\item As in previous case studies, we set up different run levels:
 
 \ei
 
@@ -604,29 +619,21 @@ sp500_Nreps_global <- switch(run_level,10, 20, 100)
 
 \bi
 
-\item We'll carry out replications to assess Monte Carlo error. Since most modern machines have multiple cores, it is convenient to do some parallelization when generating replications. 
+\item We carry out replications in parallel to assess Monte Carlo error.
 
 \ei
 
 <<parallel-setup,cache=FALSE>>=
-require(doParallel)
+library(doParallel)
 registerDoParallel()
+library(doRNG)
+registerDoRNG(34118892)
 @
-
-\bi
-
-\item By default, \code{doParallel} enrolls half the available cores. Now, we filter. 
-
-\ei
-
 <<pf1>>=
-stew(file=sprintf("pf1.rda",run_level),{
+stew(file=sprintf("pf1-%d.rda",run_level),{
   t.pf1 <- system.time(
-    pf1 <- foreach(i=1:sp500_Nreps_eval,.packages='pomp',
-                   .options.multicore=list(set.seed=TRUE)) %dopar% try(
-                     pfilter(sim1.filt,Np=sp500_Np)
-                   )
-  )
+    pf1 <- foreach(i=1:sp500_Nreps_eval,
+      .packages='pomp') %dopar% pfilter(sim1.filt,Np=sp500_Np))
 },seed=493536993,kind="L'Ecuyer")
 (L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE))
 @
@@ -659,40 +666,43 @@ stew(file=sprintf("pf1.rda",run_level),{
 
 \ei
 
-<<mif>>=
+<<mif_setup>>=
 sp500_rw.sd_rp <- 0.02
 sp500_rw.sd_ivp <- 0.1
 sp500_cooling.fraction.50 <- 0.5
+sp500_rw.sd <- rw.sd(
+  sigma_nu  = sp500_rw.sd_rp,
+  mu_h      = sp500_rw.sd_rp,
+  phi       = sp500_rw.sd_rp,
+  sigma_eta = sp500_rw.sd_rp,
+  G_0       = ivp(sp500_rw.sd_ivp),
+  H_0       = ivp(sp500_rw.sd_ivp)
+)	 
+@
 
-stew("mif1.rda",{
-   t.if1 <- system.time({
-   if1 <- foreach(i=1:sp500_Nreps_local,
-     .packages='pomp', .combine=c) %dopar% mif2(sp500.filt,
-          params=params_test,
-          Np=sp500_Np,
-          Nmif=sp500_Nmif,
-          cooling.fraction.50=sp500_cooling.fraction.50,
-          rw.sd = rw.sd(
-                            sigma_nu  = sp500_rw.sd_rp,
-                            mu_h      = sp500_rw.sd_rp,
-                            phi       = sp500_rw.sd_rp,
-                            sigma_eta = sp500_rw.sd_rp,
-                            G_0       = ivp(sp500_rw.sd_ivp),
-                            H_0       = ivp(sp500_rw.sd_ivp)
-          )
-       )
-   L.if1 <- foreach(i=1:sp500_Nreps_local,
-     .packages='pomp', .combine=rbind) %dopar% logmeanexp(
-       replicate(sp500_Nreps_eval,
-         logLik(pfilter(sp500.filt,params=coef(if1[[i]]),Np=sp500_Np))
-       ), se=TRUE)
+\end{frame}
+
+\begin{frame}[fragile]
+<<mif>>=
+stew(file=sprintf("mif1-%d.rda",run_level),{
+  t.if1 <- system.time({
+  if1 <- foreach(i=1:sp500_Nreps_local,
+    .packages='pomp', .combine=c) %dopar% mif2(sp500.filt,
+      params=params_test,
+      Np=sp500_Np,
+      Nmif=sp500_Nmif,
+      cooling.fraction.50=sp500_cooling.fraction.50,
+      rw.sd = sp500_rw.sd)
+  L.if1 <- foreach(i=1:sp500_Nreps_local,
+    .packages='pomp', .combine=rbind) %dopar% logmeanexp(
+      replicate(sp500_Nreps_eval, logLik(pfilter(sp500.filt,
+        params=coef(if1[[i]]),Np=sp500_Np))), se=TRUE)
   })
 },seed=318817883,kind="L'Ecuyer")
 
 r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
-if (run_level>1) 
-  write.table(r.if1,file="sp500_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
-summary(r.if1$logLik,digits=5)
+if (run_level>1) write.table(r.if1,file="sp500_params.csv",
+  append=TRUE,col.names=FALSE,row.names=FALSE)
 @
 
 \end{frame}
@@ -707,8 +717,15 @@ summary(r.if1$logLik,digits=5)
 
 \ei
 
-<<pairs>>=
-pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,data=subset(r.if1,logLik>max(logLik)-20))
+<<pairs_code,echo=T,eval=F>>=
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,
+  data=subset(r.if1,logLik>max(logLik)-20))
+@
+
+\vspace{-5mm}
+
+<<pairs_plot,echo=F,eval=T,out.width="11cm">>=
+<<pairs_code>>
 @
 
 \end{frame}
@@ -719,11 +736,9 @@ pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,data=subset(r.if1,logLik>max(logLik)-2
 
 \bi
 
-\item When carrying out parameter estimation for dynamic systems, we need to specify beginning values for both the dynamic system (in the state space) and the parameters (in the parameter space). 
+\item As for our other case studies, carrying out searches starting randomly throughout a large box can lead to reasonble evidence for successful global maximization.
 
-\item Practical parameter estimation involves trying many starting values for the parameters. One can specify a large box in parameter space that contains all parameter vectors which seem remotely sensible. If an estimation method gives stable conclusions with starting values drawn randomly from this box, this gives some confidence that an adequate global search has been carried out. 
-
-\item For our volatility model, a box containing reasonable parameter values might be
+\item For our volatility model, a box containing plausible parameter values might be
 
 \ei
 
@@ -738,41 +753,29 @@ sp500_box <- rbind(
 )
 @
 
-\bi
-
-\item We then carry out a search identical to the local one except for the starting parameter values. This can be succinctly coded by calling \code{mif2} on the previously constructed object, \code{if1[[1]]}, with a reset starting value:
-
-\ei
-
 \end{frame}
 
 \begin{frame}[fragile]
 
 <<box_eval>>=
-stew(file="box_eval.rda",{
+stew(file=sprintf("box_eval-%d.rda",run_level),{
   t.box <- system.time({
     if.box <- foreach(i=1:sp500_Nreps_global,
-      .packages='pomp',.combine=c) %dopar%  
-      mif2(
-        if1[[1]],
-        params=apply(sp500_box,1,function(x)runif(1,x))
-      )
-    
+      .packages='pomp',.combine=c) %dopar% mif2(if1[[1]],
+        params=apply(sp500_box,1,function(x)runif(1,x)))
     L.box <- foreach(i=1:sp500_Nreps_global,
       .packages='pomp',.combine=rbind) %dopar% {
-                        set.seed(87932+i)
-                        logmeanexp(
-                          replicate(sp500_Nreps_eval,
-                                    logLik(pfilter(sp500.filt,params=coef(if.box[[i]]),Np=sp500_Np))
-                          ), 
-                          se=TRUE)
-                      }
+         logmeanexp(replicate(sp500_Nreps_eval, logLik(pfilter(
+	     sp500.filt,params=coef(if.box[[i]]),Np=sp500_Np))), 
+           se=TRUE)
+       }
   })
 },seed=290860873,kind="L'Ecuyer")
 
-
-r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],t(sapply(if.box,coef)))
-if(run_level>1) write.table(r.box,file="sp500_params.csv",append=TRUE,col.names=FALSE,row.names=FALSE)
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],
+  t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="sp500_params.csv",
+  append=TRUE,col.names=FALSE,row.names=FALSE)
 summary(r.box$logLik,digits=5)
 @
 
@@ -796,10 +799,16 @@ summary(r.box$logLik,digits=5)
 
 \begin{frame}[fragile]
 
-<<pairs_global>>=
-pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,data=subset(r.box,logLik>max(logLik)-10))
+<<pairs_global_code,eval=F,echo=T>>=
+pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,
+  data=subset(r.box,logLik>max(logLik)-10))
 @
 
+\vspace{-4mm}
+
+<<pairs_global_plot,eval=T,echo=F,out.width="11cm">>=
+<<pairs_global_code>>
+@
 \end{frame}
 
 \begin{frame}[fragile]
@@ -808,7 +817,7 @@ pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,data=subset(r.box,logLik>max(
 
 \item This preliminary analysis does not show clear evidence for the hypothesis that $\sigma_\nu > 0$. 
 
-\item That is likely because we are studying only a subset of the 1988 to 2012 dataset analyzed by @breto14. 
+\item That is likely because we are studying only a subset of the 1988 to 2012 dataset analyzed by \citet{breto14}. 
 
 \item Also, it might help to refine our inference be computing a likelihood profile over $\sigma_\nu$.
 
@@ -822,30 +831,21 @@ pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,data=subset(r.box,logLik>max(
 
 \bi
 
-\item To assess the overall success of the model, it is helpful to put the log likelihoods in the context of simpler models
+\item To assess the overall success of the model, it is helpful to put the log likelihoods in the context of simpler models, called \myemph{benchmarks}.
 
-\item This use of fitting a simpler model is called a \myemph{benchmark}. 
-
-\item Benchmarks provide a complementary approach to residual analysis, and studying simulations from the fitted model.
-
-\item Our stochastic volatility model, with time-varying leverage, model has a maximized log likelihood of \Sexpr{round(max(r.box$logLik),1)} with 6 fitted parameters.
+\item Benchmarks provide a complementary approach to residual analysis and the investigation of simulations from the fitted model.
 
 
-\item Refitting the GARCH(1,1) model to this exact dataset,
 
-\ei
-
-<<garch_benchmark>>=
+<<garch_benchmark,eval=F,echo=F>>=
 library(tseries)
 fit.garch.benchmark <- garch(sp500.ret.demeaned,grad = "numerical", trace = FALSE)
-L.garch.benchmark <- logLik(fit.garch.benchmark)
+L.garch.benchmark <- tseries:::logLik.garch(fit.garch.benchmark)
 @
 
-\bi
+\item The GARCH(1,1) model for this dataset has a maximized likelihood of \Sexpr{myround(L.garch,1)} with 3 fitted parameters.
 
-\item The GARCH(1,1) model has a maximizes likelihood of \Sexpr{round(L.garch.benchmark,1)} with 3 fitted parameters.
-
-\item Here, AIC favors the stochastic volatility model.
+\item Our stochastic volatility model, with time-varying leverage, model has a maximized log likelihood of \Sexpr{round(max(r.box$logLik),1)} with 6 fitted parameters.  AIC favors the stochastic volatility model.
 
 \item A model which both fits better and has meaningful interpretation has clear advantages over a simple statistical model. 
 
@@ -879,27 +879,24 @@ L.garch.benchmark <- logLik(fit.garch.benchmark)
 
 \bi
 
-\item Suppose a POMP model with latent variable $X_n=(U_n,V_n)$ and observed varaible $Y_n$ having conditional density $f_{Y_n|V_n}(y_n|v_n)$ depending only on $V_n$. 
+\item Suppose a POMP model with latent variable $X_n=(U_n,V_n)$ and observed varaible $Y_n$ has conditional density $f_{Y_n|V_n}(y_n|v_n)$ depending only on $V_n$. 
 
-\item The proper weight \citep{liu98} for an SMC proposal density $q_n(x_n|x_{n-1})$ is
+\item The proper weight for an SMC proposal density $q_n(x_n|x_{n-1})$ is
 $$ 
 w_{n}(x_n|x_{n-1}) = \frac{f_{Y_n|X_n}(\data{y}_n|x_n)f_{X_n|X_{n-1}}(x_n|x_{n-1})}{q_n(x_n|x_{n-1})}.
 $$
 
-\item Consider the  proposal,
-$$
-q_n(u_n,v_n|x_{n-1}) = f_{U_n|X_{n-1}}(u_n|x_{n-1}) g_n(v_n).
-$$
+\item Consider the  proposal
+$q_n(u_n,v_n|x_{n-1}) = f_{U_n|X_{n-1}}(u_n|x_{n-1}) g_n(v_n)$.
 This is partially plug-and-play, in the sense that the $U_n$ part of the proposal is drawn from a simulator of the dynamic system. 
 
-\item Computing the weights, we see that the transition density for the $U_n$ component cancels out and does not have to be computed, i.e., 
+\item Computing the weights, we see that the transition density for the $U_n$ component cancels out and does not have to be computed, i.e.,
+\ei
 $$\begin{aligned}
 w_{n}(x_n|x_{n-1}) &= \frac{f_{Y_n|V_n}(\data{y}_n|v_n)f_{U_n|X_{n-1}}(u_n|x_{n-1})f_{V_n|U_n,X_{n-1}}(v_n|u_n,x_{n-1})}{f_{U_n|X_{n-1}}(u_n|x_{n-1}) g_n(v_n)} \\
 &= \frac{f_{Y_n|V_n}(\data{y}_n|v_n)f_{V_n|U_n,X_{n-1}}(v_n|u_n,x_{n-1})}{ g_n(v_n)}.
-\end{aligned} 
+\end{aligned}
 $$
-
-\ei
 
 \end{frame}
 

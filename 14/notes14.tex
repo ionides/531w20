@@ -95,9 +95,7 @@
 
 \begin{enumerate}
 
-\item Introduce financial volatility and some models used to study it.
-
-\item Define ARCH, GARCH, and stochastic volatility models. 
+\item Introduce financial volatility and some models used to study it: ARCH, GARCH, and stochastic volatility models. 
 
 \item Provide a case study in using \package{pomp} to study a stochastic volatility model.
 
@@ -117,15 +115,15 @@
 
 \item Returns on investments in stock market indices or large companies are often found to be approximately uncorrelated. 
 
-\item If investment returns are substantially correlated, that provides an opportunity for investors to study their time series behavior and make money. 
+\item If investment returns are substantially correlated, investors can study their time series behavior and make money. 
 
 \item If the investment is non-liquid (i.e., not reliably tradeable), or expensive to trade, then it might be hard to make money even if you can statistically predict a positive expected return.
 
-\item Otherwise, the market will likely notice a favorable investment opportunity. More buyers will push up the price, and so the favorable situation will disappear.
+\item Otherwise, the market may notice a favorable investment opportunity. More buyers will lead to higher prices, and the opportunity will disappear.
 
-\item Consequently, most liquid and widely traded investments (such as stock market indices, or stock of large companies) have close to uncorrelated returns.
+\item Consequently, most readily traded investments (e.g., stock market indices, or stock of large companies) have close to uncorrelated returns.
 
-\item However, the variability of the returns (called the volatility) can fluctuate considerably. Understanding this volatility is important for quantifying and managing the risk of investments. 
+\item The variability of the returns (called the volatility) can fluctuate considerably. Understanding this volatility is important for quantifying and managing the risk of investments. 
 
 \ei
 
@@ -133,11 +131,9 @@
 
 \begin{frame}[fragile]
 
-\frametitle{Data}
-
 \bi
 
-\item Recall the daily S\&P 500 data that we saw earlier, in Chapter 3, downloaded from \url{yahoo.com}.
+\item Recall the daily S\&P 500 data that we saw earlier, in Chapter 3.
 
 \ei
 
@@ -147,13 +143,18 @@
 \hlstd{dat} \hlkwb{<-} \hlkwd{read.table}\hlstd{(}\hlstr{"sp500.csv"}\hlstd{,}\hlkwc{sep}\hlstd{=}\hlstr{","}\hlstd{,}\hlkwc{header}\hlstd{=}\hlnum{TRUE}\hlstd{)}
 \hlstd{N} \hlkwb{<-} \hlkwd{nrow}\hlstd{(dat)}
 \hlstd{sp500} \hlkwb{<-} \hlstd{dat}\hlopt{$}\hlstd{Close[N}\hlopt{:}\hlnum{1}\hlstd{]} \hlcom{# data are in reverse order in sp500.csv}
-\hlkwd{par}\hlstd{(}\hlkwc{mfrow}\hlstd{=}\hlkwd{c}\hlstd{(}\hlnum{1}\hlstd{,}\hlnum{2}\hlstd{))}
 \hlkwd{plot}\hlstd{(sp500,}\hlkwc{type}\hlstd{=}\hlstr{"l"}\hlstd{)}
 \hlkwd{plot}\hlstd{(}\hlkwd{log}\hlstd{(sp500),}\hlkwc{type}\hlstd{=}\hlstr{"l"}\hlstd{)}
 \end{alltt}
 \end{kframe}
+\end{knitrout}
 
-{\centering \includegraphics[width=\maxwidth]{tmp/figuresp500-1} 
+\vspace{-2mm}
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
+
+{\centering \includegraphics[width=10cm]{tmp/figuresp500_plot-1} 
 
 }
 
@@ -187,29 +188,54 @@ have considerable sample autocorrelation.
 \begin{frame}[fragile]
 
 
-\myquestion. Fitting a stationarity model to stock market returns.
+
 
 \bi
 
-\item Look at the plots for the S\&P data when we considered the random walk model in Chapter 3 of the notes.
+\item We fit models to the demeaned daily returns for the S\&P 500 index for 2002-2012, to compare with \citet{breto14}. 
 
-\item Is it appropriate to fit a stationary model to $\data{y_{2:N}}$, or do we have evidence for violation of stationarity? Explain.
+\vspace{-2mm}
 
 \ei
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{load}\hlstd{(}\hlkwc{file}\hlstd{=}\hlstr{"sp500-2002-2012.rda"}\hlstd{)}
+\hlkwd{plot}\hlstd{(sp500.ret.demeaned,} \hlkwc{type}\hlstd{=}\hlstr{"l"}\hlstd{,}
+  \hlkwc{xlab}\hlstd{=}\hlstr{"business day (2002-2012)"}\hlstd{,}\hlkwc{ylab}\hlstd{=}\hlstr{"demeaned S&P 500 return"}\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
+
+\vspace{-2mm}
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
+
+{\centering \includegraphics[width=8cm]{tmp/figuredata_rda_plot-1} 
+
+}
+
+
+
+\end{knitrout}
+
+\myquestion. Is it appropriate to fit a stationary model to this series, or do we have evidence for violation of stationarity? Explain.
 
 \answer{\vspace{30mm}}{todo}
 
 \end{frame}
 
+
 \begin{frame}[fragile]
 
-\frametitle{ARCH and GARCH models}
+\frametitle{The ARCH model}
 
 \bi
 
 \item The ARCH and GARCH models have become widely used for financial time series modeling. Here, we follow @cowpertwait09 to introduce these models and corresponding computations in R. See also, Section 5.4 of Shumway and Stoffer (3rd edition). 
 
-\item An order $p$ autoregressive conditional heteroskedasticity model, known as ARCH(p), has the form
+\item An order $p$ \myemph{autoregressive conditional heteroskedasticity} model, known as ARCH(p), has the form
 $$ Y_n = \epsilon_n \sqrt{V_n},$$
 where
 $$ V_n = \alpha_0 + \sum_{j=1}^p \alpha_j Y_{n-j}^2$$
@@ -219,14 +245,24 @@ and $\epsilon_{1:N}$ is white noise.
 
 \item If  $Y_{1:N}$ is a Gaussian ARCH(p), then  $Y_{1:N}^2$ is AR(p), but not Gaussian AR(p).
 
-\item The generalized ARCH model, known as GARCH(p,q), has the form
+\ei
+
+\end{frame}
+
+\begin{frame}[fragile]
+
+\frametitle{The GARCH model}
+
+\bi
+
+\item The \myemph{generalized ARCH} model, known as GARCH(p,q), has the form
 $$ Y_n = \epsilon_n \sqrt{V_n},$$
 where
 $$ V_n = \alpha_0 + \sum_{j=1}^p \alpha_j Y_{n-j}^2 + \sum_{k=1}^q \beta_k V_{n-k}$$
 and $\epsilon_{1:N}$ is white noise.
 
 
-\item The GARCH(1.1) model is a popular choice \citep{cowpertwait09} which can be fitted as follows.
+\item The GARCH(1.1) model is a popular choice \citep{cowpertwait09} which can be fitted using \code{garch()} in the \code{tseries} R package.
 
 \ei
 
@@ -240,21 +276,27 @@ and $\epsilon_{1:N}$ is white noise.
 \definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
 \begin{alltt}
 \hlkwd{require}\hlstd{(tseries)}
-\hlstd{fit.garch} \hlkwb{<-} \hlkwd{garch}\hlstd{(sp500,}\hlkwc{grad} \hlstd{=} \hlstr{"numerical"}\hlstd{,} \hlkwc{trace} \hlstd{=} \hlnum{FALSE}\hlstd{)}
-\hlstd{L.garch} \hlkwb{<-} \hlkwd{logLik}\hlstd{(fit.garch)}
+\hlstd{fit.garch} \hlkwb{<-} \hlkwd{garch}\hlstd{(sp500.ret.demeaned,}\hlkwc{grad} \hlstd{=} \hlstr{"numerical"}\hlstd{,} \hlkwc{trace} \hlstd{=} \hlnum{FALSE}\hlstd{)}
+\hlstd{L.garch} \hlkwb{<-} \hlstd{tseries}\hlopt{:::}\hlkwd{logLik.garch}\hlstd{(fit.garch)}
 \end{alltt}
 \end{kframe}
 \end{knitrout}
 
 \bi
 
-\item This 3-parameter model has a maximized log likelihood of $NA$.
+\item This 3-parameter model has a maximized log likelihood of $-4019.7$.
+
+\item It appears that a bug in this version of \code{tseries} means that simply \code{logLik(fit.garch)} does not work.
+
+\item From \code{?garch} we learn this is actually a conditional log likelihood given the first $\max(p,q)$ values.
 
 \ei
 
-\myquestion. It is usually inappropriate to present numerical results to seven significant figures. Is this appropriate for reporting the log likelihood here? Why?
+\vspace{3mm}
 
-\answer{\vspace{10mm}}{todo}
+\myquestion. It is usually inappropriate to present numerical results to five significant figures. Is this appropriate for reporting the log likelihood here? Why?
+
+\answer{\vspace{30mm}}{todo}
 
 \end{frame}
 
@@ -274,8 +316,8 @@ and $\epsilon_{1:N}$ is white noise.
 
 \end{frame}
 
-\begin{frame}[fragile]
 
+\begin{frame}[fragile]
 
 \frametitle{Financial leverage}
 
@@ -322,32 +364,6 @@ where $\{G_n\}$ is the usual, Gaussian random walk.
 
 \bi
 
-\item We fit the time-varying leverage model to demeaned daily returns for the S\&P 500 index, using the data that were downloaded, detrended and analyzed by \citet{breto14}. 
-
-\item Here, we just analyze 2002-2012, though it is also interesting to fit to longer intervals, or to compare fits to different intervals.
-
-\ei
-
-\begin{knitrout}\small
-\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
-\begin{alltt}
-\hlkwd{load}\hlstd{(}\hlkwc{file}\hlstd{=}\hlstr{"sp500-2002-2012.rda"}\hlstd{)}
-\hlkwd{plot}\hlstd{(sp500.ret.demeaned,}\hlkwc{xlab}\hlstd{=}\hlstr{"business day (2002-2012)"}\hlstd{,}\hlkwc{ylab}\hlstd{=}\hlstr{"demeaned S&P 500 return"}\hlstd{,} \hlkwc{type}\hlstd{=}\hlstr{"l"}\hlstd{)}
-\end{alltt}
-\end{kframe}
-
-{\centering \includegraphics[width=\maxwidth]{tmp/figuredata-1} 
-
-}
-
-
-
-\end{knitrout}
-
-\bi
-
-\item We see high volatility around the 2008 financial crisis, and some other episodes.
-
 \item Following the notation and model representation in equation (4) of \citet{breto14}, we propose a model,
 \begin{align} 
 Y_n &= \exp\{H_n/2\} \epsilon_n, \\
@@ -367,13 +383,7 @@ where $\beta_n=Y_n\sigma_\eta\sqrt{1-\phi^2}$, $\{\epsilon_n\}$ is an iid $N(0,1
 
 \frametitle{Building a POMP model}
 
-\begin{knitrout}\small
-\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
-\begin{alltt}
-\hlkwd{require}\hlstd{(pomp)}
-\end{alltt}
-\end{kframe}
-\end{knitrout}
+\vspace{-2mm}
 
 \bi
 
@@ -381,7 +391,7 @@ where $\beta_n=Y_n\sigma_\eta\sqrt{1-\phi^2}$, $\{\epsilon_n\}$ is an iid $N(0,1
 
 \item Formally, therefore, we use the state variable $X_n=(G_{n},H_{n},Y_{n})$ and model the measurement process as a perfect observation of the $Y_n$ component of the state space. 
 
-\item To define a recursive particle filter, we write filter particle $j$ at time $n-1$ as 
+\item To define a recursive particle filter, we write the filtered particle $j$ at time $n-1$ as 
 $$ X^F_{n-1,j}=(G^F_{n-1,j},H^F_{n-1,j},\data{y}_{n-1}).$$
 
 \item Now we can construct prediction particles at time $n$,
@@ -557,23 +567,21 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \bi
 
-\item Simulating from the model is convenient for developing and testing the code, as well as to investigate a fitted model. We can do this as follows:
+\item Simulating from the model is convenient for developing and testing the code, as well as to investigate a fitted model:
 
 \ei
 
 \begin{knitrout}\small
 \definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
 \begin{alltt}
-\hlstd{expit}\hlkwb{<-}\hlkwa{function}\hlstd{(}\hlkwc{real}\hlstd{)\{}\hlnum{1}\hlopt{/}\hlstd{(}\hlnum{1}\hlopt{+}\hlkwd{exp}\hlstd{(}\hlopt{-}\hlstd{real))\}}
-\hlstd{logit}\hlkwb{<-}\hlkwa{function}\hlstd{(}\hlkwc{p.arg}\hlstd{)\{}\hlkwd{log}\hlstd{(p.arg}\hlopt{/}\hlstd{(}\hlnum{1}\hlopt{-}\hlstd{p.arg))\}}
 \hlstd{params_test} \hlkwb{<-} \hlkwd{c}\hlstd{(}
-     \hlkwc{sigma_nu} \hlstd{=} \hlkwd{exp}\hlstd{(}\hlopt{-}\hlnum{4.5}\hlstd{),}
-     \hlkwc{mu_h} \hlstd{=} \hlopt{-}\hlnum{0.25}\hlstd{,}
-     \hlkwc{phi} \hlstd{=} \hlkwd{expit}\hlstd{(}\hlnum{4}\hlstd{),}
-     \hlkwc{sigma_eta} \hlstd{=} \hlkwd{exp}\hlstd{(}\hlopt{-}\hlnum{0.07}\hlstd{),}
-     \hlkwc{G_0} \hlstd{=} \hlnum{0}\hlstd{,}
-     \hlkwc{H_0}\hlstd{=}\hlnum{0}
-  \hlstd{)}
+  \hlkwc{sigma_nu} \hlstd{=} \hlkwd{exp}\hlstd{(}\hlopt{-}\hlnum{4.5}\hlstd{),}
+  \hlkwc{mu_h} \hlstd{=} \hlopt{-}\hlnum{0.25}\hlstd{,}
+  \hlkwc{phi} \hlstd{=} \hlkwd{expit}\hlstd{(}\hlnum{4}\hlstd{),}
+  \hlkwc{sigma_eta} \hlstd{=} \hlkwd{exp}\hlstd{(}\hlopt{-}\hlnum{0.07}\hlstd{),}
+  \hlkwc{G_0} \hlstd{=} \hlnum{0}\hlstd{,}
+  \hlkwc{H_0}\hlstd{=}\hlnum{0}
+\hlstd{)}
 
 \hlstd{sim1.sim} \hlkwb{<-} \hlkwd{pomp}\hlstd{(sp500.filt,}
   \hlkwc{statenames}\hlstd{=sp500_statenames,}
@@ -608,7 +616,8 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
     \hlkwc{times}\hlstd{=}\hlstr{"time"}\hlstd{),}
   \hlkwc{statenames}\hlstd{=sp500_statenames,}
   \hlkwc{paramnames}\hlstd{=sp500_paramnames,}
-  \hlkwc{rprocess}\hlstd{=}\hlkwd{discrete_time}\hlstd{(}\hlkwc{step.fun}\hlstd{=}\hlkwd{Csnippet}\hlstd{(sp500_rproc.filt),}\hlkwc{delta.t}\hlstd{=}\hlnum{1}\hlstd{)}
+  \hlkwc{rprocess}\hlstd{=}\hlkwd{discrete_time}\hlstd{(}
+    \hlkwc{step.fun}\hlstd{=}\hlkwd{Csnippet}\hlstd{(sp500_rproc.filt),}\hlkwc{delta.t}\hlstd{=}\hlnum{1}\hlstd{)}
 \hlstd{)}
 \end{alltt}
 \end{kframe}
@@ -624,7 +633,7 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \item Let's check that we can indeed filter and re-estimate parameters successfully for this simulated data.  
 
-\item To develop and debug code, it is nice to have a version that runs extra quickly, for which we set \code{run_level=1}. Here, \code{Np} is the number of particles (i.e., sequential Monte Carlo sample size), and \code{Nmif} is the number of iterations of the optimization procedure carried out below. Empirically, \code{Np=5000} and \code{Nmif=200} are around the minimum required to get stable results with an error in the likelihood of order 1 log unit for this example; this is implemented by setting \code{run_level=2}. One can then ramp up to larger values for more refined computations, implemented here by \code{run_level=3}
+\item As in previous case studies, we set up different run levels:
 
 \ei
 
@@ -647,41 +656,33 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \bi
 
-\item We'll carry out replications to assess Monte Carlo error. Since most modern machines have multiple cores, it is convenient to do some parallelization when generating replications. 
+\item We carry out replications in parallel to assess Monte Carlo error.
 
 \ei
 
 \begin{knitrout}\small
 \definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
 \begin{alltt}
-\hlkwd{require}\hlstd{(doParallel)}
+\hlkwd{library}\hlstd{(doParallel)}
 \hlkwd{registerDoParallel}\hlstd{()}
+\hlkwd{library}\hlstd{(doRNG)}
+\hlkwd{registerDoRNG}\hlstd{(}\hlnum{34118892}\hlstd{)}
 \end{alltt}
 \end{kframe}
 \end{knitrout}
-
-\bi
-
-\item By default, \code{doParallel} enrolls half the available cores. Now, we filter. 
-
-\ei
-
 \begin{knitrout}\small
 \definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
 \begin{alltt}
-\hlkwd{stew}\hlstd{(}\hlkwc{file}\hlstd{=}\hlkwd{sprintf}\hlstd{(}\hlstr{"pf1.rda"}\hlstd{,run_level),\{}
+\hlkwd{stew}\hlstd{(}\hlkwc{file}\hlstd{=}\hlkwd{sprintf}\hlstd{(}\hlstr{"pf1-%d.rda"}\hlstd{,run_level),\{}
   \hlstd{t.pf1} \hlkwb{<-} \hlkwd{system.time}\hlstd{(}
-    \hlstd{pf1} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{sp500_Nreps_eval,}\hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,}
-                   \hlkwc{.options.multicore}\hlstd{=}\hlkwd{list}\hlstd{(}\hlkwc{set.seed}\hlstd{=}\hlnum{TRUE}\hlstd{))} \hlopt{%dopar%} \hlkwd{try}\hlstd{(}
-                     \hlkwd{pfilter}\hlstd{(sim1.filt,}\hlkwc{Np}\hlstd{=sp500_Np)}
-                   \hlstd{)}
-  \hlstd{)}
+    \hlstd{pf1} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{sp500_Nreps_eval,}
+      \hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{)} \hlopt{%dopar%} \hlkwd{pfilter}\hlstd{(sim1.filt,}\hlkwc{Np}\hlstd{=sp500_Np))}
 \hlstd{\},}\hlkwc{seed}\hlstd{=}\hlnum{493536993}\hlstd{,}\hlkwc{kind}\hlstd{=}\hlstr{"L'Ecuyer"}\hlstd{)}
 \hlstd{(L.pf1} \hlkwb{<-} \hlkwd{logmeanexp}\hlstd{(}\hlkwd{sapply}\hlstd{(pf1,logLik),}\hlkwc{se}\hlstd{=}\hlnum{TRUE}\hlstd{))}
 \end{alltt}
 \begin{verbatim}
 ##                        se 
-## -3664.273257     1.925115
+## -3663.335717     1.930347
 \end{verbatim}
 \end{kframe}
 \end{knitrout}
@@ -692,7 +693,7 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \bi
 
-\item In  1.4 seconds, we obtain a log likelihood estimate of -3664.27 with a Monte standard error of 1.93. Notice that the replications are averaged using the \code{logmeanexp} function, since the likelihood estimate is unbiased on the natural scale but not the log scale.
+\item In  2.9 seconds, we obtain a log likelihood estimate of -3663.34 with a Monte standard error of 1.93. Notice that the replications are averaged using the \code{logmeanexp} function, since the likelihood estimate is unbiased on the natural scale but not the log scale.
 
 \item We could test the numerical performance of an iterated filtering likelihood maximization algorithm on simulated data. 
 
@@ -720,41 +721,44 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 \hlstd{sp500_rw.sd_rp} \hlkwb{<-} \hlnum{0.02}
 \hlstd{sp500_rw.sd_ivp} \hlkwb{<-} \hlnum{0.1}
 \hlstd{sp500_cooling.fraction.50} \hlkwb{<-} \hlnum{0.5}
+\hlstd{sp500_rw.sd} \hlkwb{<-} \hlkwd{rw.sd}\hlstd{(}
+  \hlkwc{sigma_nu}  \hlstd{= sp500_rw.sd_rp,}
+  \hlkwc{mu_h}      \hlstd{= sp500_rw.sd_rp,}
+  \hlkwc{phi}       \hlstd{= sp500_rw.sd_rp,}
+  \hlkwc{sigma_eta} \hlstd{= sp500_rw.sd_rp,}
+  \hlkwc{G_0}       \hlstd{=} \hlkwd{ivp}\hlstd{(sp500_rw.sd_ivp),}
+  \hlkwc{H_0}       \hlstd{=} \hlkwd{ivp}\hlstd{(sp500_rw.sd_ivp)}
+\hlstd{)}
+\end{alltt}
+\end{kframe}
+\end{knitrout}
 
-\hlkwd{stew}\hlstd{(}\hlstr{"mif1.rda"}\hlstd{,\{}
-   \hlstd{t.if1} \hlkwb{<-} \hlkwd{system.time}\hlstd{(\{}
-   \hlstd{if1} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{sp500_Nreps_local,}
-     \hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,} \hlkwc{.combine}\hlstd{=c)} \hlopt{%dopar%} \hlkwd{mif2}\hlstd{(sp500.filt,}
-          \hlkwc{params}\hlstd{=params_test,}
-          \hlkwc{Np}\hlstd{=sp500_Np,}
-          \hlkwc{Nmif}\hlstd{=sp500_Nmif,}
-          \hlkwc{cooling.fraction.50}\hlstd{=sp500_cooling.fraction.50,}
-          \hlkwc{rw.sd} \hlstd{=} \hlkwd{rw.sd}\hlstd{(}
-                            \hlkwc{sigma_nu}  \hlstd{= sp500_rw.sd_rp,}
-                            \hlkwc{mu_h}      \hlstd{= sp500_rw.sd_rp,}
-                            \hlkwc{phi}       \hlstd{= sp500_rw.sd_rp,}
-                            \hlkwc{sigma_eta} \hlstd{= sp500_rw.sd_rp,}
-                            \hlkwc{G_0}       \hlstd{=} \hlkwd{ivp}\hlstd{(sp500_rw.sd_ivp),}
-                            \hlkwc{H_0}       \hlstd{=} \hlkwd{ivp}\hlstd{(sp500_rw.sd_ivp)}
-          \hlstd{)}
-       \hlstd{)}
-   \hlstd{L.if1} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{sp500_Nreps_local,}
-     \hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,} \hlkwc{.combine}\hlstd{=rbind)} \hlopt{%dopar%} \hlkwd{logmeanexp}\hlstd{(}
-       \hlkwd{replicate}\hlstd{(sp500_Nreps_eval,}
-         \hlkwd{logLik}\hlstd{(}\hlkwd{pfilter}\hlstd{(sp500.filt,}\hlkwc{params}\hlstd{=}\hlkwd{coef}\hlstd{(if1[[i]]),}\hlkwc{Np}\hlstd{=sp500_Np))}
-       \hlstd{),} \hlkwc{se}\hlstd{=}\hlnum{TRUE}\hlstd{)}
+\end{frame}
+
+\begin{frame}[fragile]
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{alltt}
+\hlkwd{stew}\hlstd{(}\hlkwc{file}\hlstd{=}\hlkwd{sprintf}\hlstd{(}\hlstr{"mif1-%d.rda"}\hlstd{,run_level),\{}
+  \hlstd{t.if1} \hlkwb{<-} \hlkwd{system.time}\hlstd{(\{}
+  \hlstd{if1} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{sp500_Nreps_local,}
+    \hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,} \hlkwc{.combine}\hlstd{=c)} \hlopt{%dopar%} \hlkwd{mif2}\hlstd{(sp500.filt,}
+      \hlkwc{params}\hlstd{=params_test,}
+      \hlkwc{Np}\hlstd{=sp500_Np,}
+      \hlkwc{Nmif}\hlstd{=sp500_Nmif,}
+      \hlkwc{cooling.fraction.50}\hlstd{=sp500_cooling.fraction.50,}
+      \hlkwc{rw.sd} \hlstd{= sp500_rw.sd)}
+  \hlstd{L.if1} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{sp500_Nreps_local,}
+    \hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,} \hlkwc{.combine}\hlstd{=rbind)} \hlopt{%dopar%} \hlkwd{logmeanexp}\hlstd{(}
+      \hlkwd{replicate}\hlstd{(sp500_Nreps_eval,} \hlkwd{logLik}\hlstd{(}\hlkwd{pfilter}\hlstd{(sp500.filt,}
+        \hlkwc{params}\hlstd{=}\hlkwd{coef}\hlstd{(if1[[i]]),}\hlkwc{Np}\hlstd{=sp500_Np))),} \hlkwc{se}\hlstd{=}\hlnum{TRUE}\hlstd{)}
   \hlstd{\})}
 \hlstd{\},}\hlkwc{seed}\hlstd{=}\hlnum{318817883}\hlstd{,}\hlkwc{kind}\hlstd{=}\hlstr{"L'Ecuyer"}\hlstd{)}
 
 \hlstd{r.if1} \hlkwb{<-} \hlkwd{data.frame}\hlstd{(}\hlkwc{logLik}\hlstd{=L.if1[,}\hlnum{1}\hlstd{],}\hlkwc{logLik_se}\hlstd{=L.if1[,}\hlnum{2}\hlstd{],}\hlkwd{t}\hlstd{(}\hlkwd{sapply}\hlstd{(if1,coef)))}
-\hlkwa{if} \hlstd{(run_level}\hlopt{>}\hlnum{1}\hlstd{)}
-  \hlkwd{write.table}\hlstd{(r.if1,}\hlkwc{file}\hlstd{=}\hlstr{"sp500_params.csv"}\hlstd{,}\hlkwc{append}\hlstd{=}\hlnum{TRUE}\hlstd{,}\hlkwc{col.names}\hlstd{=}\hlnum{FALSE}\hlstd{,}\hlkwc{row.names}\hlstd{=}\hlnum{FALSE}\hlstd{)}
-\hlkwd{summary}\hlstd{(r.if1}\hlopt{$}\hlstd{logLik,}\hlkwc{digits}\hlstd{=}\hlnum{5}\hlstd{)}
+\hlkwa{if} \hlstd{(run_level}\hlopt{>}\hlnum{1}\hlstd{)} \hlkwd{write.table}\hlstd{(r.if1,}\hlkwc{file}\hlstd{=}\hlstr{"sp500_params.csv"}\hlstd{,}
+  \hlkwc{append}\hlstd{=}\hlnum{TRUE}\hlstd{,}\hlkwc{col.names}\hlstd{=}\hlnum{FALSE}\hlstd{,}\hlkwc{row.names}\hlstd{=}\hlnum{FALSE}\hlstd{)}
 \end{alltt}
-\begin{verbatim}
-##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-##   -4016   -4008   -3998   -3996   -3985   -3973
-\end{verbatim}
 \end{kframe}
 \end{knitrout}
 
@@ -764,7 +768,7 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \bi
 
-\item This investigation took  0.3 minutes. 
+\item This investigation took  0.7 minutes. 
 
 \item The repeated stochastic maximizations can also show us the geometry of the likelihood surface in a neighborhood of this point estimate:
 
@@ -773,11 +777,18 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 \begin{knitrout}\small
 \definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
 \begin{alltt}
-\hlkwd{pairs}\hlstd{(}\hlopt{~}\hlstd{logLik}\hlopt{+}\hlstd{sigma_nu}\hlopt{+}\hlstd{mu_h}\hlopt{+}\hlstd{phi}\hlopt{+}\hlstd{sigma_eta,}\hlkwc{data}\hlstd{=}\hlkwd{subset}\hlstd{(r.if1,logLik}\hlopt{>}\hlkwd{max}\hlstd{(logLik)}\hlopt{-}\hlnum{20}\hlstd{))}
+\hlkwd{pairs}\hlstd{(}\hlopt{~}\hlstd{logLik}\hlopt{+}\hlstd{sigma_nu}\hlopt{+}\hlstd{mu_h}\hlopt{+}\hlstd{phi}\hlopt{+}\hlstd{sigma_eta,}
+  \hlkwc{data}\hlstd{=}\hlkwd{subset}\hlstd{(r.if1,logLik}\hlopt{>}\hlkwd{max}\hlstd{(logLik)}\hlopt{-}\hlnum{20}\hlstd{))}
 \end{alltt}
 \end{kframe}
+\end{knitrout}
 
-{\centering \includegraphics[width=\maxwidth]{tmp/figurepairs-1} 
+\vspace{-5mm}
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
+
+{\centering \includegraphics[width=11cm]{tmp/figurepairs_plot-1} 
 
 }
 
@@ -793,11 +804,9 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \bi
 
-\item When carrying out parameter estimation for dynamic systems, we need to specify beginning values for both the dynamic system (in the state space) and the parameters (in the parameter space). 
+\item As for our other case studies, carrying out searches starting randomly throughout a large box can lead to reasonble evidence for successful global maximization.
 
-\item Practical parameter estimation involves trying many starting values for the parameters. One can specify a large box in parameter space that contains all parameter vectors which seem remotely sensible. If an estimation method gives stable conclusions with starting values drawn randomly from this box, this gives some confidence that an adequate global search has been carried out. 
-
-\item For our volatility model, a box containing reasonable parameter values might be
+\item For our volatility model, a box containing plausible parameter values might be
 
 \ei
 
@@ -816,12 +825,6 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 \end{kframe}
 \end{knitrout}
 
-\bi
-
-\item We then carry out a search identical to the local one except for the starting parameter values. This can be succinctly coded by calling \code{mif2} on the previously constructed object, \code{if1[[1]]}, with a reset starting value:
-
-\ei
-
 \end{frame}
 
 \begin{frame}[fragile]
@@ -829,35 +832,29 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 \begin{knitrout}\small
 \definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
 \begin{alltt}
-\hlkwd{stew}\hlstd{(}\hlkwc{file}\hlstd{=}\hlstr{"box_eval.rda"}\hlstd{,\{}
+\hlkwd{stew}\hlstd{(}\hlkwc{file}\hlstd{=}\hlkwd{sprintf}\hlstd{(}\hlstr{"box_eval-%d.rda"}\hlstd{,run_level),\{}
   \hlstd{t.box} \hlkwb{<-} \hlkwd{system.time}\hlstd{(\{}
     \hlstd{if.box} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{sp500_Nreps_global,}
-      \hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,}\hlkwc{.combine}\hlstd{=c)} \hlopt{%dopar%}
-      \hlkwd{mif2}\hlstd{(}
-        \hlstd{if1[[}\hlnum{1}\hlstd{]],}
-        \hlkwc{params}\hlstd{=}\hlkwd{apply}\hlstd{(sp500_box,}\hlnum{1}\hlstd{,}\hlkwa{function}\hlstd{(}\hlkwc{x}\hlstd{)}\hlkwd{runif}\hlstd{(}\hlnum{1}\hlstd{,x))}
-      \hlstd{)}
-
+      \hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,}\hlkwc{.combine}\hlstd{=c)} \hlopt{%dopar%} \hlkwd{mif2}\hlstd{(if1[[}\hlnum{1}\hlstd{]],}
+        \hlkwc{params}\hlstd{=}\hlkwd{apply}\hlstd{(sp500_box,}\hlnum{1}\hlstd{,}\hlkwa{function}\hlstd{(}\hlkwc{x}\hlstd{)}\hlkwd{runif}\hlstd{(}\hlnum{1}\hlstd{,x)))}
     \hlstd{L.box} \hlkwb{<-} \hlkwd{foreach}\hlstd{(}\hlkwc{i}\hlstd{=}\hlnum{1}\hlopt{:}\hlstd{sp500_Nreps_global,}
       \hlkwc{.packages}\hlstd{=}\hlstr{'pomp'}\hlstd{,}\hlkwc{.combine}\hlstd{=rbind)} \hlopt{%dopar%} \hlstd{\{}
-                        \hlkwd{set.seed}\hlstd{(}\hlnum{87932}\hlopt{+}\hlstd{i)}
-                        \hlkwd{logmeanexp}\hlstd{(}
-                          \hlkwd{replicate}\hlstd{(sp500_Nreps_eval,}
-                                    \hlkwd{logLik}\hlstd{(}\hlkwd{pfilter}\hlstd{(sp500.filt,}\hlkwc{params}\hlstd{=}\hlkwd{coef}\hlstd{(if.box[[i]]),}\hlkwc{Np}\hlstd{=sp500_Np))}
-                          \hlstd{),}
-                          \hlkwc{se}\hlstd{=}\hlnum{TRUE}\hlstd{)}
-                      \hlstd{\}}
+         \hlkwd{logmeanexp}\hlstd{(}\hlkwd{replicate}\hlstd{(sp500_Nreps_eval,} \hlkwd{logLik}\hlstd{(}\hlkwd{pfilter}\hlstd{(}
+             \hlstd{sp500.filt,}\hlkwc{params}\hlstd{=}\hlkwd{coef}\hlstd{(if.box[[i]]),}\hlkwc{Np}\hlstd{=sp500_Np))),}
+           \hlkwc{se}\hlstd{=}\hlnum{TRUE}\hlstd{)}
+       \hlstd{\}}
   \hlstd{\})}
 \hlstd{\},}\hlkwc{seed}\hlstd{=}\hlnum{290860873}\hlstd{,}\hlkwc{kind}\hlstd{=}\hlstr{"L'Ecuyer"}\hlstd{)}
 
-
-\hlstd{r.box} \hlkwb{<-} \hlkwd{data.frame}\hlstd{(}\hlkwc{logLik}\hlstd{=L.box[,}\hlnum{1}\hlstd{],}\hlkwc{logLik_se}\hlstd{=L.box[,}\hlnum{2}\hlstd{],}\hlkwd{t}\hlstd{(}\hlkwd{sapply}\hlstd{(if.box,coef)))}
-\hlkwa{if}\hlstd{(run_level}\hlopt{>}\hlnum{1}\hlstd{)} \hlkwd{write.table}\hlstd{(r.box,}\hlkwc{file}\hlstd{=}\hlstr{"sp500_params.csv"}\hlstd{,}\hlkwc{append}\hlstd{=}\hlnum{TRUE}\hlstd{,}\hlkwc{col.names}\hlstd{=}\hlnum{FALSE}\hlstd{,}\hlkwc{row.names}\hlstd{=}\hlnum{FALSE}\hlstd{)}
+\hlstd{r.box} \hlkwb{<-} \hlkwd{data.frame}\hlstd{(}\hlkwc{logLik}\hlstd{=L.box[,}\hlnum{1}\hlstd{],}\hlkwc{logLik_se}\hlstd{=L.box[,}\hlnum{2}\hlstd{],}
+  \hlkwd{t}\hlstd{(}\hlkwd{sapply}\hlstd{(if.box,coef)))}
+\hlkwa{if}\hlstd{(run_level}\hlopt{>}\hlnum{1}\hlstd{)} \hlkwd{write.table}\hlstd{(r.box,}\hlkwc{file}\hlstd{=}\hlstr{"sp500_params.csv"}\hlstd{,}
+  \hlkwc{append}\hlstd{=}\hlnum{TRUE}\hlstd{,}\hlkwc{col.names}\hlstd{=}\hlnum{FALSE}\hlstd{,}\hlkwc{row.names}\hlstd{=}\hlnum{FALSE}\hlstd{)}
 \hlkwd{summary}\hlstd{(r.box}\hlopt{$}\hlstd{logLik,}\hlkwc{digits}\hlstd{=}\hlnum{5}\hlstd{)}
 \end{alltt}
 \begin{verbatim}
 ##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-##   -4058   -4004   -3996   -3997   -3976   -3973
+##   -4019   -4010   -3991   -3995   -3984   -3972
 \end{verbatim}
 \end{kframe}
 \end{knitrout}
@@ -868,9 +865,9 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \bi
 
-\item This search took  0.3 minutes. 
+\item This search took  0.8 minutes. 
 
-\item The best likelihood found was -3972.7 with a standard error of 1.6. 
+\item The best likelihood found was -3971.7 with a standard error of 0.7. 
 
 \item We see that optimization attempts from diverse remote starting points can approach our MLE, but do not exceed it. This gives us some reasonable confidence in our MLE. 
 
@@ -885,18 +882,24 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 \begin{knitrout}\small
 \definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
 \begin{alltt}
-\hlkwd{pairs}\hlstd{(}\hlopt{~}\hlstd{logLik}\hlopt{+}\hlkwd{log}\hlstd{(sigma_nu)}\hlopt{+}\hlstd{mu_h}\hlopt{+}\hlstd{phi}\hlopt{+}\hlstd{sigma_eta}\hlopt{+}\hlstd{H_0,}\hlkwc{data}\hlstd{=}\hlkwd{subset}\hlstd{(r.box,logLik}\hlopt{>}\hlkwd{max}\hlstd{(logLik)}\hlopt{-}\hlnum{10}\hlstd{))}
+\hlkwd{pairs}\hlstd{(}\hlopt{~}\hlstd{logLik}\hlopt{+}\hlkwd{log}\hlstd{(sigma_nu)}\hlopt{+}\hlstd{mu_h}\hlopt{+}\hlstd{phi}\hlopt{+}\hlstd{sigma_eta}\hlopt{+}\hlstd{H_0,}
+  \hlkwc{data}\hlstd{=}\hlkwd{subset}\hlstd{(r.box,logLik}\hlopt{>}\hlkwd{max}\hlstd{(logLik)}\hlopt{-}\hlnum{10}\hlstd{))}
 \end{alltt}
 \end{kframe}
+\end{knitrout}
 
-{\centering \includegraphics[width=\maxwidth]{tmp/figurepairs_global-1} 
+\vspace{-4mm}
+
+\begin{knitrout}\small
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}
+
+{\centering \includegraphics[width=11cm]{tmp/figurepairs_global_plot-1} 
 
 }
 
 
 
 \end{knitrout}
-
 \end{frame}
 
 \begin{frame}[fragile]
@@ -905,7 +908,7 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \item This preliminary analysis does not show clear evidence for the hypothesis that $\sigma_\nu > 0$. 
 
-\item That is likely because we are studying only a subset of the 1988 to 2012 dataset analyzed by @breto14. 
+\item That is likely because we are studying only a subset of the 1988 to 2012 dataset analyzed by \citet{breto14}. 
 
 \item Also, it might help to refine our inference be computing a likelihood profile over $\sigma_\nu$.
 
@@ -919,34 +922,17 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \bi
 
-\item To assess the overall success of the model, it is helpful to put the log likelihoods in the context of simpler models
+\item To assess the overall success of the model, it is helpful to put the log likelihoods in the context of simpler models, called \myemph{benchmarks}.
 
-\item This use of fitting a simpler model is called a \myemph{benchmark}. 
-
-\item Benchmarks provide a complementary approach to residual analysis, and studying simulations from the fitted model.
-
-\item Our stochastic volatility model, with time-varying leverage, model has a maximized log likelihood of -3972.7 with 6 fitted parameters.
+\item Benchmarks provide a complementary approach to residual analysis and the investigation of simulations from the fitted model.
 
 
-\item Refitting the GARCH(1,1) model to this exact dataset,
 
-\ei
 
-\begin{knitrout}\small
-\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
-\begin{alltt}
-\hlkwd{library}\hlstd{(tseries)}
-\hlstd{fit.garch.benchmark} \hlkwb{<-} \hlkwd{garch}\hlstd{(sp500.ret.demeaned,}\hlkwc{grad} \hlstd{=} \hlstr{"numerical"}\hlstd{,} \hlkwc{trace} \hlstd{=} \hlnum{FALSE}\hlstd{)}
-\hlstd{L.garch.benchmark} \hlkwb{<-} \hlkwd{logLik}\hlstd{(fit.garch.benchmark)}
-\end{alltt}
-\end{kframe}
-\end{knitrout}
 
-\bi
+\item The GARCH(1,1) model for this dataset has a maximized likelihood of -4019.7 with 3 fitted parameters.
 
-\item The GARCH(1,1) model has a maximizes likelihood of NA with 3 fitted parameters.
-
-\item Here, AIC favors the stochastic volatility model.
+\item Our stochastic volatility model, with time-varying leverage, model has a maximized log likelihood of -3971.7 with 6 fitted parameters.  AIC favors the stochastic volatility model.
 
 \item A model which both fits better and has meaningful interpretation has clear advantages over a simple statistical model. 
 
@@ -980,27 +966,24 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \bi
 
-\item Suppose a POMP model with latent variable $X_n=(U_n,V_n)$ and observed varaible $Y_n$ having conditional density $f_{Y_n|V_n}(y_n|v_n)$ depending only on $V_n$. 
+\item Suppose a POMP model with latent variable $X_n=(U_n,V_n)$ and observed varaible $Y_n$ has conditional density $f_{Y_n|V_n}(y_n|v_n)$ depending only on $V_n$. 
 
-\item The proper weight \citep{liu98} for an SMC proposal density $q_n(x_n|x_{n-1})$ is
+\item The proper weight for an SMC proposal density $q_n(x_n|x_{n-1})$ is
 $$ 
 w_{n}(x_n|x_{n-1}) = \frac{f_{Y_n|X_n}(\data{y}_n|x_n)f_{X_n|X_{n-1}}(x_n|x_{n-1})}{q_n(x_n|x_{n-1})}.
 $$
 
-\item Consider the  proposal,
-$$
-q_n(u_n,v_n|x_{n-1}) = f_{U_n|X_{n-1}}(u_n|x_{n-1}) g_n(v_n).
-$$
+\item Consider the  proposal
+$q_n(u_n,v_n|x_{n-1}) = f_{U_n|X_{n-1}}(u_n|x_{n-1}) g_n(v_n)$.
 This is partially plug-and-play, in the sense that the $U_n$ part of the proposal is drawn from a simulator of the dynamic system. 
 
-\item Computing the weights, we see that the transition density for the $U_n$ component cancels out and does not have to be computed, i.e., 
+\item Computing the weights, we see that the transition density for the $U_n$ component cancels out and does not have to be computed, i.e.,
+\ei
 $$\begin{aligned}
 w_{n}(x_n|x_{n-1}) &= \frac{f_{Y_n|V_n}(\data{y}_n|v_n)f_{U_n|X_{n-1}}(u_n|x_{n-1})f_{V_n|U_n,X_{n-1}}(v_n|u_n,x_{n-1})}{f_{U_n|X_{n-1}}(u_n|x_{n-1}) g_n(v_n)} \\
 &= \frac{f_{Y_n|V_n}(\data{y}_n|v_n)f_{V_n|U_n,X_{n-1}}(v_n|u_n,x_{n-1})}{ g_n(v_n)}.
-\end{aligned} 
+\end{aligned}
 $$
-
-\ei
 
 \end{frame}
 
@@ -1034,7 +1017,7 @@ $$
 \frametitle{Acknowledgments and License}
 
 \bi
-\item Produced with R version 3.6.2 and \package{pomp} version 2.3.
+\item Produced with R version 3.6.2 and \package{pomp} version 2.7.
 
 \item These notes build on previous versions at \url{ionides.github.io/531w16} and \url{ionides.github.io/531w18}. 
 \item
