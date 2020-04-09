@@ -99,10 +99,12 @@ recording:
 [ part 1. ](https://drive.google.com/open?id=15lw9xbcl7jI_bA1-XnHK1jZEwS0cGEYR)
 [ part 2. ](https://drive.google.com/open?id=1Wphv9RITzQGl00dvYM_zNK6iicHeN2Rw)
 
+
+14. Case study: POMP modeling to investigate financial volatility.
+[ pdf. ](14/notes14.pdf)
+[ R script. ](notes14/notes14.R)
+
 <!--
-
-14. [Case study: POMP modeling to investigate financial volatility](14/notes14.html). [(R script)](notes15/notes15.R)
-
 There are further POMP case studies, in a similar style, on [Ebola modeling](https://kingaa.github.io/sbied/ebola/ebola.html), [measles transmission](https://kingaa.github.io/sbied/measles/measles.html), and [dynamic variation in the rate of human sexual contacts](https://kingaa.github.io/sbied/contacts/contacts.html).
 
 -->

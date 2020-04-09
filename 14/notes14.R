@@ -37,19 +37,19 @@ stopifnot(packageVersion("pomp")>="2.0")
 
 ## ----sp500_plot_code,echo=T,eval=F--------------------------------------------
 ## dat <- read.table("sp500.csv",sep=",",header=TRUE)
-## N <- nrow(dat)
-## sp500 <- dat$Close[N:1] # data are in reverse order in sp500.csv
-## plot(sp500,type="l")
-## plot(log(sp500),type="l")
+## plot(as.Date(dat$Date),dat$Close,
+##   xlab="date",ylab="S&P 500",type="l")
+## plot(as.Date(dat$Date),dat$Close, log="y",
+##   xlab="date",ylab="S&P 500",type="l")
 
 
 ## ----sp500_plot,out.width="10cm",echo=F---------------------------------------
 par(mfrow=c(1,2),mai=c(0.8,0.8,0.1,0.3))
 dat <- read.table("sp500.csv",sep=",",header=TRUE)
-N <- nrow(dat)
-sp500 <- dat$Close[N:1] # data are in reverse order in sp500.csv
-plot(sp500,type="l")
-plot(log(sp500),type="l")
+plot(as.Date(dat$Date),dat$Close,
+  xlab="date",ylab="S&P 500",type="l")
+plot(as.Date(dat$Date),dat$Close, log="y",
+  xlab="date",ylab="S&P 500",type="l")
 
 
 ## ----data_rda_code,echo=T,eval=F----------------------------------------------
@@ -179,7 +179,7 @@ sim1.filt <- pomp(sim1.sim,
 
 
 ## ----run_level----------------------------------------------------------------
-run_level <- 1 
+run_level <- 2
 sp500_Np <-           switch(run_level,100,1e3,2e3)
 sp500_Nmif <-         switch(run_level,10, 100,200)
 sp500_Nreps_eval <-   switch(run_level,4,  10,  20)

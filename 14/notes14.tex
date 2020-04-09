@@ -141,10 +141,10 @@
 \definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
 \begin{alltt}
 \hlstd{dat} \hlkwb{<-} \hlkwd{read.table}\hlstd{(}\hlstr{"sp500.csv"}\hlstd{,}\hlkwc{sep}\hlstd{=}\hlstr{","}\hlstd{,}\hlkwc{header}\hlstd{=}\hlnum{TRUE}\hlstd{)}
-\hlstd{N} \hlkwb{<-} \hlkwd{nrow}\hlstd{(dat)}
-\hlstd{sp500} \hlkwb{<-} \hlstd{dat}\hlopt{$}\hlstd{Close[N}\hlopt{:}\hlnum{1}\hlstd{]} \hlcom{# data are in reverse order in sp500.csv}
-\hlkwd{plot}\hlstd{(sp500,}\hlkwc{type}\hlstd{=}\hlstr{"l"}\hlstd{)}
-\hlkwd{plot}\hlstd{(}\hlkwd{log}\hlstd{(sp500),}\hlkwc{type}\hlstd{=}\hlstr{"l"}\hlstd{)}
+\hlkwd{plot}\hlstd{(}\hlkwd{as.Date}\hlstd{(dat}\hlopt{$}\hlstd{Date),dat}\hlopt{$}\hlstd{Close,}
+  \hlkwc{xlab}\hlstd{=}\hlstr{"date"}\hlstd{,}\hlkwc{ylab}\hlstd{=}\hlstr{"S&P 500"}\hlstd{,}\hlkwc{type}\hlstd{=}\hlstr{"l"}\hlstd{)}
+\hlkwd{plot}\hlstd{(}\hlkwd{as.Date}\hlstd{(dat}\hlopt{$}\hlstd{Date),dat}\hlopt{$}\hlstd{Close,} \hlkwc{log}\hlstd{=}\hlstr{"y"}\hlstd{,}
+  \hlkwc{xlab}\hlstd{=}\hlstr{"date"}\hlstd{,}\hlkwc{ylab}\hlstd{=}\hlstr{"S&P 500"}\hlstd{,}\hlkwc{type}\hlstd{=}\hlstr{"l"}\hlstd{)}
 \end{alltt}
 \end{kframe}
 \end{knitrout}
@@ -233,13 +233,12 @@ have considerable sample autocorrelation.
 
 \bi
 
-\item The ARCH and GARCH models have become widely used for financial time series modeling. Here, we follow @cowpertwait09 to introduce these models and corresponding computations in R. See also, Section 5.4 of Shumway and Stoffer (3rd edition). 
+\item The ARCH and GARCH models have become widely used for financial time series modeling. Here, we follow \citet{cowpertwait09} to introduce these models; see also Section 5.4 of Shumway and Stoffer (3rd edition). 
 
 \item An order $p$ \myemph{autoregressive conditional heteroskedasticity} model, known as ARCH(p), has the form
 $$ Y_n = \epsilon_n \sqrt{V_n},$$
-where
-$$ V_n = \alpha_0 + \sum_{j=1}^p \alpha_j Y_{n-j}^2$$
-and $\epsilon_{1:N}$ is white noise.
+where $\epsilon_{1:N}$ is white noise and
+$$ V_n = \alpha_0 + \sum_{j=1}^p \alpha_j Y_{n-j}^2.$$
 
 \item If $\epsilon_{1:N}$ is Gaussian, then $Y_{1:N}$ is called a Gaussian ARCH(p). Note, however, that a Gaussian ARCH model is not a Gaussian process, just a process driven by Gaussian noise.
 
@@ -640,7 +639,7 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 \begin{knitrout}\small
 \definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
 \begin{alltt}
-\hlstd{run_level} \hlkwb{<-} \hlnum{1}
+\hlstd{run_level} \hlkwb{<-} \hlnum{2}
 \hlstd{sp500_Np} \hlkwb{<-}           \hlkwd{switch}\hlstd{(run_level,}\hlnum{100}\hlstd{,}\hlnum{1e3}\hlstd{,}\hlnum{2e3}\hlstd{)}
 \hlstd{sp500_Nmif} \hlkwb{<-}         \hlkwd{switch}\hlstd{(run_level,}\hlnum{10}\hlstd{,} \hlnum{100}\hlstd{,}\hlnum{200}\hlstd{)}
 \hlstd{sp500_Nreps_eval} \hlkwb{<-}   \hlkwd{switch}\hlstd{(run_level,}\hlnum{4}\hlstd{,}  \hlnum{10}\hlstd{,}  \hlnum{20}\hlstd{)}
@@ -681,8 +680,8 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 \hlstd{(L.pf1} \hlkwb{<-} \hlkwd{logmeanexp}\hlstd{(}\hlkwd{sapply}\hlstd{(pf1,logLik),}\hlkwc{se}\hlstd{=}\hlnum{TRUE}\hlstd{))}
 \end{alltt}
 \begin{verbatim}
-##                        se 
-## -3663.335717     1.930347
+##                          se 
+## -3658.8574140     0.1938912
 \end{verbatim}
 \end{kframe}
 \end{knitrout}
@@ -693,7 +692,7 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \bi
 
-\item In  2.9 seconds, we obtain a log likelihood estimate of -3663.34 with a Monte standard error of 1.93. Notice that the replications are averaged using the \code{logmeanexp} function, since the likelihood estimate is unbiased on the natural scale but not the log scale.
+\item In  10.5 seconds, we obtain a log likelihood estimate of -3658.86 with a Monte standard error of 0.19. Notice that the replications are averaged using the \code{logmeanexp} function, since the likelihood estimate is unbiased on the natural scale but not the log scale.
 
 \item We could test the numerical performance of an iterated filtering likelihood maximization algorithm on simulated data. 
 
@@ -768,7 +767,7 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \bi
 
-\item This investigation took  0.7 minutes. 
+\item This investigation took  189 minutes. 
 
 \item The repeated stochastic maximizations can also show us the geometry of the likelihood surface in a neighborhood of this point estimate:
 
@@ -854,7 +853,7 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 \end{alltt}
 \begin{verbatim}
 ##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-##   -4019   -4010   -3991   -3995   -3984   -3972
+##   -3998   -3986   -3964   -3971   -3960   -3955
 \end{verbatim}
 \end{kframe}
 \end{knitrout}
@@ -865,9 +864,9 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \bi
 
-\item This search took  0.8 minutes. 
+\item This search took  117.9 minutes. 
 
-\item The best likelihood found was -3971.7 with a standard error of 0.7. 
+\item The best likelihood found was -3954.9 with a standard error of 0.4. 
 
 \item We see that optimization attempts from diverse remote starting points can approach our MLE, but do not exceed it. This gives us some reasonable confidence in our MLE. 
 
@@ -932,7 +931,7 @@ $$w_{n,j}=f_{Y_n|G_n,H_n}(\data{y}_n|G^P_{n,j},H^P_{n,j}).$$
 
 \item The GARCH(1,1) model for this dataset has a maximized likelihood of -4019.7 with 3 fitted parameters.
 
-\item Our stochastic volatility model, with time-varying leverage, model has a maximized log likelihood of -3971.7 with 6 fitted parameters.  AIC favors the stochastic volatility model.
+\item Our stochastic volatility model, with time-varying leverage, model has a maximized log likelihood of -3954.9 with 6 fitted parameters.  AIC favors the stochastic volatility model.
 
 \item A model which both fits better and has meaningful interpretation has clear advantages over a simple statistical model. 
 
