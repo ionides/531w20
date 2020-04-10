@@ -67,7 +67,8 @@ plot(sp500.ret.demeaned, type="l",
 
 ## ----garch--------------------------------------------------------------------
 require(tseries)
-fit.garch <- garch(sp500.ret.demeaned,grad = "numerical", trace = FALSE)
+fit.garch <- garch(sp500.ret.demeaned,grad = "numerical",
+  trace = FALSE)
 L.garch <- tseries:::logLik.garch(fit.garch)
 
 
@@ -81,11 +82,13 @@ sp500_paramnames <- c(sp500_rp_names,sp500_ivp_names)
 ## ----rproc--------------------------------------------------------------------
 rproc1 <- "
   double beta,omega,nu;
-  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * sqrt(1-tanh(G)*tanh(G)));
+  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * 
+    sqrt(1-tanh(G)*tanh(G)));
   nu = rnorm(0, sigma_nu);
   G += nu;
   beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
-  H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) * exp(-H/2) + omega;
+  H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) 
+    * exp(-H/2) + omega;
 "
 rproc2.sim <- "
   Y_state = rnorm( 0,exp(H/2) );
@@ -136,7 +139,8 @@ sp500.filt <- pomp(data=data.frame(
     times="time"),
   rmeasure=Csnippet(sp500_rmeasure),
   dmeasure=Csnippet(sp500_dmeasure),
-  rprocess=discrete_time(step.fun=Csnippet(sp500_rproc.filt),delta.t=1),
+  rprocess=discrete_time(step.fun=Csnippet(sp500_rproc.filt),
+    delta.t=1),
   rinit=Csnippet(sp500_rinit),
   partrans=sp500_partrans
 )
@@ -179,12 +183,12 @@ sim1.filt <- pomp(sim1.sim,
 
 
 ## ----run_level----------------------------------------------------------------
-run_level <- 2
-sp500_Np <-           switch(run_level,100,1e3,2e3)
-sp500_Nmif <-         switch(run_level,10, 100,200)
-sp500_Nreps_eval <-   switch(run_level,4,  10,  20)
-sp500_Nreps_local <-  switch(run_level,10, 20, 20)
-sp500_Nreps_global <- switch(run_level,10, 20, 100)
+run_level <- 3
+sp500_Np <-           switch(run_level, 100, 1e3, 2e3)
+sp500_Nmif <-         switch(run_level,  10, 100, 200)
+sp500_Nreps_eval <-   switch(run_level,   4,  10,  20)
+sp500_Nreps_local <-  switch(run_level,  10,  20,  20)
+sp500_Nreps_global <- switch(run_level,  10,  20, 100)
 
 
 ## ----parallel-setup,cache=FALSE-----------------------------------------------
@@ -233,7 +237,8 @@ stew(file=sprintf("mif1-%d.rda",run_level),{
   })
 },seed=318817883,kind="L'Ecuyer")
 
-r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],t(sapply(if1,coef)))
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],
+  t(sapply(if1,coef)))
 if (run_level>1) write.table(r.if1,file="sp500_params.csv",
   append=TRUE,col.names=FALSE,row.names=FALSE)
 
