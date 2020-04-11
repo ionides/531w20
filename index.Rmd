@@ -79,23 +79,33 @@ A course outline, course information and grading policies are described in the [
 11. Dynamic models and their simulation by Euler’s method.
 [ pdf. ](11/notes11.pdf)
 [ R script. ](11/notes11.R)
-Recording:
+recording:
 [ part 1. ](https://drive.google.com/open?id=1_R5BNaqtX0comQ_0jHNDQwAF3f8CtmmP)
 [ part 2. ](https://drive.google.com/open?id=1GDce46Ucx4TKEwAhz4fClUKmpCQdZJ1k)
 
 12. Practical likelihood-based inference for POMP models.
 [ pdf. ](12/notes12.pdf)
 [ R script. ](12/notes12.R)
-Recording:
+recording:
 [ part 1. ](https://drive.google.com/open?id=1yQGF6WFZzuaydikoQ4iUimwPieyuCjVW)
 [ part 2. ](https://drive.google.com/open?id=1FXdDcLQFGXBj6y0gzSmZ2Cqez0OZ8PUT)
 [ part 3. ](https://drive.google.com/open?id=12aq_lxdtNWbaZAdBfVRawwEkTk32Cy_O)
 
+
+13. Time series models with covariates, and a case study of polio.
+[ pdf. ](13/notes13.pdf)
+[ R script. ](13/notes13.R)
+recording:
+[ part 1. ](https://drive.google.com/open?id=15lw9xbcl7jI_bA1-XnHK1jZEwS0cGEYR)
+[ part 2. ](https://drive.google.com/open?id=1Wphv9RITzQGl00dvYM_zNK6iicHeN2Rw)
+
+
+14. Case study: POMP modeling to investigate financial volatility.
+[ pdf. ](14/notes14.pdf)
+[ R script. ](notes14/notes14.R)
+[ recording. ](https://drive.google.com/open?id=1uy3GYiY9DnYjXrz2lEs8-5BtrL_8_oRh)
+
 <!--
-13. [Time series models with covariates, and a case study of polio](13/notes13.html). [(R script)](13/notes13.R)
-
-14. [Case study: POMP modeling to investigate financial volatility](14/notes14.html). [(R script)](notes15/notes15.R)
-
 There are further POMP case studies, in a similar style, on [Ebola modeling](https://kingaa.github.io/sbied/ebola/ebola.html), [measles transmission](https://kingaa.github.io/sbied/measles/measles.html), and [dynamic variation in the rate of human sexual contacts](https://kingaa.github.io/sbied/contacts/contacts.html).
 
 -->
@@ -119,11 +129,8 @@ Please read the [grading policy in the syllabus](syllabus.html) before turning i
 
 * [Homework 5](hw05/hw05.html), due 5pm on Mon Mar 16. [Solution](hw05/sol05.html).
 
-* [Homework 6](hw06/hw06.html), due 5pm on Mon Mar 23. 
+* [Homework 6](hw06/hw06.html), due 5pm on Mon Mar 23. [Solution](hw06/sol06.html).
 
-<!--
-[Solution](hw06/sol06.html).
--->
 
 * [Homework 7](hw07/hw07.html), due 5pm on Mon Mar 30.
 
@@ -188,5 +195,32 @@ Reading the textbook is not mandatory for the exam, but may be useful to get a b
 * [Projects](final_project/index.html)
 
 -->
+
+
+--------
+
+## Using the Great Lakes cluster
+
+Below are materials to help you get started using Great Lakes.
+If you are already familiar with using R on Great Lakes, all you need to know is the class account: ```stats531w20_class```.
+You are expected to use this account only for computations related to STATS 531.
+Please share knowledge about cluster computing between group members, and/or on piazza, to help everyone who wants to learn these skills.
+
+Notes on using R and pomp on Great Lakes.
+[ pdf. ](cluster/STATS_531_Introduction_to_R_and_pomp_on_Great_Lakes.pdf)
+[ recording. ](https://drive.google.com/open?id=1uQPghu5clYFK2lDEMhaj49yAYB8tlpc-)
+<br>
+Thanks to
+[Charles Antonelli](http://www-personal.umich.edu/~cja/).
+<br>
+Charles is available by Zoom for office hours MWF 12-1 ET, for help getting started with Great Lakes.
+<br>
+Join Zoom Meeting https://umich.zoom.us/j/109966785.
+<br>
+Meeting ID: 109 966 785
+<br>
+Password: 066033
+<br>
+Cluster-related questions can also be emailed to hpc-support@umich.edu.
 
 ---------

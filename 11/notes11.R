@@ -44,10 +44,29 @@ head(bsflu,5)
 ggplot(data=bsflu,aes(x=day,y=B))+geom_line()+geom_point()
 
 
+## ----rproc1-------------------------------------------------------------------
+sir_step <- Csnippet("
+  double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt));
+  double dN_IR = rbinom(I,1-exp(-gamma*dt));
+  S -= dN_SI;
+  I += dN_SI - dN_IR;
+  R += dN_IR;
+")
 
 
+## ----init1--------------------------------------------------------------------
+sir_rinit <- Csnippet("
+  S = N-1;
+  I = 1;
+  R = 0;
+")
 
 
+## ----rproc1-pomp--------------------------------------------------------------
+pomp(subset(bsflu,select=c(day,B)),
+     time="day",t0=0,rprocess=euler(sir_step,delta.t=1/6),
+     rinit=sir_rinit,paramnames=c("N","Beta","gamma"),
+     statenames=c("S","I","R")) -> sir
 
 
 ## ----rproc2-------------------------------------------------------------------

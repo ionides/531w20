@@ -169,7 +169,7 @@ $$\loglik(\theta) = \log\lik(\theta) = \sum_{n} \log f_{Y_n|X_n}(y_n^*\given x_n
 
 \frametitle{The skeleton of an SIR compared to the flu dataset}
 
-<<det-example,echo=FALSE,results="hide",purl=FALSE,out.width="12cm">>=
+<<det-example,echo=FALSE,results="hide",out.width="12cm">>=
 source("bsflu.R")
  coef(sir) <- c(Beta=1.8,mu_IR=1,rho=0.9,N=2600)
  x <- trajectory(sir) 
@@ -401,7 +401,7 @@ p <- sliceDesign(
   Beta=rep(seq(from=0.5,to=4,length=40),each=3),
   mu_IR=rep(seq(from=0.5,to=2,length=40),each=3)) 
 
-foreach (theta=iter(p,"row"),
+foreach (theta=iter(p,"row"), .packages='pomp',
   .combine=rbind,.inorder=FALSE) %dopar% {
     pfilter(sir,params=unlist(theta),Np=5000) -> pf
     theta$loglik <- logLik(pf)
@@ -464,7 +464,7 @@ expand.grid(Beta=seq(from=1,to=4,length=50),
             rho=0.8,
             N=2600) -> p
 
-foreach (theta=iter(p,"row"),.combine=rbind,
+foreach (theta=iter(p,"row"),.combine=rbind,.packages='pomp',
   .inorder=FALSE) %dopar% {
      pfilter(sir,params=unlist(theta),Np=5000) -> pf
      theta$loglik <- logLik(pf)
@@ -577,7 +577,7 @@ Fixing some parameters at known, scienficially reasonable values is tempting. Ho
 
 \bi
 
-\item  We use the IF2 algorithm of \citep{ionides15}.
+\item  We use the IF2 algorithm of \citet{ionides15}.
 
 \item  A particle filter is carried out with the parameter vector for each particle doing a random walk.
 
@@ -605,7 +605,7 @@ data, $y^*_{1:N}$
 \myemph{algorithmic parameters}:
 Number of iterations, $M$;
 number of particles, $J$;
-initial parameter swarm, $\{\Theta^0_j, j=1,\dots,J\}$;
+starting parameter swarm, $\{\Theta^0_j, j=1,\dots,J\}$;
 perturbation density, $h_n(\theta|\varphi;\sigma)$;
 perturbation scale, $\sigma_{1{:}M}$ 
 
@@ -677,7 +677,7 @@ Final parameter swarm, $\{\Theta^M_j, j=1,\dots,J\}$
 \frametitle{Choosing the algorithmic settings for IF2}
 
 \bi
-\item  The initial parameter swarm, $\{ \Theta^0_j, j=1,\dots,J\}$, usually consists of $J$ identical replications of some starting parameter vector.
+\item  The starting parameter swarm, $\{ \Theta^0_j, j=1,\dots,J\}$, usually consists of $J$ identical replications of some starting parameter vector.
 
 \item  $J$ should be sufficient for particle filtering. By the last iteration ($m=M$) one should not have effective sample size close to 1. 
 
@@ -754,12 +754,9 @@ $$
 
 \item  The recovery stages, $R_1$, $R_2$ and $R_3$, are all modeled to be non-contagious. 
 
-\item  $R_1$ consists of individuals who are bed-confined if they show symptoms. 
+\item  $R_1$ counts individuals who are bed-confined if they show symptoms; $R_2$ counts individuals who are convalescent if they showed symptoms; $R_3$ counts recovered individuals who have returned to schoolwork if they were symtomatic.  
 
-\item  $R_2$ consists of individuals who are convalescent if they showed symptoms.
-
-\item  $R_3$ consists of recovered individuals who have returned to schoolwork if they were symtomatic.  
-
+\item We use abbreviations $\mu_{IR}=\mu_{IR_1}$, $\mu_{R_1}=\mu_{R_1R_2}$, $\mu_{R_2}=\mu_{R_2R_3}$.
 
 \ei
 
@@ -913,7 +910,7 @@ bsflu2 <- pomp(
 \item For more precise time-consuming computations, \code{run_level=3}.
 \ei
 <<run_level>>=
-run_level <- 2
+run_level <- 3
 switch(run_level, {
   bsflu_Np=100; bsflu_Nmif=10; bsflu_Neval=10;
   bsflu_Nglobal=10; bsflu_Nlocal=10
@@ -984,7 +981,7 @@ stew(file=sprintf("pf-%d.rda",run_level),{
 
 \bi
 
-\item  In  \Sexpr{round(t_pf["elapsed"],1)} seconds, we obtain an unbiased likelihood estimate of \Sexpr{round(L_pf[1],2)} with a Monte standard error of \Sexpr{round(L_pf[2],2)}.
+\item  In  \Sexpr{round(t_pf["elapsed"],1)} seconds, we obtain an unbiased likelihood estimate of \Sexpr{round(L_pf[1],2)} with a Monte~Carlo standard error of \Sexpr{round(L_pf[2],2)}.
 
 \item  It is not unusual for computations in a POMP analysis to take hours to run on many cores.
 
@@ -1106,7 +1103,8 @@ Partly, because some parameter perturbations remain in the last filtering iterat
 <<lik_local_eval,cache=FALSE>>=
 stew(file=sprintf("lik_local-%d.rda",run_level),{
   t_local_eval <- system.time({
-  liks_local <- foreach(i=1:bsflu_Nlocal,.combine=rbind)%dopar% {
+  liks_local <- foreach(i=1:bsflu_Nlocal,
+    .combine=rbind,.packages='pomp')%dopar% {
     evals <- replicate(bsflu_Neval, logLik(
       pfilter(bsflu2,params=coef(mifs_local[[i]]),Np=bsflu_Np)))
     logmeanexp(evals, se=TRUE)
@@ -1198,7 +1196,8 @@ bsflu_box <- rbind(
 <<box_eval,cache=FALSE>>=
 stew(file=sprintf("box_eval-%d.rda",run_level),{
   t_global <- system.time({
-    mifs_global <- foreach(i=1:bsflu_Nglobal,.combine=c) %dopar% {
+    mifs_global <- foreach(i=1:bsflu_Nglobal,
+      .combine=c,.packages='pomp') %dopar% {
       mif2(
         mifs_local[[1]],
         params=c(
@@ -1219,7 +1218,7 @@ stew(file=sprintf("box_eval-%d.rda",run_level),{
 stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
   t_global_eval <- system.time({
     liks_global <- foreach(i=1:bsflu_Nglobal,
-      .combine=rbind) %dopar% {
+      .combine=rbind, .packages='pomp') %dopar% {
         evals <- replicate(bsflu_Neval,
           logLik(pfilter(bsflu2,
 	    params=coef(mifs_global[[i]]),Np=bsflu_Np)))

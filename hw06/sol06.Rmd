@@ -1,0 +1,133 @@
+---
+title: "Solution to Homework 6"
+author: "STATS 531, Winter 2020"
+output: html_document
+---
+
+**<big>Question 6.1</big>. Reformulating the Ricker model.**
+
+```{r data}
+require(pomp)
+require(ggplot2)
+dat <- read.csv("http://ionides.github.io/531w20/10/parus.csv")
+set.seed(2016)
+parus<-pomp(dat,times="year",t0=1959)
+plot(parus)
+```
+
+```{r skel}
+skel<-Csnippet("DN=r*N*exp(-N/k);")
+parus<-pomp(parus,skeleton=map(skel),paramnames=c("r","k"),statenames=c("N"))
+```
+
+```{r traj}
+traj<-trajectory(parus,params=c(N.0=1,r=12,k=1),format="data.frame")
+ggplot(data=traj,aes(x=year,y=N))+geom_line()
+```
+
+```{r rprocess}
+stochStep <- Csnippet("
+  e = rnorm(0,sigma);
+  N = r*N*exp(-N/k+e);
+")
+pomp(parus,rprocess=discrete_time(step.fun=stochStep,delta.t=1),
+     paramnames=c("r","k","sigma"),statenames=c("N","e")) -> parus
+     ```
+
+```{r sim}
+sim <- simulate(parus,params=c(N.0=1,e.0=0,r=12,k=1,sigma=0.5),
+  format="data.frame")
+```
+
+This gives us a warning since we have not yet specified a measurement model, but here we are only concerned with the latent process values.
+
+
+```{r plot_sim}
+plot(N~year,data=sim,type='o')
+lines(N~year,data=traj,type='l',col='red')
+```
+
+```{r measure}
+rmeas <- Csnippet("pop = rnbinom(phi*N*psi/(1-psi),psi);")
+dmeas <- Csnippet("lik = dnbinom(pop,phi*N*psi/(1-psi),psi,give_log);")
+```
+
+```{r add_measure}
+pomp(parus,rmeasure=rmeas,dmeasure=dmeas,statenames=c("N"),
+  paramnames=c("phi","psi")) -> parus
+coef(parus) <- c(N.0=100,e.0=0,r=6,k=100,sigma=0.01,phi=1,psi=0.06)
+```
+
+```{r more_sims}
+sims <- simulate(parus,nsim=3,format="data.frame",include.data=TRUE)
+ggplot(data=sims,mapping=aes(x=year,y=pop))+geom_line()+
+  facet_wrap(~.id)
+  ```
+
+$\phi=1$ is used so that the mean of $Y_n$ equals to $P_n$. Moreover, the mean and variance of the dataset are used to determine $\psi$ (setting it to 0.06~mean(pop)/var(pop)). Set $r=6$, $k=100$, and $\sigma=0.01$. It seems like $r$ and $k$ determine the overall level of the pop.
+
+**<big>Question 6.2</big>. Coding a new POMP model.**
+
+```{r parus_skel}
+skel<-Csnippet("DN=a*N/(1+b*N);")
+parus<-pomp(dat,times="year",t0=1959,skeleton=map(skel),
+  paramnames=c("a","b"),statenames=c("N"))
+```
+
+```{r parus_traj}
+traj<-trajectory(parus,params=c(N.0=1,a=4,b=2),format="data.frame")
+ggplot(data=traj,aes(x=year,y=N))+geom_line()
+```
+
+```{r parus_proc}
+stochStep <- Csnippet("
+  e = rlnorm((-1)*sigma*sigma/2,sigma);
+  N = a*N*e/(1+b*N);
+")
+pomp(parus,rprocess=discrete_time(step.fun=stochStep,delta.t=1),
+     paramnames=c("a","b","sigma"),statenames=c("N","e")) -> parus
+     ```
+
+```{r parus_sim}
+sim <- simulate(parus,params=c(N.0=1,e.0=1,a=4,b=2,sigma=0.2),
+  format="data.frame")
+plot(N~year,data=sim,type='o')
+  lines(N~year,data=traj,type='l',col='red')
+```
+
+```{r parus_meas}
+rmeas <- Csnippet("pop = rnbinom(phi*N*psi/(1-psi),psi);")
+dmeas <- Csnippet("lik = dnbinom(pop,phi*N*psi/(1-psi),psi,give_log);")
+```
+
+```{r parus_meas_add}
+pomp(parus,rmeasure=rmeas,dmeasure=dmeas,
+  statenames=c("N"),paramnames=c("phi","psi")) -> parus
+coef(parus) <- c(N.0=100,e.0=1,a=400,b=2,sigma=0.2,phi=1,psi=0.06)
+```
+
+```{r parus_sim_more}
+sims <- simulate(parus,nsim=3,format="data.frame",include.data=TRUE)
+ggplot(data=sims,mapping=aes(x=year,y=pop))+geom_line()+
+  facet_wrap(~.id)
+  ```
+
+Similarity with Ricker model: There are parameters $a$ and $b$ that could be used to determine the overall level of the population. With some choices of the parameters, the simulation results that have similar mean and variance with the dataset could be obtained.
+
+Difference: When $\epsilon_n=1$ for all $n$, deterministic skeleton of $P_n$ does not show oscillatory behavior for any $a$ and $b$ for Beverton-Holt model. When $a$ and $b$ both positive, $P_n$ only grows (a plot showing this behavior is shown above).
+
+----------------------
+
+**<big>Question 6.3</big>**.
+
+All responses were given full credit as long as they were consistent with the solutions presented.
+
+
+------------
+
+### Acknowledgements
+
+Parts of this solution are adapted from a previous homework submission by Yura Kim.
+
+---------------------
+ 
