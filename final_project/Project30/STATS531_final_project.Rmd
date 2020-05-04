@@ -1,0 +1,497 @@
+---
+title: "Time Serires Analysis on Google Search Trend"
+date: "4/25/2020"
+output:
+  html_document:
+    fig_caption: true
+    theme: flatly
+    toc: yes
+    toc_depth: 2
+    number_sections: true
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(594709947L)
+require(ggplot2)
+theme_set(theme_bw())
+require(readr)
+require(plyr)
+require(reshape2)
+require(foreach)
+#require(doMC)
+library(pomp)
+stopifnot(packageVersion("pomp")>="2.0")
+library(doParallel)
+registerDoParallel()
+library(doRNG)
+registerDoRNG(3899882)
+```
+
+# Introduction
+
+The Covid-19 virus has been outbreaking all over the world for several months. Since it is a brand new virus, people would like to searching it on Google or some other search engine to know more about it. In this project, I collect data from Google Search Trend$^{[1]}$. And the data informs search tendency of the keyword "virus" in United States. We may find out some interesting patterns of how people care about the hot topic by applying time series analysis on it.
+
+# Dataset
+
+First, we can take a brief look to the time series data. 
+
+```{r, warning=FALSE, message=FALSE,echo=FALSE}
+data <- read.csv("virus.csv", header = F)
+data <- data[-c(1,2),]
+data$day <- c(1:89)
+plot(x=data$day, y=data$V2,type="l")
+```
+
+The dataset contains the search interests of past 90 days. There are two peaks of search interest. According to the timeline, we can find out that one may be the time when Covid-19 first appeared and the other may be the time when the virus outbroke in United States. In the following sections, I will use time series analysis to study the inside pattern.
+
+# POMP Model
+
+First of all, I would like to build a POMP model to fit the data. In particular, I apply SIR model introduced in the course$^{[2]}$.
+
+## SIR Model
+
+There are three compartments in the SIR model. Susceptible, infected and recovered respectively when studying flu data. And in this project, I can redefine the three compartments as:
+
+\begin{itemize}
+  \item People who always use Google search engine
+  \item People who are interested in studying more about virus
+  \item People who already search "virus" on Google
+\end{itemize}
+
+Use $N$ to present the number of individuals. $N_{SI}(t), N_{IR}(t)$ means the indivisuals have transitioned from S to I and from I to R respectively. Also, to simplify the model, I follow the setting on slides11 that 
+
+$$ \mu_{.S} = \mu_{S.} = \mu_{I.} = \mu_{R.} = 0 $$ 
+
+The ODEs for the counting process can be written as
+
+$$ \frac{dN_{SI}}{dt} = \frac{\beta I}{N}$$
+$$ \frac{dN_{IR}}{dt} = \gamma $$
+
+To solve the problem, using Euler method combined binomial approximation with exponential transition probabilities:
+
+$$ N_{SI}(t+\delta) = N_{SI}(t) + Binomial(S(t), 1 - \exp (-\frac{\beta I}{N} * \delta))$$
+$$ N_{IR}(t+\delta) = N_{IR}(t) + Binomial(I(t), 1 - \exp (-\gamma * \delta))$$
+
+Implement the model using R package pomp.
+
+```{r, warning=FALSE, message=FALSE}
+virus_rprocess <- "
+  double dN_SI = rbinom(S,1-exp(-Beta*I/(S+I+R)*dt));
+  double dN_IR = rbinom(I,1-exp(-dt*mu_IR));
+  S -= dN_SI;
+  I += dN_SI - dN_IR;
+  R += dN_IR;
+"
+
+virus_dmeasure <- "
+  lik = dpois(V2,rho*R+1e-10,give_log);
+"
+
+virus_rmeasure <- "
+  V2 = rpois(rho*R+1e-10);
+"
+
+virus_rinit <- "
+ S=762;
+ I=1;
+ R=0;
+"
+
+virus_statenames <- c("S","I","R")
+virus_paramnames <- c("Beta","mu_IR","rho")
+
+virus2 <- pomp(
+  data=subset(data,select=c(day,V2)),
+  times="day",
+  t0=0,
+  rprocess=euler(
+    step.fun=Csnippet(virus_rprocess),
+    delta.t=1/12),
+  rmeasure=Csnippet(virus_rmeasure),
+  dmeasure=Csnippet(virus_dmeasure),
+  partrans=parameter_trans(
+    log=c("Beta","mu_IR"),
+    logit="rho"),
+  statenames=virus_statenames,
+  paramnames=virus_paramnames,
+  rinit=Csnippet(virus_rinit)
+)
+```
+
+### Local Search
+
+We can do the slice design to find out some propriate initial parameters for the model.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p <- sliceDesign(
+  c(Beta=10,mu_IR=0.05,rho=0.05),
+  Beta=rep(seq(from=20,to=100,length=40),each=3),
+  mu_IR=rep(seq(from=0.01,to=0.6,length=40),each=3),
+  rho=rep(seq(from=0.01,to=0.2,length=40),each=3))
+
+foreach (theta=iter(p,"row"),
+  .combine=rbind,.inorder=FALSE) %dopar% {
+    pfilter(virus2,params=unlist(theta),Np=5000) -> pf
+    theta$loglik <- logLik(pf)
+    theta <- theta
+  } -> p
+
+foreach (v=c("Beta","mu_IR","rho")) %do% 
+{
+  x <- subset(p,slice==v)
+  plot(x[[v]],x$loglik,xlab=v,ylab="loglik")
+}
+```
+
+We can find peak for $\mu_{IR}$ and $\rho$, but there is no peak value for $\beta$.
+
+From the slice design above, I set $\beta = 40, \mu_{IR} = 0.005, \rho = 0.04$ as the initial value. And then I apply if2 algorithm to do a local search of the likelihood surface.
+
+```{r, message=FALSE,warning=FALSE}
+run_level <- 3
+switch(run_level, {
+  virus_Np=100; virus_Nmif=10; virus_Neval=10;
+  virus_Nglobal=10; virus_Nlocal=10
+},{
+  virus_Np=20000; virus_Nmif=100; virus_Neval=10;
+  virus_Nglobal=10; virus_Nlocal=10
+},{
+  virus_Np=60000; virus_Nmif=300; virus_Neval=10;
+  virus_Nglobal=100; virus_Nlocal=20}
+)
+
+virus_mle <- c(Beta=40,mu_IR=0.005,rho=0.04)
+
+virus_rw.sd <- 0.02; virus_cooling.fraction.50 <- 0.5
+stew(file=sprintf("final_2_local_search-%d.rda",run_level),{
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:virus_Nlocal,
+                          .packages='pomp', .combine=c) %dopar%  {
+                            mif2(virus2,
+                                 params=virus_mle,
+                                 Np=virus_Np,
+                                 Nmif=virus_Nmif,
+                                 cooling.fraction.50=virus_cooling.fraction.50,
+                                 rw.sd=rw.sd(
+                                   Beta=virus_rw.sd,
+                                   mu_IR=virus_rw.sd,
+                                   rho=virus_rw.sd)
+                            )
+                          }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+stew(file=sprintf("final_2_lik_local-%d.rda",run_level),{
+  t_local_eval <- system.time({
+    liks_local <- foreach(i=1:virus_Nlocal,
+                          .combine=rbind,.packages='pomp')%dopar% {
+                            evals <- replicate(virus_Neval, logLik(
+                              pfilter(virus2,params=coef(mifs_local[[i]]),Np=virus_Np)))
+                            logmeanexp(evals, se=TRUE)
+                          }
+  })
+},seed=900242057,kind="L'Ecuyer")
+```
+
+We can visualize the iteration result and also the pair plots between log-likelihood and parameters.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+results_local <- data.frame(
+  logLik=liks_local[,1],
+  logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5)
+plot(mifs_local)
+pairs(~logLik+Beta+mu_IR+rho,
+data=subset(results_local,logLik>max(logLik)-250))
+```
+
+The likelihood result converged at the first 50 iterations, which can reach to a maximum value of -621.0. But for parameters, $\beta$ can not converge. And from the pair plots, when $\beta$ increases, the log-likelihood also increases. So, I will consider larger starting value of $\beta$ while doing global search at the next section.
+
+### Global Search
+
+To confirm the result we found above, I try different starting values to do a global likelihood search. Because $\beta$ cannot converge when I try local search, I set a large range $\beta \in [20, 50]$. And we also visualize the iteration result and pair plots between log-likelihood and parameters.
+
+```{r echo=F, message=FALSE, warning=FALSE}
+virus_box <- rbind(
+  Beta=c(20,50),
+  mu_IR=c(0.001,0.01),
+  rho = c(0.02,0.05)
+)
+
+stew(file=sprintf("final_2_box_eval-%d.rda",run_level),{
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:virus_Nglobal,
+                           .combine=c,.packages='pomp') %dopar% {
+                             mif2(
+                               mifs_local[[1]],
+                               params=c(
+                                 apply(virus_box,1,function(x)runif(1,x[1],x[2])))
+                             )}
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("final_2_lik_global_eval-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:virus_Nglobal,
+                           .combine=rbind, .packages='pomp') %dopar% {
+                             evals <- replicate(virus_Neval,
+                                                logLik(pfilter(bsflu2,
+                                                               params=coef(mifs_global[[i]]),Np=bsflu_Np)))
+                             logmeanexp(evals, se=TRUE)
+                           }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global <- data.frame(
+  logLik=liks_global[,1],
+  logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(results_global$logLik,digits=5)
+plot(mifs_global)
+pairs(~logLik+Beta+mu_IR+rho,
+data=subset(results_global,logLik>max(logLik)-250))
+```
+
+The result is similar to the one using local search. The maximum log likelihood can reach to -621.0. But the same problem appears that $\beta$ cannot converge. And the pair plots show that a larger $\beta$ can help reach to a larger likelihood.
+
+## SIR Model Improvement
+
+Though the log-likelihood can be converged when using SIR model, it may not the best result because some parameters cannot converge. In this section, I will like to set more compartments, similar to the model in notes13$^{[2]}$. The compartments $R_1, R_2, R_3$ can represent
+
+\begin{itemize}
+  \item $R_1$: People who starts to search "virus" on Google
+  \item $R_2$: People who will also ask his/her families and friends to search "virus" on Google
+  \item $R_3$: People who already knows the virus, also his/her families and friends
+\end{itemize}
+
+And the individuals count transforms from $R_k$ to $R_{k+1}$ also follows
+
+$$ N_{R_k R_{k+1}}(t+\delta) = N_{R_k R_{k+1}}(t) + Binomial(R_k(t), 1 - \exp (- \mu_{R_k R_{k+1}} * \delta))$$
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+virus_rprocess <- "
+  double dN_SI = rbinom(S,1-exp(-Beta*I*dt));
+  double dN_IR1 = rbinom(I,1-exp(-dt*mu_IR));
+  double dN_R1R2 = rbinom(R1,1-exp(-dt*mu_R1));
+  double dN_R2R3 = rbinom(R2,1-exp(-dt*mu_R2));
+  S -= dN_SI;
+  I += dN_SI - dN_IR1;
+  R1 += dN_IR1 - dN_R1R2;
+  R2 += dN_R1R2 - dN_R2R3;
+"
+
+virus_dmeasure <- "
+  lik = dpois(V2,rho*R1+1e-10,give_log);
+"
+
+virus_rmeasure <- "
+  V2 = rpois(rho*R1+1e-10);
+"
+
+virus_rinit <- "
+ S=762;
+ I=1;
+ R1=0;
+ R2=0;
+"
+
+virus_statenames <- c("S","I","R1","R2")
+virus_paramnames <- c("Beta","mu_IR","rho","mu_R1","mu_R2")
+
+virus2 <- pomp(
+  data=subset(data,select=c(day,V2)),
+  times="day",
+  t0=0,
+  rprocess=euler(
+    step.fun=Csnippet(virus_rprocess),
+    delta.t=1/12),
+  rmeasure=Csnippet(virus_rmeasure),
+  dmeasure=Csnippet(virus_dmeasure),
+  partrans=parameter_trans(
+    log=c("Beta","mu_IR","mu_R1","mu_R2"),
+    logit="rho"),
+  statenames=virus_statenames,
+  paramnames=virus_paramnames,
+  rinit=Csnippet(virus_rinit)
+)
+```
+
+Similarly, use slice design to find out the propriate initial value of parameters.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p <- sliceDesign(
+  c(Beta=0.1,mu_IR=0.05,rho=0.05,mu_R1=0.01,mu_R2=0.001),
+  Beta=rep(seq(from=0.01,to=0.2,length=40),each=3),
+  mu_IR=rep(seq(from=0.01,to=0.6,length=40),each=3),
+  rho=rep(seq(from=0.01,to=0.2,length=40),each=3),
+  mu_R1=rep(seq(from=0.001,to=0.02,length=40),each=3),
+  mu_R2=rep(seq(from=0.001,to=0.02,length=40),each=3)) 
+
+foreach (theta=iter(p,"row"),
+  .combine=rbind,.inorder=FALSE) %dopar% {
+    pfilter(virus2,params=unlist(theta),Np=5000) -> pf
+    theta$loglik <- logLik(pf)
+    theta <- theta
+  } -> p
+
+foreach (v=c("Beta","mu_IR","rho","mu_R1","mu_R2")) %do% 
+{
+  x <- subset(p,slice==v)
+  plot(x[[v]],x$loglik,xlab=v,ylab="loglik")
+}
+```
+
+When $\beta$ becomes larger than 0.05, it has small influence to the log-likelihood. And we cannot find specific relation between $\mu_{R_2 R_3}$ and log-likelihood.
+
+### Local Search
+
+I set $\beta = 5, \mu_{IR} = 0.005, \rho = 0.05$ as the initial value, and fix $\mu_{R_{1} R_{2}} = 0.01, \mu_{R_{2} R_{3}} = 0.001$. Then I apply if2 algorithm to do a local search of the likelihood surface.
+
+```{r, message=FALSE, warning=FALSE}
+run_level <- 3
+switch(run_level, {
+  bsflu_Np=100; bsflu_Nmif=10; bsflu_Neval=10;
+  bsflu_Nglobal=10; bsflu_Nlocal=10
+},{
+  bsflu_Np=20000; bsflu_Nmif=100; bsflu_Neval=10;
+  bsflu_Nglobal=10; bsflu_Nlocal=10
+},{
+  bsflu_Np=60000; bsflu_Nmif=300; bsflu_Neval=10;
+  bsflu_Nglobal=100; bsflu_Nlocal=20}
+)
+
+bsflu_mle <- c(Beta=5,mu_IR=0.05,rho=0.05,mu_R1=0.01,mu_R2=0.001)
+
+bsflu_rw.sd <- 0.02; bsflu_cooling.fraction.50 <- 0.5
+stew(file=sprintf("final_local_search-%d.rda",run_level),{
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:bsflu_Nlocal,
+                          .packages='pomp', .combine=c) %dopar%  {
+                            mif2(bsflu2,
+                                 params=bsflu_mle,
+                                 Np=bsflu_Np,
+                                 Nmif=bsflu_Nmif,
+                                 cooling.fraction.50=bsflu_cooling.fraction.50,
+                                 rw.sd=rw.sd(
+                                   Beta=bsflu_rw.sd,
+                                   mu_IR=bsflu_rw.sd,
+                                   rho=bsflu_rw.sd)
+                            )
+                          }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+stew(file=sprintf("final_lik_local-%d.rda",run_level),{
+  t_local_eval <- system.time({
+    liks_local <- foreach(i=1:bsflu_Nlocal,
+                          .combine=rbind,.packages='pomp')%dopar% {
+                            evals <- replicate(bsflu_Neval, logLik(
+                              pfilter(bsflu2,params=coef(mifs_local[[i]]),Np=bsflu_Np)))
+                            logmeanexp(evals, se=TRUE)
+                          }
+  })
+},seed=900242057,kind="L'Ecuyer")
+```
+
+Below is the visualization of the result.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+results_local <- data.frame(
+  logLik=liks_local[,1],
+  logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5)
+plot(mifs_local)
+pairs(~logLik+Beta+mu_IR+rho,
+data=subset(results_local,logLik>max(logLik)-250))
+```
+
+The plot shows that log-likelihood does not converge at the peak value. And the maximum converged value it can reach is -547.7, which is better than the first model. 
+
+### Global Search
+
+We also try different starting values to find out whether we can find a better set of parameters. Based on the result of local search, I set $\beta \in [0.001, 20], \mu_{IR} \in [0.045, 0.055], \rho \in [0.01, 0.1]$.
+
+```{r, message=FALSE, warning=FALSE}
+virus_box <- rbind(
+  Beta=c(0.001,20),
+  mu_IR=c(0.045,0.055),
+  rho = c(0.01,0.1)
+)
+
+virus_fixed_params <- c(mu_R1=0.01, mu_R2=0.001)
+
+stew(file=sprintf("final_box_eval-%d.rda",run_level),{
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:virus_Nglobal,
+                           .combine=c,.packages='pomp') %dopar% {
+                             mif2(
+                               mifs_local[[1]],
+                               params=c(
+                                 apply(virus_box,1,function(x)runif(1,x[1],x[2])),
+                                 virus_fixed_params)
+                             )}
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("final_lik_global_eval-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:virus_Nglobal,
+                           .combine=rbind, .packages='pomp') %dopar% {
+                             evals <- replicate(virus_Neval,
+                                                logLik(pfilter(virus2,
+                                                               params=coef(mifs_global[[i]]),Np=virus_Np)))
+                             logmeanexp(evals, se=TRUE)
+                           }
+  })
+},seed=442141592,kind="L'Ecuyer")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+results_global <- data.frame(
+  logLik=liks_global[,1],
+  logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(results_global$logLik,digits=5)
+plot(mifs_global)
+```
+
+```{r, echo=FALSE,message=FALSE, warning=FALSE}
+pairs(~logLik+Beta+mu_IR+rho,
+data=subset(results_global,logLik>max(logLik)-250))
+```
+
+In this case, the log-likelihood converges in a few iterations though the sample size is not stable. And the maximum likelihood can reach to -547.5, which outperforms the first simple SIR Model. And the pair plot does not show some specific pattern between log-likelihood and parameters.
+
+# GARCH Model
+
+Besides POMP model, I also want to use some other common models in time series analysis to fit the data. I first try GARCH(1,1) model using fGarch package$^{[3]}$. The result shows below.
+
+```{r, message=FALSE, warning=FALSE}
+require(fGarch)
+mod1 <- garchFit(data=c(data$V2),grad = "numerical",trace=FALSE)
+summary(mod1)
+```
+
+We can find out that the log likelihood of GARCH(1,1) model is -343.224.
+
+# ARIMA Model
+
+I also try ARIMA model. To simplify the process, I use auto.arima function in forecast package to find out the best model.
+
+```{r, message=FALSE, warning=FALSE}
+require(forecast)
+auto.arima(data$V2)
+```
+
+It suggests the ARIMA(3,0,0) model, which has log likelihood -327.11.
+
+# Conclusion
+
+In this project, I try two different multi-compartments POMP models, Garch Model and also ARIMA model to fit the google search trend data of keyword "virus". And it comes out that the ARIMA(3,0,0) model is the best fit of the data, which has the largest log likelihood -327.11. Since most of the efforts are spend on finding a POMP model, there may have some disadvantages using my SIR model. For further analysis, we can consider different structures of POMP model.
+
+# Reference
+
+$[1]$ https://trends.google.com/trends/explore?q=virus&geo=US
+
+$[2]$ https://ionides.github.io/531w20/
+
+$[3]$ https://cran.r-project.org/web/packages/fGarch/fGarch.pdf
