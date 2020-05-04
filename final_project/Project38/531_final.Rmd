@@ -1,0 +1,577 @@
+---
+title: "Analysing the Stock of Intel Corporation (INTC) using GARCH and POMP Models"
+date: "4/29/2020"
+output: 
+  html_document:
+    theme: flatly
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.align = "center")
+```
+
+# Introduction
+
+Volatility is a important topic in the financial market. Analysing the volatility can help investors to measure and control the investment risks to some extent. In this project, we are going to perform two time series methods (POMP and GARCH model) to study the financial volatility for the stock of Intel Corporation (INTC) for the past 10 years. Intel Corporation is a famous technical company which produces technical computer hardwares in the world. A good model aims to provide the potential investors more understanding of the Stock Price of Intel Corporation when they consider to buy the stock.
+
+# Data Summary and Visualization
+
+```{r}
+set.seed(594709947L)
+library(ggplot2)
+theme_set(theme_bw())
+library(tidyverse)
+library(plyr)
+library(reshape2)
+library(foreach)
+library(pomp)
+stopifnot(packageVersion("pomp")>="2.0")
+```
+
+The data are retrieved from Yahoo Finance[1]. The data contains the weekly stock price of Intel Corporation from 2010 to 2020. There are 524 observations in total in the dataset. Here are the first few lines of this dataset.
+
+```{r}
+data = read.csv("INTC.csv")
+head(data[,c(1,6)])
+```
+
+$~$
+
+By the summary table below, we can see that the mean of the price is arount 30 and it is a little bit larger than the median.
+
+```{r}
+summary(data$Adj.Close)
+```
+
+$~$
+
+The plot below is the line plot for the adjusted close price for the stock. We can see that there is a increasing trend for it.
+
+```{r}
+plot(as.Date(data$Date),data$Adj.Close,
+  xlab="date",ylab="Price",type="l")
+```
+
+The plot below is the return for the price calculated by using $r_{n} = log(p_n) - log(p_{n-1})$, where $p_n$ represents the adjusted closing price at time n. Since we are interested in the financial volatility of stock, analysing the return is very important.
+
+```{r}
+diff_price0 = diff(log(data$Adj.Close))
+plot(1:length(diff_price0),diff_price0,
+  xlab="date",ylab="return",type="l")
+```
+
+Then, we demean the data. By the plot below, we can see that it is similar to the previous plot because the mean of the return is very close to 0. The plot looks close to stationary with a mean about 0.
+
+```{r}
+diff_price = diff(log(data$Adj.Close)) - mean(diff(log(data$Adj.Close)))
+plot(1:length(diff_price),diff_price,
+  xlab="date",ylab="demeaned return",type="l")
+```
+
+
+# GARCH Model
+
+We first fit a GARCH model. Specifically, we choose to fit a GARCH(1,1) model which is a popular model that people use to model the financial volo. By the note[2] given by professor Ionides, we know that GARCH(p,q) model has form
+
+$$Y_{n}=\epsilon_{n} \sqrt{V_{n}}$$,
+
+where
+
+$$V_{n}=\alpha_{0}+\sum_{j=1}^{p} \alpha_{j} Y_{n-j}^{2}+\sum_{k=1}^{q} \beta_{k} V_{n-k}$$
+$$\epsilon_{n} \text{ represents white noise.}$$
+
+$~$
+
+Thus, we know that GARCH(1,1) model has form:
+
+$Y_{n}=\epsilon_{n} \sqrt{V_{n}}$, where $V_{n}=\alpha_{0}+\alpha_{1} Y_{n-1}^{2}+\beta_{1} V_{n-1}$, $\epsilon_{n}$ is the white noise.
+
+$~$
+
+```{r}
+require(tseries)
+fit.garch <- garch(diff(log(data$Adj.Close)),grad = "numerical",
+  trace = FALSE)
+L.garch <- tseries:::logLik.garch(fit.garch)
+fit.garch
+```
+
+The table above shows the parameter estimations given by the GARCH(1,1) model.
+
+$~$
+
+```{r}
+L.garch
+```
+
+We can see that this model can give us a log likelihood of 1017.548. The degree of freedom is 3 because the model that we choose is GARCH(1,1).
+
+
+```{r}
+r = summary(fit.garch)$residuals
+acf(r)
+qqnorm(c(r))
+qqline(c(r))
+```
+
+By the ACT plot, we can see that the residuals of this model are distributed close to independent. By the QQ plot (check normality), we can see that there are small tails for the residuals. We can set it as a benchmark for the POMP model that we are going to build in the following section.
+
+
+# POMP Model
+
+In this section, we model the stock return using pomp (partially observed Markov process) model.
+
+## Model Setup
+
+We construct a POMP model based on a pomp implementation[4] by Breto in 2014. It is a stochastic volatility model.
+
+Breto's model introduces a concept of leverage. The formula for this inplementation is shown below
+
+$$R_{n}=\frac{\exp \left\{2 G_{n}\right\}-1}{\exp \left\{2 G_{n}\right\}+1},$$
+
+$$Y_{n}=\exp \left\{H_{n} / 2\right\} \epsilon_{n},$$
+
+$$H_{n}=\mu_{h}(1-\phi)+\phi H_{n-1}+\beta_{n-1} R_{n} \exp \left\{-H_{n-1} / 2\right\}+\omega_{n},$$
+
+$$G_{n}=G_{n-1}+\nu_{n}$$
+
+where $G_{n}$ is the Gaussian random walk, $H_{n}$ represents the log volatility, $\beta_{n}=Y_{n} \sigma_{\eta} \sqrt{1}-\phi^{2},\left\{\epsilon_{n}\right\} \text { is an iid } N(0,1)$ sequence, $\left\{\omega_{n}\right\}$ is an iid $N\left(0, \sigma_{\omega}^{2}\right)$ sequence, $\left\{v_{n}\right\}$ is an iid $N\left(0, \sigma_{v}^{2}\right)$ sequence. $R_n$ is the leverage which represents the correlation between index return on day $n − 1$ and the increase in the log
+volatility from day $n − 1$ to day $n$ on day $n$ .
+
+
+## Build Model
+
+The following are the codes which construct the pomp object that we need. It follows the the step of the case study[2] given by professor Ionides.
+
+- pomp object setup
+
+```{r echo=TRUE}
+stock_statenames <- c("H","G","Y_state")
+stock_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta")
+stock_ivp_names <- c("G_0","H_0")
+stock_paramnames <- c(stock_rp_names,stock_ivp_names)
+
+rproc1 <- "
+  double beta,omega,nu;
+  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * 
+    sqrt(1-tanh(G)*tanh(G)));
+  nu = rnorm(0, sigma_nu);
+  G += nu;
+  beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+  H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) 
+    * exp(-H/2) + omega;
+"
+rproc2.sim <- "
+  Y_state = rnorm( 0,exp(H/2) );
+ "
+
+rproc2.filt <- "
+  Y_state = covaryt;
+ "
+stock_rproc.sim <- paste(rproc1,rproc2.sim)
+stock_rproc.filt <- paste(rproc1,rproc2.filt)
+
+stock_rinit <- "
+  G = G_0;
+  H = H_0;
+  Y_state = rnorm( 0,exp(H/2) );
+"
+
+stock_rmeasure <- "
+   y=Y_state;
+"
+
+stock_dmeasure <- "
+   lik=dnorm(y,0,exp(H/2),give_log);
+"
+
+stock_partrans <- parameter_trans(
+  log=c("sigma_eta","sigma_nu"),
+  logit="phi"
+)
+
+stock.filt <- pomp(data=data.frame(
+    y=diff_price,time=1:length(diff_price)),
+  statenames=stock_statenames,
+  paramnames=stock_paramnames,
+  times="time",
+  t0=0,
+  covar=covariate_table(
+    time=0:length(diff_price),
+    covaryt=c(0,diff_price),
+    times="time"),
+  rmeasure=Csnippet(stock_rmeasure),
+  dmeasure=Csnippet(stock_dmeasure),
+  rprocess=discrete_time(step.fun=Csnippet(stock_rproc.filt),
+    delta.t=1),
+  rinit=Csnippet(stock_rinit),
+  partrans=stock_partrans
+)
+```
+
+- simulation
+
+```{r echo=TRUE}
+## sim_pomp 
+params_test <- c(
+  sigma_nu = exp(-4.5),  
+  mu_h = -0.25,      
+  phi = expit(4),    
+  sigma_eta = exp(-0.07),
+  G_0 = 0,
+  H_0=0
+)
+  
+sim1.sim <- pomp(stock.filt, 
+  statenames=stock_statenames,
+  paramnames=stock_paramnames,
+  rprocess=discrete_time(
+    step.fun=Csnippet(stock_rproc.sim),delta.t=1)
+)
+
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+```
+
+- build filtering object
+
+```{r echo=TRUE}
+sim1.filt <- pomp(sim1.sim, 
+  covar=covariate_table(
+    time=c(timezero(sim1.sim),time(sim1.sim)),
+    covaryt=c(obs(sim1.sim),NA),
+    times="time"),
+  statenames=stock_statenames,
+  paramnames=stock_paramnames,
+  rprocess=discrete_time(
+    step.fun=Csnippet(stock_rproc.filt),delta.t=1)
+)
+```
+
+
+## Filtering using Level 2
+
+First, we do IF2[2] filtering using the level 2 which takes relatively small number of iterations. level 1 is used to test the codes can run well.
+
+```{r echo=TRUE}
+## run_level
+run_level <- 2
+stock_Np <-           switch(run_level, 100, 1000, 2500)
+stock_Nmif <-         switch(run_level,  10, 100, 250)
+stock_Nreps_eval <-   switch(run_level,   4,  10,  20)
+stock_Nreps_local <-  switch(run_level,  10,  20,  20)
+stock_Nreps_global <- switch(run_level,  10,  20, 100)
+```
+
+```{r}
+library(doParallel)
+registerDoParallel()
+library(doRNG)
+registerDoRNG(34118892)
+```
+
+```{r}
+stew(file=sprintf("pf1_adj_dm-%d.rda",run_level),{
+  t.pf1 <- system.time(
+    pf1 <- foreach(i=1:stock_Nreps_eval,
+      .packages='pomp') %dopar% pfilter(sim1.filt,Np=stock_Np))
+},seed=493536993,kind="L'Ecuyer")
+#(L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE))
+```
+
+- We first do iterated filtering using fixed parameters. 
+
+```{r echo=TRUE}
+## parameters
+stock_rw.sd_rp <- 0.02
+stock_rw.sd_ivp <- 0.1
+stock_cooling.fraction.50 <- 0.5
+stock_rw.sd <- rw.sd(
+  sigma_nu  = stock_rw.sd_rp,
+  mu_h      = stock_rw.sd_rp,
+  phi       = stock_rw.sd_rp,
+  sigma_eta = stock_rw.sd_rp,
+  G_0       = ivp(stock_rw.sd_ivp),
+  H_0       = ivp(stock_rw.sd_ivp)
+)	 
+```
+
+The results are shown below:
+
+```{r}
+## ----mif----------------------------------------------------------------------
+stew(file=sprintf("mif1_adj_dm-%d.rda",run_level),{
+  t.if1 <- system.time({
+  if1 <- foreach(i=1:stock_Nreps_local,
+    .packages='pomp', .combine=c) %dopar% mif2(stock.filt,
+      params=params_test,
+      Np=stock_Np,
+      Nmif=stock_Nmif,
+      cooling.fraction.50=stock_cooling.fraction.50,
+      rw.sd = stock_rw.sd)
+  L.if1 <- foreach(i=1:stock_Nreps_local,
+    .packages='pomp', .combine=rbind) %dopar% logmeanexp(
+      replicate(stock_Nreps_eval, logLik(pfilter(stock.filt,
+        params=coef(if1[[i]]),Np=stock_Np))), se=TRUE)
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],
+  t(sapply(if1,coef)))
+if (run_level>1) write.table(r.if1,file="stock_params.csv",
+  append=TRUE,col.names=FALSE,row.names=FALSE)
+
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,
+  data=subset(r.if1,logLik>max(logLik)-20))
+```
+
+```{r}
+summary(r.if1$logLik,digits=5)
+```
+
+$~$
+
+- Then, we do the likelihood maximization using randomized starting values shown in the chunk below.
+
+```{r echo=TRUE}
+#box for parameters
+stock_box <- rbind(
+ sigma_nu=c(0.005,0.05),
+ mu_h    =c(-1,0),
+ phi = c(0.95,0.99),
+ sigma_eta = c(0.5,1),
+ G_0 = c(-2,2),
+ H_0 = c(-1,1)
+)
+```
+
+The results are shown below:
+
+```{r}
+stew(file=sprintf("box_eval_adj_dm-%d.rda",run_level),{
+  t.box <- system.time({
+    if.box <- foreach(i=1:stock_Nreps_global,
+      .packages='pomp',.combine=c) %dopar% mif2(if1[[1]],
+        params=apply(stock_box,1,function(x)runif(1,x)))
+    L.box <- foreach(i=1:stock_Nreps_global,
+      .packages='pomp',.combine=rbind) %dopar% {
+         logmeanexp(replicate(stock_Nreps_eval, logLik(pfilter(
+	     stock.filt,params=coef(if.box[[i]]),Np=stock_Np))), 
+           se=TRUE)
+       }
+  })
+},seed=290860873,kind="L'Ecuyer")
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],
+  t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="stock_params.csv",
+  append=TRUE,col.names=FALSE,row.names=FALSE)
+
+pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,
+  data=subset(r.box,logLik>max(logLik)-10))
+```
+
+
+```{r}
+summary(r.box$logLik,digits=5)
+```
+
+
+```{r include=FALSE}
+class(if.box)
+class(if.box[[1]])
+```
+
+```{r}
+plot(if.box)
+```
+
+By the results above, we can see that this model give the max log likelihood 1022.8. By the convergence diagnostics, we find that the log likelihood converges very fast. Some parameters do not seem to converge too well.
+
+
+## Filtering using Level 3
+
+Following the same procedure, this time we do the filtering by using level 3 which contains larger values for iteration to see if we can achieve a better result.
+
+```{r echo=TRUE}
+## run_level
+run_level <- 3
+stock_Np <-           switch(run_level, 100, 1000, 2500)
+stock_Nmif <-         switch(run_level,  10, 100, 250)
+stock_Nreps_eval <-   switch(run_level,   4,  10,  20)
+stock_Nreps_local <-  switch(run_level,  10,  20,  20)
+stock_Nreps_global <- switch(run_level,  10,  20, 100)
+```
+
+```{r}
+library(doParallel)
+registerDoParallel()
+library(doRNG)
+registerDoRNG(34118892)
+```
+
+```{r}
+stew(file=sprintf("pf1_adj_dm-%d.rda",run_level),{
+  t.pf1 <- system.time(
+    pf1 <- foreach(i=1:stock_Nreps_eval,
+      .packages='pomp') %dopar% pfilter(sim1.filt,Np=stock_Np))
+},seed=493536993,kind="L'Ecuyer")
+#(L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE))
+```
+
+- We first do iterated filtering using fixed parameters.
+
+```{r echo=TRUE}
+## parameters
+stock_rw.sd_rp <- 0.02
+stock_rw.sd_ivp <- 0.1
+stock_cooling.fraction.50 <- 0.5
+stock_rw.sd <- rw.sd(
+  sigma_nu  = stock_rw.sd_rp,
+  mu_h      = stock_rw.sd_rp,
+  phi       = stock_rw.sd_rp,
+  sigma_eta = stock_rw.sd_rp,
+  G_0       = ivp(stock_rw.sd_ivp),
+  H_0       = ivp(stock_rw.sd_ivp)
+)	 
+```
+
+$~$
+
+The results are shown below:
+
+```{r}
+## mif
+stew(file=sprintf("mif1_adj_dm-%d.rda",run_level),{
+  t.if1 <- system.time({
+  if1 <- foreach(i=1:stock_Nreps_local,
+    .packages='pomp', .combine=c) %dopar% mif2(stock.filt,
+      params=params_test,
+      Np=stock_Np,
+      Nmif=stock_Nmif,
+      cooling.fraction.50=stock_cooling.fraction.50,
+      rw.sd = stock_rw.sd)
+  L.if1 <- foreach(i=1:stock_Nreps_local,
+    .packages='pomp', .combine=rbind) %dopar% logmeanexp(
+      replicate(stock_Nreps_eval, logLik(pfilter(stock.filt,
+        params=coef(if1[[i]]),Np=stock_Np))), se=TRUE)
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],
+  t(sapply(if1,coef)))
+if (run_level>1) write.table(r.if1,file="stock_params.csv",
+  append=TRUE,col.names=FALSE,row.names=FALSE)
+
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,
+  data=subset(r.if1,logLik>max(logLik)-20))
+```
+
+```{r}
+summary(r.if1$logLik,digits=5)
+```
+
+$~$
+
+- Then, we do the likelihood maximization using randomized starting values shown in the chunk below.
+
+```{r echo=TRUE}
+#box for parameters
+stock_box <- rbind(
+ sigma_nu=c(0.005,0.05),
+ mu_h    =c(-1,0),
+ phi = c(0.95,0.99),
+ sigma_eta = c(0.5,1),
+ G_0 = c(-2,2),
+ H_0 = c(-1,1)
+)
+```
+
+$~$
+
+The results are shown below:
+
+```{r}
+stew(file=sprintf("box_eval_adj_dm-%d.rda",run_level),{
+  t.box <- system.time({
+    if.box <- foreach(i=1:stock_Nreps_global,
+      .packages='pomp',.combine=c) %dopar% mif2(if1[[1]],
+        params=apply(stock_box,1,function(x)runif(1,x)))
+    L.box <- foreach(i=1:stock_Nreps_global,
+      .packages='pomp',.combine=rbind) %dopar% {
+         logmeanexp(replicate(stock_Nreps_eval, logLik(pfilter(
+	     stock.filt,params=coef(if.box[[i]]),Np=stock_Np))), 
+           se=TRUE)
+       }
+  })
+},seed=290860873,kind="L'Ecuyer")
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],
+  t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="stock_params.csv",
+  append=TRUE,col.names=FALSE,row.names=FALSE)
+
+pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,
+  data=subset(r.box,logLik>max(logLik)-10))
+```
+
+
+```{r}
+summary(r.box$logLik,digits=5)
+```
+
+```{r include=FALSE}
+class(if.box)
+class(if.box[[1]])
+```
+
+```{r}
+plot(if.box)
+```
+
+By the results above, we can see that this model give the max log likelihood 1026.7. By the convergence diagnostics, We find that the log likelihood converges very fast. The convergence for level 3 looks slightly better that level 2.
+
+$~$
+
+The table below shows the parameters which gives the largest log likelihood.
+
+```{r}
+r.box[which.max(r.box$logLik), 3:8]
+```
+
+
+## Compare pomp with GARCH
+
+We can compare models based on AIC (Akaike information criterion). AIC has formula $A I C=-2 \times \ell(\theta)+2 D$. $D$ represents the number of parameters. $\ell(\theta)$ represents the value for log likelihood. AIC help us balance the log likelihood and the size of parameters.
+
+Based on the results calculated above, we know that the GARCH(1,1) model provides a log likelihood for 1017.548 with 3 fitted parameters. The POMP model based on leverage provided a log likelihood for 1026.7 with 6 fitted parameters. Thus, we know that the POMP model provides a smaller AIC based on the AIC formula. 
+
+Thus, we can see that AIC favors POMP model than the GARCH(1,1) model.
+
+
+
+# Conclusion
+
+In this project, we modeled the financial volatility for the Intel Corporation (INTL) Stock data for the recent 10 years (2010-2020) using GARCH(1,1) and POMP models. 
+
+We found that GARCH(1,1) model provided a log likelihood for 1017.548 with parameter 3. The POMP model based on leverage provided a log likelihood for 1026.7 with parameter 6. Based on the AIC measure, we got that POMP model is the better choice than the GARCH(1,1) model to model the volatility for the Intel's stock.
+
+For the future study, we can improve the computing ability to try to get a better result due to the fact that POMP codes took a lot of time to run. Running more iterations may bring us a better convergence for the parameters.
+
+
+
+# Reference
+
+[1]Yahoo Finance, https://finance.yahoo.com
+
+[2]Ionides, Edward, note14 case study (stats 531 winter 2020), https://ionides.github.io/531w20/14/notes14.pdf
+
+[3]STATS 531 Winter2020, https://ionides.github.io/531w20/
+
+[4]Breto, C. (2014). On idiosyncratic stochasticity of financial leverage
+effects, Statistics & Probability Letters 91: 20–26.
+
+[5]https://ionides.github.io/531w20/midterm_project/project13/531_midterm_project.html
+
+[6]Professor Ionides's gitbub website. https://github.com/ionides
