@@ -1,0 +1,430 @@
+---
+title: "A POMP Model on Transmission Dynamics of Chickenpox (Varicella) in Michigan"
+date: "4/23/2020"
+output: 
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+### Introduction
+
+Chickenpox, also known as varicella, is a highly contagious disease caused by the initial infection with varicella zoster virus [1]. The disease results in a characteristic skin rash that forms small, itchy blisters, which eventually scab over. Symptoms usually last four to seven days [2]. 
+
+Chickenpox used to be very common in the United States. In the early 1990s, an average of 4 million people got varicella, 10,500 to 13,000 were hospitalized. In the 1990s, the highest rate of varicella was reported in preschool-aged children. Chickenpox vaccine became available in the United States in 1995, and had greatly reduced the cases, hospitalizations and deaths caused by chickenpox [3]. The disease is often more severe in adults than in children [4]. 
+
+In this analysis, we will investigate the transmission dynamics of chickenpox after year 2000 in Michigan, USA, from 2003 to 2017. Following the approach of Martinez-Bakker et all. (2015) [5] and the case study shown in lecture notes [6], we will implement a pomp model with covariates. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Exploratory Data Analysis
+
+The varicella cases data for all the U.S. states is downloaded from Project Tycho website [7]. After reading in the data, we extracted the observations for Michigan after year 2000, and only kepted variables ending period date, count of cases for each period. The selected data was from 2013-2017. Then, we parsed the data to reflect the count of cases during each month. 
+
+```{r, echo=FALSE}
+full_dt = read.csv("US.38907003.csv")
+```
+
+```{r, echo=FALSE}
+library(dplyr)
+dt = full_dt %>% filter(Admin1Name == "MICHIGAN") %>% select(PeriodEndDate, CountValue)
+dt$date = as.Date(dt$PeriodEndDate)
+dt$year = as.numeric(format(dt$date,'%Y'))
+dt$month = as.numeric(format(dt$date,'%m'))
+dt = dt %>% filter(year >= 2000)
+# sum the counts by month
+newdt = dt %>% group_by(year, month) %>%
+               summarise(cases = sum(CountValue))
+newdt$date = as.Date(paste(newdt$month, "01", newdt$year, sep="-"), format = "%m-%d-%Y")
+newdt$time = newdt$year + newdt$month/12
+summary(newdt$time)
+plot(x = newdt$time, y = newdt$cases, type = "l", 
+     xlab = "time", ylab = "cases", main = "Varicella cases by month in Michigan")
+```
+```{r, echo=FALSE}
+original = newdt$cases
+date = newdt$time
+t_low = ts(loess(original ~ date, span = 0.5)$fitted, 
+               start = 2003, frequency = 12)
+t_high = ts(loess(original ~ date, span = 0.1)$fitted, 
+               start = 2003, frequency = 12)
+cycles = original - t_high - t_low
+plot(ts.union(original, t_low, t_high, cycles), 
+     main = "Decomposition as trend + noise + cycles")
+```
+
+From the original time series plot and the trend-noise-cycle plot, we may discover some obvious seasonality on the pattern of varicella cases: each year had a cycle of increasing and decreasing trend. Between year 2006 and 2008, the peak of cases reached the maximum among those years, and since year 2010, the case numbers became quite low. 
+
+We also included population and number of newborns as covariates in the model. The two variables were not in the original data but were copied over from other website. Only yearly population and birth data were accessable: we used the same population number for each month in a year, and used the yearly birth count divided by 12 as the monthly birth counts.
+
+```{r, echo=FALSE}
+# population data from https://www.macrotrends.net/states/michigan/population
+newdt$pop = rev(rep(c(9973114, 9950571, 9931715, 9929848, 9913065, 9897145, 9882412, 9877510, 9901591, 9946889, 10001284, 10036081, 10051137, 10055315, 10041152), each = 12))
+# birth data from https://www.mdch.state.mi.us/osr/natality/tab1.1.asp
+newdt$birth = rep(c(130850, 129710, 127518, 127537, 125172, 121231, 117309, 114717, 114159, 112708, 113732, 114460, 113211, 113374, 111507) / 12, each = 12)
+
+par(mfrow = c(1, 2))
+plot(x = newdt$time, y = newdt$pop, type = "l", col = "blue",
+     xlab = "time", ylab = "population", main = "Michigan population 2003 - 2017")
+plot(x = newdt$time, y = newdt$birth, type = "l", col = "red",
+     xlab = "time", ylab = "newborns", main = "Michigan newborns 2003 - 2017")
+```
+
+The population was decreasing before 2010, and kept increasing afterwards. The birth numbers had been decreasing the whole period of time. We could infer that the birth rate had decreased after 2010. 
+
+### POMP Model for Varicella With Birth Variable
+
+We constructed a compartment model of Martinez-Bakker et all. The state vector of the disease transmission model consists of numbers of individuals in each compartment at each time, denoted as follows:
+
+$X(t) = (S_1^B(t), ..., S_6^B(t), I^B(t), I^O(t), R(t))$, 
+
+Where $S_1^B(t), ..., S_6^B(t)$ are susceptible babies in each of six one-month birth cohorts, $I^B(t)$ indicates infected babies, $I^O(t)$ indicates infected older individuals, and $R$ indicates those who recovered with lifelong immunity. Babies under six months are modeled as fully protected from symptomatic varicella. Assume that older infections lead to reporeted cases at a rate $\rho$. Also we set discrete time $t_n = 2003 + n/13, n = 1, ..., N$.
+
+The mean force of infection, in units of $yr^{-1}$ is modeled as:
+
+$\bar{\lambda_n} = (\beta_n \frac{I_n^O + I_n^B}{P_n} + \psi)$
+
+Where $P_n$ is the census population interpolated to time $t_n$. Seasonality of transmission is modeled as
+
+$\beta_n = exp(\sum_{k=1}^K b_k \xi_k (t_n))$,
+
+where $\{\xi_k (t), k = 1,...,6\}$ is a periodic B-spline basis, and $P_n$, $\xi_k (t_n)$ are covariate time series. The force of infection: $\lambda_n = \bar{\lambda_n \epsilon_n}$, where $\epsilon_n$ is a Gamma random variable with mean 1 and variance $\sigma^2_{env} + \sigma^2_{dem} / \bar{\lambda}_n$. The two terms capture variation on the environmental and demographic scales. We also set the mortality rate $\delta$ of the compartments to be $\frac{1}{60}yr^{-1}$. 
+
+Within each month, all susceptible individuals are modeled as having exposure to constant competing hazards of mortality and varicella infection. The chance of remaining in the susceptible population when exposed to these hazards for one month is:
+
+$P_n = exp\{ -(\delta + \lambda_n) / 12\}$, 
+
+and the chance of varicella infection is 
+
+$qn = (1 - p_n) \lambda_n / (\delta + \lambda_n)$.
+
+Then, we write a continuous population model, with $B_n$ denoting the births in month $n$, therefore the dynamic model is:
+
+$$
+S_{1, n+1}^B = B_{n+1} \\
+S_{k, n+1}^B = p_nS_{k-1, n}^B, k = 2,...,6\\
+S_{n+1}^O    = p_n(S_n^O + S_{6, n}^B) \\
+I_{n+1}^B    = q_n\sum_{k=1}^6 S_{k, n}^B \\
+I_{n+1}^O    = q_nS_n^O
+$$
+
+The measurement model describes the reported observations conditional on the state:
+
+$Y_n = max\{round(Z_n), 0\}, Z_n \sim normal(\rho I_n^O, (\tau I_n^O)^2 + \rho I_n^O)$.
+
+Next, assume parameters $(\tilde{S_{1, 0}}^B, ..., \tilde{S_{6, 0}}^B, \tilde{I_0^B}, \tilde{I_0^O}, \tilde{S_0^O},)$ specified the population in each compartment at time $t_0$:
+
+$S_{1, 0}^B = \tilde{S_{1, 0}^B}, ..., S_{6, 0}^B = \tilde{S_{6, 0}^B}, I_0^B = P_0\tilde{S_0^O}, I_0^O = P_0\tilde{I_0^O}$. 
+
+We make an approximation for the initial conditions of ignoring infant infections at time $t_0$. We set $\tilde{I_0}^B = 0$ and use monthly births in the preceding months to fix $\tilde{S_{k, 0}}^B = B_{1-k}$ for $k = 1,...6$. The estimated initial conditions are then defined by $\tilde{I_0^O}$ and $\tilde{S_0^O}$.
+
+Then we fit the pomp model as follows:
+
+```{r, echo=FALSE}
+library(ggplot2)
+theme_set(theme_bw())
+library(tidyverse)
+library(plyr)
+library(reshape2)
+library(foreach)
+#library(doMC)
+library(pomp)
+stopifnot(packageVersion("pomp")>="2.0")
+```
+```{r}
+## ----statenames---------------------------------s-------------------------
+varicella_statenames <- c("SB1","SB2","SB3","SB4","SB5","SB6","IB","SO","IO")
+varicella_obsnames <- "cases"
+varicella_t0 <- 2003.083
+```
+```{r}
+## ----covariates----------------------------------------------------------
+varicella_K <- 6
+varicella_covar <- covariate_table(
+  t=newdt$time,
+  B=newdt$birth,
+  P=predict(smooth.spline(x=2003:2017,
+    y=newdt$pop[seq(12,15*12,by=12)]))$y,
+  periodic.bspline.basis(t, nbasis=varicella_K, degree=3, period=1, names="xi%d"),
+  times="t"
+)
+```
+```{r}
+## ----regular parameters---------------------------------------------------
+varicella_rp_names <- c("b1","b2","b3","b4","b5","b6",
+                    "psi","rho","tau","sigma_dem","sigma_env")
+```
+```{r}
+## ----initial value parameters---------------------------------------------
+varicella_ivp_names <- c("SO_0","IO_0")
+varicella_paramnames <- c(varicella_rp_names,varicella_ivp_names)
+```
+```{r}
+## ----fixed parameters---------------------------------------------------------
+varicella_fp_names <- c("delta","K","SB1_0","SB2_0","SB3_0","SB4_0","SB5_0","SB6_0")
+varicella_paramnames <- c(varicella_rp_names, varicella_ivp_names, varicella_fp_names)
+covar_index_t0 <- which(abs(varicella_covar@times-varicella_t0)<0.01)
+# varicella_initial_births <- varicella_covar@table["B",covar_index_t0-0:5]
+varicella_initial_births = newdt$birth[1:6]
+names(varicella_initial_births) <- c("SB1_0","SB2_0","SB3_0","SB4_0","SB5_0","SB6_0") 
+varicella_fixed_params <- c(delta=1/60, K=varicella_K, varicella_initial_births)
+```
+
+```{r}
+## ----rprocess------------------------------------------------------------
+varicella_rprocess <- Csnippet("
+  double beta = exp(dot_product( (int) K, &xi1, &b1));
+  double lambda = (beta * (IO+IB) / P + psi);
+  double var_epsilon = pow(sigma_dem,2)/ lambda + sigma_env * sigma_env;
+  lambda *= (var_epsilon < 1.0e-6) ? 1 : rgamma(1/var_epsilon,var_epsilon);
+  double p = exp(- (delta+lambda)/12);
+  double q = (1-p)*lambda/(delta+lambda);
+  SB1 = B;
+  SB2= SB1*p;
+  SB3=SB2*p;
+  SB4=SB3*p;
+  SB5=SB4*p;
+  SB6=SB5*p;
+  SO= (SB6+SO)*p;
+  IB=(SB1+SB2+SB3+SB4+SB5+SB6)*q;
+  IO=SO*q;
+")
+```
+```{r}
+## ----measure model-----------------------------------------------------
+varicella_dmeasure <- Csnippet("
+  double tol = 1.0e-25;
+  double mean_cases = rho*IO;
+  double sd_cases = sqrt(pow(tau*IO,2) + mean_cases);
+  if(cases > 0.0){
+    lik = pnorm(cases+0.5,mean_cases,sd_cases,1,0)
+          - pnorm(cases-0.5,mean_cases,sd_cases,1,0) + tol; 
+  } else{
+    lik = pnorm(cases+0.5,mean_cases,sd_cases,1,0) + tol;
+  }
+  if (give_log) lik = log(lik);
+")
+
+varicella_rmeasure <- Csnippet("
+  cases = rnorm(rho*IO, sqrt( pow(tau*IO,2) + rho*IO ) );
+  if (cases > 0.0) {
+    cases = nearbyint(cases);
+  } else {
+    cases = 0.0;
+  }
+")
+```
+```{r}
+## ----initializer---------------------------------------------------------
+varicella_rinit <- Csnippet("
+  SB1 = SB1_0;
+  SB2 = SB2_0;
+  SB3 = SB3_0;
+  SB4 = SB4_0;
+  SB5 = SB5_0;
+  SB6 = SB6_0;
+  IB = 0;
+  IO = IO_0 * P;
+  SO = SO_0 * P;
+")
+```
+```{r}
+## ----transformation---------------------------------------------------------------
+varicella_partrans <- parameter_trans(
+  log=c("psi","rho","tau","sigma_dem","sigma_env"),
+  logit=c("SO_0","IO_0")
+)
+```
+
+```{r}
+## ----varicella_mle------------------------------------------------------
+varicella_params <- data.matrix(read.csv("varicella_params.csv", 
+                                               row.names = NULL, header = TRUE))
+varicella_params_guess <- c(varicella_params[which.max(varicella_params[,"logLik"]),][varicella_paramnames])
+```
+
+```{r}
+## ----pomp object----------------------------------------------------------------
+varicella <- pomp(
+  data=subset(newdt, select=c("cases","time")),
+  times="time",
+  t0=varicella_t0,
+  params=varicella_params_guess,
+  rprocess = euler(step.fun = varicella_rprocess, delta.t=1/12),
+  rmeasure= varicella_rmeasure,
+  dmeasure = varicella_dmeasure,
+  covar = varicella_covar,
+  obsnames = varicella_obsnames,
+  statenames = varicella_statenames,
+  paramnames = varicella_paramnames,
+  rinit = varicella_rinit,
+  partrans = varicella_partrans
+)
+plot(varicella)
+```
+```{r}
+## ----run_level-----------------------------------------------------------
+run_level = 2
+switch(run_level,
+       {hpa_Np=100; hpa_Nmif=10; hpa_Neval=10; hpa_Nglobal=10; hpa_Nlocal=10; hpa_Nsim=50}, 
+       {hpa_Np=20000; hpa_Nmif=100; hpa_Neval=10; hpa_Nglobal=10; hpa_Nlocal=10; hpa_Nsim=100} 
+)
+
+```
+```{r}
+## ----parallel-setup,cache=FALSE------------------------------------------
+require(doParallel)
+registerDoParallel()
+```
+```{r}
+## ----likelihood evaluation----------------------------------------------
+stew(file=sprintf("pf1-%d.rda",run_level),{
+  t1 <- system.time(
+    pf1 <- foreach(i=1:20,.packages='pomp') %dopar% pfilter(
+      varicella,Np=varicella_Np)
+  )
+},seed=5312020,kind="L'Ecuyer")
+L1 <- logmeanexp(sapply(pf1,logLik),se=TRUE)
+
+## ----persistence-sim-----------------------------------------------------
+stew(sprintf("persistence-%d.rda",run_level),{
+  t_sim <- system.time(
+    sim <- foreach(i=1:varicella_Nsim,
+      .packages='pomp') %dopar% simulate(varicella)
+  )
+},seed=5312020,kind="L'Ecuyer")
+
+## ----persistence-analysis------------------------------------------------
+no_cases_data <- sum(obs(varicella)==0)
+no_cases_sim <- sum(sapply(sim,obs)==0)/length(sim)
+fadeout1_sim <- sum(sapply(sim,function(po)states(po)["IB",]
+  +states(po)["IO",]<1))/length(sim)
+fadeout100_sim <- sum(sapply(sim,function(po)states(po)["IB",]
+  +states(po)["IO",]<100))/length(sim)
+imports_sim <- coef(varicella)["psi"]*mean(sapply(sim,
+  function(po) mean(states(po)["SO",]+states(po)["SB1",]
+    +states(po)["SB2",]+states(po)["SB3",]+states(po)["SB4",]
+    +states(po)["SB5",]+states(po)["SB6",])))/12
+```
+```{r}
+## ----plot_simulated------------------------------------------------------
+mle_simulation <- simulate(varicella,seed=5312020)
+plot(mle_simulation, main = "Simulation from MLE")
+```
+```{r}
+## ----parameter estimation------------------------------------------------------
+varicella_rw.sd_rp <- 0.02
+varicella_rw.sd_ivp <- 0.2
+varicella_cooling.fraction.50 <- 0.2
+varicella_rw.sd <- rw.sd(
+  b1=varicella_rw.sd_rp, b2=varicella_rw.sd_rp,
+  b3=varicella_rw.sd_rp, b4=varicella_rw.sd_rp,
+  b5=varicella_rw.sd_rp, b6=varicella_rw.sd_rp,
+  psi=varicella_rw.sd_rp, rho=varicella_rw.sd_rp,
+  tau=varicella_rw.sd_rp, sigma_dem=varicella_rw.sd_rp,
+  sigma_env=varicella_rw.sd_rp,
+  IO_0=ivp(varicella_rw.sd_ivp), SO_0=ivp(varicella_rw.sd_ivp)
+)
+
+stew(sprintf("mif-%d.rda",run_level),{
+  t2 <- system.time({
+    m2 <- foreach(i=1:varicella_Nreps_local,
+      .packages='pomp', .combine=c) %dopar% mif2(varicella,
+           Np=varicella_Np,
+           Nmif=varicella_Nmif,
+           cooling.fraction.50=varicella_cooling.fraction.50,
+           rw.sd=varicella_rw.sd)	
+    lik_m2 <- foreach(i=1:varicella_Nreps_local,
+      .packages='pomp', .combine=rbind) %dopar% logmeanexp(
+        replicate(varicella_Nreps_eval,logLik(
+	  pfilter(varicella,params=coef(m2[[i]]),Np=varicella_Np))),
+        se=TRUE)
+  })
+},seed=5312020,kind="L'Ecuyer")
+
+r2 <- data.frame(logLik=lik_m2[,1],logLik_se=lik_m2[,2], t(sapply(m2,coef)))
+summary(r2$logLik,digits=5)
+```
+
+```{r}
+## ----pairs---------------------------------------------------------------
+pairs(~logLik+psi+rho+tau+sigma_dem+sigma_env,data=r2, main = "Geometry of the Likelihood Surface")
+```
+
+```{r}
+## ----global likelihood maximization---------------------------------------
+varicella_box <- rbind(
+  b1=c(-2,8), b2=c(-2,8),
+  b3=c(-2,8), b4=c(-2,8),
+  b5=c(-2,8), b6=c(-2,8),
+  psi=c(0,0.1), rho=c(0,0.1), tau=c(0,0.1),
+  sigma_dem=c(0,0.5), sigma_env=c(0,1),
+  SO_0=c(0,1), IO_0=c(0,0.01)
+)
+
+
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  t3 <- system.time({
+    m3 <- foreach(i=1:varicella_Nreps_global,.packages='pomp',
+      .combine=c) %dopar% mif2(
+        m2[[1]],
+        params=c(apply(varicella_box,1,function(x)runif(1,x[1],x[2])),
+	  varicella_fixed_params)
+      )
+    lik_m3 <- foreach(i=1:varicella_Nreps_global,.packages='pomp',
+      .combine=rbind) %dopar% logmeanexp(
+        replicate(varicella_Nreps_eval,
+        logLik(pfilter(varicella,
+	  params=coef(m3[[i]]),Np=varicella_Np))), 
+        se=TRUE)
+  })
+},seed=5312020,kind="L'Ecuyer")
+
+
+## ----global-results------------------------------------------------------
+r3 <- data.frame(logLik=lik_m3[,1],logLik_se=lik_m3[,2],t(sapply(m3,coef)))
+if(run_level>1) write.csv(rbind(r2,r3),file="varicella_params.csv",append=TRUE,row.names=FALSE)
+summary(r3$logLik,digits=5, )
+```
+
+```{r}
+## ----pairs_global--------------------------------------------------------
+pairs(~logLik+psi+rho+tau+sigma_dem+sigma_env, data=r3, main = "Geometry of the Likelihood Surface")
+```
+
+
+```{r}
+# ----diagnosis_of_the_maximization_procedure-------------------------
+plot(m3[r3$logLik>mean(r3$logLik)])
+```
+
+
+### Discussion and Conclusion
+
+The plots above showed the best parameter sets and diagnostics via global search. After a global search of MLE, we found that the maximum likelihood value is -1648. By inspecting the diagnostics plots, we might think the parameter estimates are numerically unstable, which could be a sequence of a weakly identified parameter subspace. One main reason might be the data limitation: we used the yearly bith data / 12 to searve as the monthly birth data, which is not a good approach, because the birth rates will be constant over the same year. It also affected the convergence, but most of the convergence results seemed fine, except more iterations and particles are probably needed to improve the performance. 
+
+This project essentially was adopting and applying the same model as the case study of lecture 13. It was a good exercise for running a pomp model analysis on infectious disease data. Future efforts are needed to better understand each component of the pomp model, choose the parameters, processes and distributional assumptions that fit better to the data.
+
+### References
+
+1, "Chickenpox (Varicella) Overview". Centers for Disease Control and Prevention (cdc.gov). https://web.archive.org/web/20150204123133/http://www.cdc.gov/chickenpox/about/overview.html. 16 November 2011. Retrieved 20 April 2020.
+
+2, "Chickenpox (Varicella) Signs & Symptoms". Centers for Disease Control and Prevention (cdc.gov). https://www.cdc.gov/chickenpox/about/symptoms.html. 31 December 2018. Retrieved 20 April 2020.
+
+3, "Monitoring the Impact of Varicella Vaccination". Centers for Disease Control and Prevention (cdc.gov). https://www.cdc.gov/chickenpox/surveillance/monitoring-varicella.html. 31 December 2018. Retrieved 20 April 2020.
+
+4, Atkinson, William (2011). Epidemiology and Prevention of Vaccine-Preventable Diseases (12 ed.). Public Health Foundation. pp. 301–323. Retrieved 20 April 2020.
+
+5, Martinez-Bakker, M., King, A. A. and Rohani, P. (2015). Unraveling the transmission ecology of polio, PLoS Biology 13(6): e1002172.
+
+6, Edward L. Ionides, "STATS 531 notes", https://ionides.github.io/531w20/13/notes13.pdf
+
+7, Project Tycho, https://www.tycho.pitt.edu/data/
+
+8, Previous student projects:
+    https://ionides.github.io/531w18/final_project/22/final.html
+    https://ionides.github.io/531w18/final_project/24/final.html
+
+
