@@ -1,0 +1,321 @@
+---
+title: "Financial Volatility Analysis of Alibaba Stock"
+date: "2020/4/16"
+output: 
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+```{r, echo=FALSE}
+library(date)
+library(tseries)
+library(pomp)
+library(doParallel)
+```
+
+
+# 1. Introduction
+Return on Investment measures the gain or loss generated on an investment relative to the amount of money invested.[1] However, the variability of the returns (called the volatility) can fluctuate considerably. Understanding this volatility is important for quantifying and managing the risk of investments.[2] In this project, I mainly investigate the stock price fluctuation of a Chinese technology company, Alibaba. I would apply both the GARCH model and the POMP framework for Alibaba stock price dataset. Furthermore, since Alibaba is one of the most representative technology companies in China, it is worthwhile to investigate such a company.
+
+# 2. Exploratory Data Analysis
+I use the Alibaba's historical stock price as my dataset in this project. The dataset is downloaded from https://finance.yahoo.com/quote/baba/history/ and is collected from 4/16/2014 to 4/16/2020 weekly.[3] There are totally 292 instances with 7 features. I would mainly use the column "Date" and "Adj.Close" of the dataset. The "Date" represents the date to record the price of the Alibaba stock; the "Adj.Close" means the adjusted closing price of the Alibaba stock for each day. Based on the plot below, we find that in the past few years, the price of the Alibaba stock reaches the peak at the beginning of 2020, and dropes in the lowest price at the end of 2015. 
+
+
+```{r, echo=FALSE}
+alibaba = read.csv("alibaba.csv")
+plot(as.Date(alibaba$Date), alibaba$Adj.Close, xlab="date", ylab="Alibaba stock price", main="Alibaba Stock Price from 2014 to 2020", type="l")
+```
+
+I write $\left\{z_{n}, n=1, \ldots, N\right\}$ for my original data. Then I would do the log transformation and difference operation on my dataset. I label the updated data as $y_{n}=\log \left(z_{n}\right)-\log \left(z_{n-1}\right)$. After that, I demean the dataset to let it more stable. The plot of the sample autocorrelation function (below) for demeaned $y_{n}$ shows that there is no significant autocorrelation among data. 
+
+```{r, echo=FALSE}
+diff_ali = diff(log(alibaba$Adj.Close))
+ali_demeaned = diff_ali-mean(diff_ali)
+acf(ali_demeaned)
+```
+
+```{r, echo=FALSE}
+plot(ali_demeaned, type="l", xlab="index", ylab="demeaned Alibaba stock price", main="Demeaned Alibaba Stock Price from 2014 to 2020")
+```
+
+# 3. Model Selection
+
+## 3.1 GARCH model
+The generalized autoregressive conditional heteroskedasticity model, also known as GARCH(p, q) model, is widely used in time series analysis. It has the form
+$Y_{n}=\epsilon_{n} \sqrt{V_{n}}$
+where
+$V_{n}=\alpha_{0}+\sum_{j=1}^{p} \alpha_{j} Y_{n-j}^{2}+\sum_{k=1}^{q} \beta_{k} V_{n-k}$
+and $\epsilon_{1: N}$ is white noise.[2] 
+I would apply the GARCH(1,1) model here, which is a popular choice.
+```{r}
+ali_garch = garch(ali_demeaned, grad="numerical", trace=FALSE)
+tseries:::logLik.garch(ali_garch)
+```
+The above GARCH model has a maximized log likelihhood of 482.70, and I set this value as the benchmark, which could be compared with my following model. Firthermore, the reason I do not dig more about the GARCH is GARCH is a black-box model, whose parameters do not have clear interpretation.[2]
+
+## 3.2 POMP model
+### Financial Leverage
+
+Financial leverage means that negative shocks to a stockmarket index are associated with a subsequent increase in volatility. The leverage is defined as on day n the correlation between index return on day n-1 and the increase in the log volatility from day n-1 to day n. The formula of the $R_{n}$ is
+$R_{n}=\frac{\exp \left\{2 G_{n}\right\}-1}{\exp \left\{2 G_{n}\right\}+1}$,
+where {$G_{n}$} is the usual, Gaussian random walk.[2]
+
+### Building a POMP model
+Then, we propose the model by the following equations,
+$Y_{n}=\exp \left\{H_{n} / 2\right\} \epsilon_{n}$,
+$H_{n}=\mu_{h}(1-\phi)+\phi H_{n-1}+\beta_{n-1} R_{n} \exp \left\{-H_{n-1} / 2\right\}+\omega_{n}$,
+$G_{n}=G_{n-1}+\nu_{n}$,
+
+where $\beta_{n}=Y_{n} \sigma_{\eta} \sqrt{1-\phi^{2}}$ is an iid N(0,1) sequence, {$v_{n}$} is an iid $N\left(0, \sigma_{\nu}^{2}\right)$ sequence, and {$\omega_{n}$} is an iid $N\left(0, \sigma_{\omega}^{2}\right)$ sequence.[2]
+
+We code the state variables, regular parameters, initial value parameters.
+```{r,}
+ali_statenames = c("H", "G", "Y_state")
+ali_rp_names = c("sigma_nu", "mu_h", "phi", "sigma_eta")
+ali_ivp_names = c("G_0", "H_0")
+ali_paramnames = c(ali_rp_names, ali_ivp_names)
+```
+
+we build two different pomp objetcs, one to do filtering and another to do simulation. 
+```{r}
+rproc1 = "
+  double beta, omega, nu;
+  omega = rnorm(0, sigma_eta * sqrt(1-phi*phi)*
+    sqrt(1-tanh(G)*tanh(G)));
+  nu = rnorm(0, sigma_nu);
+  G += nu;
+  beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+  H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) * exp(-H/2) + omega;
+"
+
+rproc2.sim = "Y_state = rnorm( 0,exp(H/2) );"
+
+rproc2.filt = "Y_state = covaryt;"
+
+ali_rproc.sim = paste(rproc1, rproc2.sim)
+ali_rproc.filt = paste(rproc1, rproc2.filt)
+
+ali_rinit = "
+  G = G_0;
+  H = H_0;
+  Y_state = rnorm( 0,exp(H/2) );
+"
+```
+
+```{r}
+ali_rmeasure = "
+  y=Y_state;
+"
+
+ali_dmeasure = "
+  lik=dnorm(y,0,exp(H/2),give_log);
+"
+```
+
+we do the parameters transformation below for optimization procedures such as iterated filtering.[2]
+```{r}
+ali_partrans <- parameter_trans(
+  log=c("sigma_eta","sigma_nu"),
+  logit="phi"
+)
+```
+
+We build the pomp object suitable for filtering.[2]
+```{r}
+ali.filt <- pomp(data=data.frame(
+    y=ali_demeaned,time=1:length(ali_demeaned)),
+  statenames=ali_statenames,
+  paramnames=ali_paramnames,
+  times="time",
+  t0=0,
+  covar=covariate_table(
+    time=0:length(ali_demeaned),
+    covaryt=c(0,ali_demeaned),
+    times="time"),
+  rmeasure=Csnippet(ali_rmeasure),
+  dmeasure=Csnippet(ali_dmeasure),
+  rprocess=discrete_time(step.fun=Csnippet(ali_rproc.filt),
+    delta.t=1),
+  rinit=Csnippet(ali_rinit),
+  partrans=ali_partrans
+)
+```
+
+Then we simulate from the model, and initializ parameters randomly. 
+```{r}
+params_test <- c(
+  sigma_nu = exp(-4.5),
+  mu_h = -0.25,
+  phi = expit(4),
+  sigma_eta = exp(-0.07),
+  G_0 = 0,
+  H_0=0
+)
+
+sim1.sim <- pomp(ali.filt,
+  statenames=ali_statenames,
+  paramnames=ali_paramnames,
+  rprocess=discrete_time(
+    step.fun=Csnippet(ali_rproc.sim),delta.t=1)
+)
+
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+
+```
+
+
+We build the filtering object from the new simulated data
+```{r}
+sim1.filt <- pomp(sim1.sim,
+  covar=covariate_table(
+    time=c(timezero(sim1.sim),time(sim1.sim)),
+    covaryt=c(obs(sim1.sim),NA),
+    times="time"),
+  statenames=ali_statenames,
+  paramnames=ali_paramnames,
+  rprocess=discrete_time(
+    step.fun=Csnippet(ali_rproc.filt),delta.t=1)
+)
+```
+
+### Filtering on simulated data
+We filter and re-estimate parameters 
+```{r}
+run_level <- 3
+ali_Np <- switch(run_level, 100, 1e3, 2e3)
+ali_Nmif <- switch(run_level, 10, 100, 200)
+ali_Nreps_eval <- switch(run_level, 4, 10, 20)
+ali_Nreps_local <- switch(run_level, 10, 20, 20)
+ali_Nreps_global <- switch(run_level, 10, 20, 100)
+```
+
+```{r}
+registerDoParallel()
+
+stew(file=sprintf("pf1-%d.rda",run_level),{
+  t.pf1 <- system.time(
+    pf1 <- foreach(i=1:ali_Nreps_eval,
+      .packages='pomp') %dopar% pfilter(sim1.filt,Np=ali_Np))
+},seed=493536993,kind="L'Ecuyer")
+(L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE))
+
+```
+we obtain a log likelihood estimate of -432.26 with a Monte standard error of 0.14
+
+### Fitting the stochastic leverage model
+we will use the iterated filtering algorithm, also known as IF2, of lonides. Theoretically, this procedure converges toward the region of parameter space maximizing the maximum likelihood.[4]
+```{r}
+ali_rw.sd_rp <- 0.02
+ali_rw.sd_ivp <- 0.1
+ali_cooling.fraction.50 <- 0.5
+ali_rw.sd <- rw.sd(
+  sigma_nu = ali_rw.sd_rp,
+  mu_h = ali_rw.sd_rp,
+  phi = ali_rw.sd_rp,
+  sigma_eta = ali_rw.sd_rp,
+  G_0 = ivp(ali_rw.sd_ivp),
+  H_0 = ivp(ali_rw.sd_ivp)
+)
+
+stew(file=sprintf("mif1-%d.rda",run_level),{
+  t.if1 <- system.time({
+  if1 <- foreach(i=1:ali_Nreps_local,
+    .packages='pomp', .combine=c) %dopar% mif2(ali.filt,
+      params=params_test,
+      Np=ali_Np,
+      Nmif=ali_Nmif,
+      cooling.fraction.50=ali_cooling.fraction.50,
+      rw.sd = ali_rw.sd)
+  L.if1 <- foreach(i=1:ali_Nreps_local,
+    .packages='pomp', .combine=rbind) %dopar% logmeanexp(
+      replicate(ali_Nreps_eval, logLik(pfilter(ali.filt,
+        params=coef(if1[[i]]),Np=ali_Np))), se=TRUE)
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],
+  t(sapply(if1,coef)))
+if (run_level>1) write.table(r.if1,file="ali_params.csv",
+  append=TRUE,col.names=FALSE,row.names=FALSE)
+
+summary(r.if1$logLik, digits=5)
+```
+The maximum likelihood is 489, which is greater than the GARCH model. Meanwhile, we want to check the diagnostic plots to see whether we could improve the model further. 
+
+#### Diagnostic plots for the maximization procedure
+The convergence plots below show that some parameters could not converge very well. 
+```{r}
+plot(if1)
+```
+
+Based on the plot below, we find that $\sigma_{\nu}$ is close to 0; $\mu_{h}$ has the range in -6 to 2; $\phi$ is focus on 0.9; and $\sigma_{\eta}$ has the range from 0 to 5.
+```{r}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,
+  data=subset(r.if1,logLik>max(logLik)-20))
+```
+
+### Likelihood maximization using randomized starting values
+we try a large box of parameters based on the graphs above to lead to the evidence of global maximization.
+```{r}
+ali_box <- rbind(
+  sigma_nu=c(0.000,0.05),
+  mu_h =c(-6,2),
+  phi = c(0.95,0.99),
+  sigma_eta = c(0.1,5),
+  G_0 = c(-2,2),
+  H_0 = c(-1,1)
+)
+```
+
+```{r}
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  t.box <- system.time({
+    if.box <- foreach(i=1:ali_Nreps_global,
+      .packages='pomp',.combine=c) %dopar% mif2(if1[[1]],
+        params=apply(ali_box,1,function(x)runif(1,x)))
+      L.box <- foreach(i=1:ali_Nreps_global,
+        .packages='pomp',.combine=rbind) %dopar% {
+          logmeanexp(replicate(ali_Nreps_eval, logLik(pfilter(
+              ali.filt,params=coef(if.box[[i]]),Np=ali_Np))),
+            se=TRUE)
+        }
+  })
+},seed=290860873,kind="L'Ecuyer")
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],
+  t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="ali_params.csv",
+  append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.box$logLik,digits=5)
+```
+The new maximum log-likelihood has the value 489.1, which is a little bit larger than the previous one. 
+
+Based on the convergence plots below, there still have some parameters do not converge. The reason might be the range of the parameters does not set coorectly, or the value of the cooling fraction is not appropriate. However, the maximum log-likelihood is increased, which means the general direction is correct. 
+```{r}
+plot(if.box)
+```
+
+
+```{r}
+pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,
+  data=subset(r.box,logLik>max(logLik)-10))
+```
+
+# 4. Conclusion
+In this project, I mainly use the GARCH and POMP model. The maximum log-likelihood of the GARCH model is 482.7; the maximum log-likelihood of the POMP model with randomized starting values is 489.1. Thus, the POMP model is slightly better. Meanwhile, when checking the diagnostic plots of the POMP model, not all the parameters are converged. Thus, we still could do several works in the future, like increasing the number of particles, changing the cooling fraction and so on. 
+
+# Reference
+[1]Return on Investment: https://investinganswers.com/dictionary/r/return-investment-roi
+
+[2]STATS 531 note14, https://ionides.github.io/531w20/14/notes14.pdf
+
+[3]Alibaba stock price dataset, https://finance.yahoo.com/quote/baba/history/
+
+[4]STATS 531 note12, https://ionides.github.io/531w20/12/notes12.pdf
+
+
+
+
+
+
