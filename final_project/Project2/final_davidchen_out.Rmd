@@ -1,0 +1,244 @@
+---
+title: "Ebola Cases in Guinea"
+output:
+  html_document:
+    toc: yes
+    theme: flatly
+  
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE,include=FALSE}
+require(ggplot2)
+require(doParallel)
+library(plyr)
+library(dplyr)
+require(pomp)
+```
+
+# Background
+Ebola virus disease (EVD), or simply Ebola, is a viral haemorrhagic fever of humans and other primates caused by ebolaviruses. Signs and symptoms typically start between two days and three weeks after contracting the virus with a fever, sore throat, muscular pain, and headaches. The disease has a high risk of death, killing 25% to 90% of those infected, with an average of about 50%.
+
+An extremely dangerous virus, Ebola is transmitted from animal to human and from human to human through direct contact with or ingestion of bodily fluids from an infected individual. Once someone has been infected by the Ebola virus, they go through an incubation period where they show no symptoms and are not contagious; this period can last anywhere from 2 to 21 days. The symptoms of Ebola are often mistaken for those of other tropical diseases such as malaria or typhoid, making it very difficult to diagnose and control. Another important factor in the spread of Ebola are burial rituals, many of which require close contact with the deceased, whose body can still contain the virus and pass it on. Because of these factors, and the insufficient healthcare infrastructure in many West African communities, Ebola spread rampantly and wreaked havoc for many months
+
+An epidemic of Ebola virus disease in Guinea from 2013 to 2016 represents the first ever outbreak of Ebola in a West African country.
+
+The data I will be using is the number of confirmed Ebola cases in the last 21 days from 2014-8-29 through to the end of 2015 in Guinea.
+
+# Data Exploration
+```{r}
+ebola<-read.csv(file = "ebola.csv", header = T, stringsAsFactors = FALSE, colClasses = c(Date = "Date"))
+#ebola<-subset(ebola, Country=='Guinea' )
+ebola<-subset(ebola, Country=='Guinea'& Indicator=='Number of confirmed Ebola cases in the last 21 days' )
+ebola<-ebola[order(ebola$Date),]
+ggplot(data=ebola,aes(x=Date,y=value)) + geom_point() + geom_path() + labs(x = "", y = "Cases", title = "Number of Confirmed Ebola Cases in Guinea")
+```
+
+## Date transmission
+To better manipulate the data, I transmit the date from yy-mm-dd to day type.
+```{r}
+ebola$day=unclass(as.Date(ebola$Date))-16310
+```
+
+```{r}
+ggplot(data=ebola,aes(x=day,y=value)) + geom_point() + geom_path() + labs(x = "days from 2014-8-29", y = "Cases", title = "Number of Confirmed Ebola Cases in Guinea")
+```
+
+```{r}
+summary(ebola$value)
+ebola$Date[which.max(ebola$value)]
+```
+
+From the plot above, confirmed case reaches its maximum 374 on 2014-11-26. Additionally, we see a effectively decreasing trend in the latter half part of the plot. That means the epidemic almostly ended by the end of 2015.
+
+# ARMA Model Fitting
+## Frequency domian analysis
+```{r}
+tp<-ebola$value
+head(tp,20)
+```
+
+```{r}
+tp[which(is.na(tp))]<-mean(tp,na.rm=TRUE)
+plot(tp~ebola$day,type="l",ylab = "Ebola Cases")
+spectrum(tp,spans=c(5,10,10))
+sm<-spectrum(tp,spans=c(5,10,10))
+sm$freq[which.max(sm$spec)]
+```
+
+from the plot, the observations are not stable around its local mean.
+
+We could not tell any trend form the time domain plot. All we could tell is that ebola cases were expering a decreasing trend in the latter half. So the maximum of spectrum circle is meaningless.
+
+```{r}
+acf(tp, main="Ebola Cases")
+```
+From the ACF plot, there is no significant lag pattern, and it is consistent with domain frequency analysis.
+
+## Decomposition of Trend
+```{r}
+x_low<-ts(loess(tp~ebola$day,span=0.5)$fitted,frequency = 1)
+x_hi<-ts(tp - loess(tp~ebola$day,span=0.1)$fitted,frequency = 1)
+x_cycle<- tp - x_low - x_hi
+plot(ts.union(tp,x_low,x_hi,x_cycle),main='Decomposition of Ebola cases as trend + noise + cycles',xlab='days since 2014-8-29')
+```
+We model the data of confirmed ebola cases as a combination of three processes:
+Low-frequency component represents the overall trend of the data;
+High-frequency component represents the noise;
+Mid-frequency component represents the business cycle irrespective of long-term trend and short-term random noise.
+
+From the decomposition plot, confirmed cases of ebola has a significant trend of decreasing after 10 weeks. The fluctuation is stable through the observation period. And the noise has a evenly oscilirating pattern.  
+
+## ARMA model fitting
+Depending on the analysis above, I decide to use  $ARIMA(p,1,q)$ model.
+
+To find the proper model, we firstly to find the proper $p$ and $q$ by AIC result.
+
+The stationary Gaussian ARMA(p,q) model with parameter vector $\theta=(\phi_{1:p},\psi_{1:q},\mu,\sigma^2)$ given by:
+$$
+\begin{aligned}
+\phi(B)&(Y_n-\mu)=\psi(B)\epsilon_n \\
+\phi(B)&=1-\phi_1B-...-\phi_pB^p,\\
+\psi(B)&=1+\psi_1B+...+\psi_qB^q,\\
+\epsilon_n&\sim iid N(0,\sigma^2)
+\end{aligned}
+$$
+
+We tabulate the AIC values:
+```{r}
+aic_table<-function(data,P,Q){
+  table<-matrix(NA,(P+1),(Q+1))
+  for(p in 0:P){
+    for(q in 0:Q){
+      table[p+1,q+1] <-arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table)<-list(paste("AR",0:P,sep=" "),paste("MA",0:Q,sep=" "))
+  table
+}
+temp_aic<-aic_table(tp,3,5)
+require(knitr)
+kable(temp_aic,digits=2)
+```
+However, we do not expect to choose $p=0$ as the parameter. ARIMA(2,0,2) has the biggest AIC value.
+
+```{r}
+arma22<-arima(tp,order = c(2,0,2))
+arma22
+```
+
+```{r}
+ar_roots<-polyroot(c(1,-coef(arma22)[c("ar1","ar2")]))
+ma_roots<-polyroot(c(1,-coef(arma22)[c("ma1","ma2")]))
+ar_roots
+ma_roots
+```
+The root analysis shows that three roots are outside of the circle and only one root is inside the unit circle, so the model could be unstable. Since we donot have other choice, we stick with arima(2,0,2) as the immediate choice.
+
+## Diagnosis Analysis
+For the rigorousness of the modeling, we have to check the residuals of the fitted model if they are consistent with the initial assumption.
+```{r}
+fm_res<-arma22$residuals
+par(mfrow=c(1,3))
+plot(fm_res)
+acf(fm_res)
+qqnorm(fm_res)
+qqline(fm_res)
+```
+
+The first plot reveals that residuals are settled around 0 with great oscillattion. From the ACF plot, nearly all the acf values are inside the dashed line, we treat residuals as uncorrelated.
+From the QQ plot, residual values are evenly scattered around normal line, but there are dispersions at the end of both sides. That means the model could be overfitted.
+
+# SEIR Model Fitting
+## Model Fitting
+
+When choosing an appropriate model for this data, I initially wanted to use a basic $\textrm{SEIR}$ model, that would contain one compartment for each portion of the population: the susceptibles, the incubators (infected, but not yet infectious), the infectious, and the recovered/removed. 
+
+$$ S \longrightarrow E\longrightarrow I \longrightarrow R$$
+The $\textrm{S}$ compartment contains the susceptible population, $\textrm{E}$ contains the people who have been infected but are not yet contagious, $\textrm{I}$ contains those who are actively infectious, and $\textrm{R}$ contains those who are no longer infectious. The $\textrm{R}$ compartment consists of both recovered individuals and those who have died from Ebola and have already been buried. Folks who are dead, but not yet buried will still be in the $\textrm{I}$ compartment since Ebola is frequently passed during burial rituals.
+
+## process Model
+$$
+\begin{aligned}
+S(t)&=S(0)-N_{SI}(t) \\ 
+I(t)&=I(0)+N_{SI}(t)-N_{IR}(t) \\
+R(t)&=R(0)+N_{IR}(t)
+\end{aligned}
+$$
+
+## Measurment Model
+
+We build the POMP model like below:
+```{r}
+sir_step <- Csnippet("
+  double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt));
+  double dN_IR = rbinom(I,1-exp(-gamma*dt));
+  S -= dN_SI;
+  I += dN_SI - dN_IR;
+  R += dN_IR;
+")
+
+sir_rinit <- Csnippet("
+  S = N-1;
+  I = 1;
+  R = 0;
+")
+
+pomp(subset(ebola,select=c(day,value)),
+     time="day",t0=1,rprocess=euler(sir_step,delta.t=1/6),
+     rinit=sir_rinit,paramnames=c("N","Beta","gamma"),
+     statenames=c("S","I","R")) -> sir
+
+sir_step <- Csnippet("
+  double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt));
+  double dN_IR = rbinom(I,1-exp(-gamma*dt));
+  S -= dN_SI;
+  I += dN_SI - dN_IR;
+  R += dN_IR;
+  H += dN_IR;
+")
+
+sir_rinit <- Csnippet("
+  S = N-1;
+  I = 1;
+  R = 0;
+  H = 0;
+")
+
+pomp(sir,rprocess=euler(sir_step,delta.t=1/6),rinit=sir_rinit,
+     paramnames=c("Beta","gamma","N"),
+     statenames=c("S","I","R","H")) -> sir
+
+pomp(sir,accumvars="H") -> sir
+
+dmeas <- Csnippet("lik = dbinom(value,H,rho,give_log);")
+rmeas <- Csnippet("value = rbinom(H,rho);")
+
+sir <- pomp(sir,rmeasure=rmeas,dmeasure=dmeas,
+  statenames="H",paramnames="rho")
+```
+
+
+## Simulation
+```{r}
+sims <- simulate(sir,params=c(Beta=1.2,gamma=1,rho=0.9,N=2600),
+                 nsim=20,format="data.frame",include=TRUE)
+ggplot(sims,mapping=aes(x=day,y=value,group=.id,color=.id=="data"))+
+  geom_line()+guides(color=FALSE)
+```
+
+# Conclusion
+From diagonosis analysis, ARIMA(2,0,2) is not the best model fit for confirmed ebola data, however it still shows the pattern of the confirmed ebola cases which is increasing in the first half the period and a significant decreasing trend in the latter half.
+
+From the SEIR model, simulations are not close enough to the original data. I think the problem lies in data deficiency. Confirmed ebola cases in this study only range one and a half year, if more data provided in the future the model fit would be much better.
+
+# Source
+[1] Ebola virus epidemic in Guinea https://en.wikipedia.org/wiki/Ebola_virus_epidemic_in_Guinea 
+[2] “Ebola (Ebola Virus Disease).” Centers for Disease Control and Prevention, Centers for Disease Control and Prevention, 22 June 2016, www.cdc.gov/vhf/ebola/outbreaks/2014-west-africa/index.html.
+[3] Ebola data in record format with indicator, country, date and value, www.kaggle.com/kingburrito666/ebola-cases.
+[4] 2014-2016 Ebola Outbreak in West Africa https://www.cdc.gov/vhf/ebola/history/2014-2016-outbreak/index.html
+
