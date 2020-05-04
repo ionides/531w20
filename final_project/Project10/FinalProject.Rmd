@@ -1,0 +1,409 @@
+---
+title: 'STATS531 Final Project'
+date: "4/20/2020"
+output: 
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(594709947L)
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(reshape2)
+library(foreach)
+library(pomp)
+library(readr)
+library(doParallel)
+library(lubridate)
+stopifnot(packageVersion("pomp")>="2.0")
+```
+
+# 1. Introduction and Motivation
+
+Dengue was recognized as a tropical disease, a disease that is transmitted by most a specific species of mosquitoes called Aedes aegyopti and several other species. ^[1]^ Dengue, as a disease that came out of Africa around the 15th to 19th centuries, was first documented was around 18th centuries in Asia, Africa, and North America. Dengue has been in history for a very long time and started spreading with the help of the slave trade and the second world war. ^[2]^ It now has been the second most diagnosed cause of fever after malaria, which is also a mosquito-borne viral infection. As of today, there is no specific cure for Dengue and it has continued being a major cause of child mortality ^[3][4]^. Even today, severe Dengue is still a major cause of death in many tropical countries. Dengue, according to WHO, could be influenced by many different variables such as temperature, humidity, or other unknown factors. It also has been a disease that has rather specific documentation over a range of time, which makes possible for researchers to find pattern and correlations via data. Or, if possible, predict when would be the peak so that it could help locals to prevent spreading. 
+
+Since Aedes Aegypti mosquitoes breed in stagnant water and these mosquitoes are the major cause of dengue, thus rainy period in a tropical country would be hazardous. In the midterm project, we took temperature and precipitation as signals and the ARMA process as the noise process to build a signal-plus-noise model. The SARMA model showed that our datasets should have a remarkable amount of seasonality in our noise process because of the relationship among the Aedes mosquitoes’ lifecycle, seasonal weather patterns, and human-mosquito interaction is highly dynamic and rather impossible to fully explain using only weather variables. Another reason that complicates the data analysis, and causes the data rather obscure is the complex cyclical nature of the system is the existence of temporary cross-immunity.^[1]^ Indeed, the reasons for the virus spread are much more complex than we thought and definitely nonlinear. Therefore, we would like to use one of the existing classical pomp representations for the POMP model to model the transmission of dengue through a partially observed Markov process.
+
+# 2 Exploratory Data Analysis
+
+Indeed, the two datasets we leveraged also provided by NOAA. The main dataset, Data for dengue, is historical surveillance data provided for Iquitos, Peru from July 1st, 2000 to June 25th, 2009. It provides weekly data for laboratory-confirmed cases of dengue and provides data for all four serotypes of dengue. The other data is the yearly population data for Iquitos, Peru from 2000 to 2014. In this project, we would like to use the subset of the two datasets, which is, we would like to restrict the dates to from January 1st, 2007 to December 31st, 2008. Since the data is detailed to work, we are then able to convert our yearly data to weekly data and then match the two datasets together. By using both datasets, we might be able to see the clear transmission of dengue.
+
+
+```{r echo = FALSE, message = FALSE, warning=FALSE}
+diseasedf <- read_csv("Iquitos_Training_Data.csv", col_type = cols())
+summary(diseasedf)
+dengue_data <- diseasedf %>% 
+  filter(season == "2007/2008" | season == "2008/2009") %>% 
+  select(total_cases)
+dengue_data$week <- 1:104
+colnames(dengue_data) <- c("cases", "week")
+
+popdf <- read_csv("Iquitos_Population_Data.csv", col_type = cols()) %>% filter(Year > 2006, Year < 2009)
+pop <- popdf$Estimated_population[1]/1000
+popdiff <- popdf$Estimated_population[3] - popdf$Estimated_population[1]
+popgrowthrate <- popdiff/104
+```
+
+
+The following plots show the relationships between weekly data and the number of total cases. From the first plot, we would see that there are two sharp peaks around week 27 and week 64. There are also some smaller peaks, it seems to be a time where the number of dengue cases is relatively low, but the number suddenly increases rapidly (to an outbreak).
+
+
+```{r, echo = FALSE, message = FALSE, warning=FALSE}
+plot1 = ggplot(dengue_data, mapping=aes(x=week, y=cases)) + 
+  geom_line()+labs(x="Weekly start date", y="Total cases")
+plot1
+```
+
+```{r echo = FALSE, message = FALSE, warning=FALSE}
+cores = 2  # The number of cores on this machine 
+cl <- makeCluster(cores)
+registerDoParallel(cl)
+theme_set(theme_bw())
+mcopts <- list(set.seed=TRUE)
+```
+
+# 3. Modeling
+
+## 3.1 Model description
+
+We would use a fundamental class of models for disease transmission dynamics, the basic susceptible-infected-recovered (SIR) model. Assume that the case reports, "cases", result from a process by which new infections result in confinement with probability $\rho$, which we can think of as the probability that an infection is severe enough to be noticed by the school authorities. Since confined cases have, presumably, a much lower transmission rate, let’s treat cases as being a count of the number of people who have moved from $I$ to $R$ over the course of the past week. We modify our Csnippet below, adding a variable $H$ to track the incidence. 
+
+Applying the last Euler method from sildes11, we would have the number of individuals, $\Delta{N_{SI}}$, moving from S to I over interval $\Delta{t}$ as $$\Delta{N_{SI}} \sim \text{Binomial}({S,\; 1-e^{-\lambda\Delta{t}}}),$$ and the number moving from I to R as $$\Delta{N_{IR}} \sim \text{Binomial}({I,\; 1-e^{-\gamma\Delta{t}}}).$$
+In addition, we would like to model the data, $cases$, as a binomial process,
+$$Cases_t \sim \text{Binomial}({H(t)-H(t-1), \; \rho}).$$
+
+Moreover, regarding ^[6]^, we would have our parameter fixed with realistic meaning. 
+$\beta$: described as the transmission coefficient, fixed at weekly rate $7.692$.
+$\gamma$: also known as $\mu_{IR}$, fixed at weekly rate $1.918$.
+$\rho$:  simply set it as $0.01$ since we lack intuition for these values and assume the likelihood maximization would improve our estimates.
+```{r echo = FALSE, message = FALSE, warning=FALSE}
+dengue_rprocess = "
+double dN_SI = rbinom(S, 1-exp(-Beta*I*dt-1e-10));
+double dN_IR = rbinom(I, 1-exp(-mu_IR*dt));
+S -= dN_SI;
+I += dN_SI - dN_IR;
+if(I<0) I = 0;
+R += dN_IR ;
+if(R<0) R = 0;
+H += dN_IR;
+"
+dengue_dmeasure = "
+lik = dpois(cases,rho*H+1e-10,give_log);
+"
+dengue_rmeasure = "
+cases = rpois(rho*H+1e-10);
+"
+dengue_rinit = "
+S=500000;
+I=1;
+R=0;
+H=0;
+"
+dengue_statenames = c("S","I","R", "H")
+dengue_paramnames = c("Beta","mu_IR","rho")
+
+dengue_obsnames = "cases"
+dengue_params_guess = c(Beta = 7.692, mu_IR = 1.918, rho = 0.01)
+
+
+dengue.pomp1 <- pomp(
+  data=subset(dengue_data,select=c(cases,week)),
+  times="week",
+  t0=1,
+  params = dengue_params_guess,
+  rprocess=euler(step.fun = Csnippet(dengue_rprocess), delta.t=1),
+  rmeasure=Csnippet(dengue_rmeasure),
+  dmeasure=Csnippet(dengue_dmeasure),
+  obsnames = dengue_obsnames,
+  statenames=dengue_statenames,
+  paramnames=dengue_paramnames,
+  rinit=Csnippet(dengue_rinit),
+  partrans=parameter_trans(log=c("Beta","mu_IR"), logit="rho"),
+  accumvars="H")
+```
+
+
+##3.2 Model present with different runlevel
+
+
+Based on the result from notes 12 and homework 8, Np=5000 and Nmif=200 are empirically around the minimum to get stable results with an error in the likelihood of order 1 log unit for bsflu data example with run_level=2. According to our dataset and aiming to have precise time-consuming computations, we would like to increase $N_p$ and $N_{mif}$ and apply with run_level=2 and run_level=3 respectively. 
+
+
+```{r echo = FALSE, message = FALSE, warning=FALSE}
+load(file = "fclocal_search-2.rda")
+load(file = "fclik_local-2.rda")
+run_level <- 2
+switch(run_level,
+       {dengue_Np=100; dengue_Nmif=10; dengue_Neval=10; dengue_Nglobal=10; dengue_Nlocal=10; Nsim=50}, 
+       {dengue_Np=20000; dengue_Nmif=100; dengue_Neval=10; dengue_Nglobal=25; dengue_Nlocal=25; Nsim=100}, 
+       {dengue_Np=60000; dengue_Nmif=300; dengue_Neval=10; dengue_Nglobal=100; dengue_Nlocal=30; Nsim=500}
+)
+
+dengue_rw.sd <- 0.02 
+dengue_cooling.fraction.50 <- 0.5
+
+stew(file = "fclocal_search-2.rda",{
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:dengue_Nlocal,
+                          .packages='pomp', .combine=c,
+                          .export = c("dengue.pomp1", "dengue_Np", 
+                                      "dengue_Nmif", "dengue_rw.sd",
+                                      "dengue_cooling.fraction.50")) %dopar%  {
+                                        mif2(dengue.pomp1,
+                                             Np=dengue_Np,
+                                             Nmif=dengue_Nmif,
+                                             cooling.fraction.50=dengue_cooling.fraction.50,
+                                             rw.sd=rw.sd(
+                                               Beta=dengue_rw.sd,
+                                               mu_IR=dengue_rw.sd,
+                                               rho=dengue_rw.sd)
+                                        )
+                                      }
+  })
+},seed=493536993,kind="L'Ecuyer")
+#save(t_local, mifs_local, file=sprintf("fclocal_search-%d.rda",run_level))
+
+stew(file="fclik_local-2.rda",{
+  t_local_eval <- system.time({
+    liks_local <- foreach(i=1:dengue_Nlocal,
+                          .combine=rbind,.packages='pomp',
+                          .export = c("dengue_Neval", "dengue.pomp1",
+                                      "mifs_local", "dengue_Np"))%dopar% {
+                                        evals <- replicate(dengue_Neval, logLik(
+                                          pfilter(dengue.pomp1, params=coef(mifs_local[[i]]), Np=dengue_Np)))
+                                        logmeanexp(evals, se=TRUE)
+                                      }
+  })
+},seed=493536993,kind="L'Ecuyer")
+#save(t_local_eval, liks_local, file=sprintf("fclik_local-%d.rda",run_level))
+results_local <- data.frame(logLik=liks_local[,1],
+                            logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5)
+pairs(~logLik+Beta+mu_IR+rho,data=subset(results_local))
+plot(mifs_local)
+```
+
+
+
+
+
+```{r echo = FALSE, message = FALSE, warning=FALSE}
+load(file = "fclik_local-3.rda")
+load(file = "fclocal_search-3.rda")
+run_level <- 3
+switch(run_level,
+       {dengue_Np=100; dengue_Nmif=10; dengue_Neval=10; dengue_Nglobal=10; dengue_Nlocal=10; Nsim=50}, 
+       {dengue_Np=20000; dengue_Nmif=100; dengue_Neval=10; dengue_Nglobal=25; dengue_Nlocal=25; Nsim=100},
+       {dengue_Np=60000; dengue_Nmif=300; dengue_Neval=10; dengue_Nglobal=100; dengue_Nlocal=30; Nsim=500}
+)
+
+dengue_rw.sd <- 0.02 
+dengue_cooling.fraction.50 <- 0.5
+
+stew(file = "fclik_local-3.rda",{
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:dengue_Nlocal,
+                          .packages='pomp', .combine=c,
+                          .export = c("dengue.pomp1", "dengue_Np", 
+                                      "dengue_Nmif", "dengue_rw.sd",
+                                      "dengue_cooling.fraction.50")) %dopar%  {
+                                        mif2(dengue.pomp1,
+                                             Np=dengue_Np,
+                                             Nmif=dengue_Nmif,
+                                             cooling.fraction.50=dengue_cooling.fraction.50,
+                                             rw.sd=rw.sd(
+                                               Beta=dengue_rw.sd,
+                                               mu_IR=dengue_rw.sd,
+                                               rho=dengue_rw.sd)
+                                        )
+                                      }
+  })
+},seed=493536993,kind="L'Ecuyer")
+#save(t_local, mifs_local, file=sprintf("fclocal_search-%d.rda",run_level))
+
+stew(file = "fclik_local-3.rda",{
+  t_local_eval <- system.time({
+    liks_local <- foreach(i=1:dengue_Nlocal,
+                          .combine=rbind,.packages='pomp',
+                          .export = c("dengue_Neval", "dengue.pomp1",
+                                      "mifs_local", "dengue_Np"))%dopar% {
+                                        evals <- replicate(dengue_Neval, logLik(
+                                          pfilter(dengue.pomp1, params=coef(mifs_local[[i]]), Np=dengue_Np)))
+                                        logmeanexp(evals, se=TRUE)
+                                      }
+  })
+},seed=493536993,kind="L'Ecuyer")
+#save(t_local_eval, liks_local, file=sprintf("fclik_local-%d.rda",run_level))
+results_local <- data.frame(logLik=liks_local[,1],
+                            logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5)
+pairs(~logLik+Beta+mu_IR+rho,data=subset(results_local))
+plot(mifs_local)
+```
+
+Based on the results above, we could observe that these changes already make the time-consuming computations more precisely. These changes helped us get a better maximal likelihood, which is -801.4. Meanwhile, by comparing the median and the mean of the likelihood, we could observe that the mean and median have been improved a lot, which indicates these changes presented better estimators. In addition, we could observe that the effective sample sizes are not that large, which indicates it is still acceptable but may causing biases. Eventually, for the parameters, $\beta$ is still fluctuating as before, but other parameters look like converge "separately" to two results.
+
+
+##3.3 Model Diagnostics
+
+Therefore, we would like to check if our model could feasibly simulate the actual data or not. By taking the parameter values as those that maximize the likelihood we plotted 10 simulations and compare the simulation data against the real data. By observing the plot below, the simulations from the model look very similar to the actual data for the most part, which indicates that our model may be a good fit for the data. However, there is a sharp peak around the first several weeks which perplexed me, we would like to improve our model by changing the fixed parameters. 
+
+```{r echo = FALSE, message = FALSE, warning=FALSE}
+sims <- simulate(dengue.pomp1,params=c(Beta=7.692,mu_IR=1.918,rho=0.01,N=1000), nsim=10,format="data.frame",include=TRUE)
+ggplot(sims,mapping=aes(x=week,y=cases,group=.id,color=.id=="data"))+geom_line()+guides(color=FALSE)
+
+```
+
+##3.4 Model Improvement 
+
+With several attempts, we would take $\beta$ as $0.01$, $\gamma$, also known as $\mu_{IR}$, fixed at weekly rate $0.001$. Applying with run_level=2 and run_level=3 respectively, the result showed below.
+
+```{r echo = FALSE, message = FALSE, warning=FALSE}
+load(file = "flocal_search-2.rda")
+load(file = "flik_local-2.rda")
+run_level <- 2
+switch(run_level,
+       {dengue_Np=100; dengue_Nmif=10; dengue_Neval=10; dengue_Nglobal=10; dengue_Nlocal=10; Nsim=50}, 
+       {dengue_Np=20000; dengue_Nmif=100; dengue_Neval=10; dengue_Nglobal=25; dengue_Nlocal=25; Nsim=100}, 
+       {dengue_Np=60000; dengue_Nmif=300; dengue_Neval=10; dengue_Nglobal=100; dengue_Nlocal=30; Nsim=500}
+)
+
+dengue_rw.sd <- 0.02 
+dengue_cooling.fraction.50 <- 0.5
+
+stew(file="flocal_search-2.rda",{
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:dengue_Nlocal,
+                          .packages='pomp', .combine=c,
+                          .export = c("dengue.pomp1", "dengue_Np", 
+                                      "dengue_Nmif", "dengue_rw.sd",
+                                      "dengue_cooling.fraction.50")) %dopar%  {
+                                        mif2(dengue.pomp1,
+                                             Np=dengue_Np,
+                                             Nmif=dengue_Nmif,
+                                             cooling.fraction.50=dengue_cooling.fraction.50,
+                                             rw.sd=rw.sd(
+                                               Beta=dengue_rw.sd,
+                                               mu_IR=dengue_rw.sd,
+                                               rho=dengue_rw.sd)
+                                        )
+                                      }
+  })
+},seed=493536993,kind="L'Ecuyer")
+#save(t_local, mifs_local, file=sprintf("flocal_search-%d.rda",run_level))
+
+stew(file="flik_local-2.rda",{
+  t_local_eval <- system.time({
+    liks_local <- foreach(i=1:dengue_Nlocal,
+                          .combine=rbind,.packages='pomp',
+                          .export = c("dengue_Neval", "dengue.pomp1",
+                                      "mifs_local", "dengue_Np"))%dopar% {
+                                        evals <- replicate(dengue_Neval, logLik(
+                                          pfilter(dengue.pomp1, params=coef(mifs_local[[i]]), Np=dengue_Np)))
+                                        logmeanexp(evals, se=TRUE)
+                                      }
+  })
+},seed=493536993,kind="L'Ecuyer")
+#save(t_local_eval, liks_local, file=sprintf("flik_local-%d.rda",run_level))
+results_local <- data.frame(logLik=liks_local[,1], logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5)
+pairs(~logLik+Beta+mu_IR+rho,data=subset(results_local))
+plot(mifs_local)
+```
+
+
+
+
+```{r echo = FALSE, message = FALSE, warning=FALSE}
+load(file = "flik_local-3.rda")
+load(file = "flocal_search-3.rda")
+run_level <- 3
+switch(run_level,
+       {dengue_Np=100; dengue_Nmif=10; dengue_Neval=10; dengue_Nglobal=10; dengue_Nlocal=10; Nsim=50}, 
+       {dengue_Np=20000; dengue_Nmif=100; dengue_Neval=10; dengue_Nglobal=25; dengue_Nlocal=25; Nsim=100}, 
+       {dengue_Np=60000; dengue_Nmif=300; dengue_Neval=10; dengue_Nglobal=100; dengue_Nlocal=30; Nsim=500}
+)
+
+dengue_rw.sd <- 0.02 
+dengue_cooling.fraction.50 <- 0.5
+
+stew(file="flocal_search-3.rda",{
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:dengue_Nlocal,
+                          .packages='pomp', .combine=c,
+                          .export = c("dengue.pomp1", "dengue_Np", 
+                                      "dengue_Nmif", "dengue_rw.sd",
+                                      "dengue_cooling.fraction.50")) %dopar%  {
+                                        mif2(dengue.pomp1,
+                                             Np=dengue_Np,
+                                             Nmif=dengue_Nmif,
+                                             cooling.fraction.50=dengue_cooling.fraction.50,
+                                             rw.sd=rw.sd(
+                                               Beta=dengue_rw.sd,
+                                               mu_IR=dengue_rw.sd,
+                                               rho=dengue_rw.sd)
+                                        )
+                                      }
+  })
+},seed=493536993,kind="L'Ecuyer")
+#save(t_local, mifs_local, file=sprintf("flocal_search-%d.rda",run_level))
+
+stew(file="flik_local-3.rda",{
+  t_local_eval <- system.time({
+    liks_local <- foreach(i=1:dengue_Nlocal,
+                          .combine=rbind,.packages='pomp',
+                          .export = c("dengue_Neval", "dengue.pomp1",
+                                      "mifs_local", "dengue_Np"))%dopar% {
+                                        evals <- replicate(dengue_Neval, logLik(
+                                          pfilter(dengue.pomp1, params=coef(mifs_local[[i]]), Np=dengue_Np)))
+                                        logmeanexp(evals, se=TRUE)
+                                      }
+  })
+},seed=493536993,kind="L'Ecuyer")
+#save(t_local_eval, liks_local, file=sprintf("flik_local-%d.rda",run_level))
+results_local <- data.frame(logLik=liks_local[,1], logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+summary(results_local$logLik,digits=5)
+pairs(~logLik+Beta+mu_IR+rho,data=subset(results_local))
+plot(mifs_local)
+```
+
+
+Based on the results above, we could observe that the changing of parameters helped us get better maximal likelihood, which is -616.9 and -609.1. Meanwhile, we could observe that the mean and median have been improved a lot, which indicates these changes presented better estimators. In addition, we could observe that the effective sample sizes are not that large, which indicates it is still acceptable but may causing biases. Eventually, for the parameters, $\beta$ and $rho$ also a little bit fluctuating, but $\mu_{IR}$ does not look like converge "separately" to two results, it converges much better than before.
+
+
+# 4. Conclusion and Future work
+
+In this project, significant progress has been made are: getting data into the pomp model. creating process and measurement models. The biggest hurdle will likely be the estimating parameters. Our model mainly based on the paper we referenced and the parameters from the paper. The data was around 10 years ago, which might be several missing concerns and we do not really know the detailed information about dengue in Iquitos, Peru. Indeed, it's necessary for us to either have comprehensive assumptions or get better parameters to adjust our model accordingly for better results. 
+
+Another reason that complicates the data analysis, and causes the data rather obscure is the complex cyclical nature of the system is the existence of temporary cross-immunity.^[1]^ The hospital or government should create a clever system for dengue patients to be documented. Since once this temporary cross-immunity fades away, then subsequent infections from other serotypes make individuals more susceptible to severe dengue, which indicates the recovery dengue patient is not "safety" enough to be documented as a recovery patient. ^[1]^ Furthermore, with more time and computational resources, I believe the convergence in the diagnostic plots would be improved by running particle filters with more particles.
+
+Therefore, the reasons for the virus spread are much more complex than we thought and definitely nonlinear. Therefore, it is necessary and important for us to include more variables and try more detailed approaches to investigate the latent processes that result in the dengue data.
+
+
+# 5. Reference and Coding Support
+
+1. "Dengue and severe dengue". WHO. March 2020. 
+
+2. Gubler DJ (July 1998). "Dengue and dengue hemorrhagic fever". Clinical Microbiology Reviews. 11(3): 480–96.
+
+3. Simmons CP, Farrar JJ, Nguyen vV, Wills B (April 2012). "Dengue" (PDF). The New England Journal of Medicine. 366 (15): 1423–32. 
+
+4. Ranjit S, Kissoon N (January 2011). "Dengue hemorrhagic fever and shock syndromes". Pediatric Critical Care Medicine. 12 (1): 90–100.
+
+5. National Oceanic and Atmospheric Administration, Dengue Forecasting, http://dengueforecasting.noaa.gov/
+
+6. Immunological Serotype Interactions and Their Effect on the Epidemiological Pattern Of Dengue M. Recker-K. Blyuss-C. Simmons-T. Hien-B. Wills-J. Farrar-S. Gupta - Proceedings Of the Royal Society B: Biological Sciences - 2009
+
+7. https://ionides.github.io/531w18/final_project/index.html
+
+8. https://ionides.github.io/531w18/final_project/20/final.html
+
+9. https://ionides.github.io/531w18/final_project/18/final.html
+
+10. https://ionides.github.io/531w20/#class-notes
+
+11. https://ionides.github.io/531w20/#homework-assignments
