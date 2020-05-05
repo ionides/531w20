@@ -1,0 +1,461 @@
+---
+title: "Financial Volatility of Facebook Stock"
+date: April 26, 2020
+output: 
+  html_document:
+    toc: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+library(dplyr)
+library(knitr)
+library(tseries)
+library(fGarch)
+library(pomp)
+library(doParallel)
+library(doRNG)
+```
+
+# 1 Introduction
+In the field of financial market, data often exhibit volatility clustering. It is more common to see time-varying volatility than constant volatility. It is important to get accurate modeling of time-varying volatility in financial engineering. The purpose of investing is to make a profit. Investors expect to get revenues that are higher than the initial investments. Returns measure the change in price relative to the assets being held.
+$$R_t = \frac{P_t - P_{t-1}}{P_{t-1}}$$
+where $P_t$ is the price of an asset at time t and $R_t$ means the return at time t.
+
+Log returns ($r_t$) are approximately equal to returns when returns are close to zero. It makes computation simple after transforming dividend to subtraction.
+
+$$r_t = log(P_t) - log(P_{t-1})$$
+In this project, returns denote log returns.
+
+
+## 1.1 Objective
+Our goal is to choose a model that describes data best. In this project, we try to apply time series model, such as ARMA, GARCH and ARMA-GARCH model, and nonlinear POMP model derived from adding stochastically time-varying parameters to a time series model.
+
+## 1.2 Data Description
+The Facebook stock dataset comes from [yahoo finance website](https://finance.yahoo.com/quote/FB/history?period1=1429056000&period2=1586908800&interval=1d&filter=history&frequency=1d). It contains 1259 observations of daily closing price from April 15th, 2015 to April 15th, 2020. Below shows the closing prices and log closing prices over these five years. 
+
+
+```{r data_description, fig.width = 12}
+library(dplyr)
+dat = read.table("FB.csv",sep=",",header=TRUE)
+N = nrow(dat)
+par(mfrow = c(1, 2))
+plot(as.Date(dat$Date),dat$Close, xlab="date",ylab="Facebook Stock",type="l")
+plot(as.Date(dat$Date),dat$Close, log="y", xlab="date",ylab="log(Facebook Stock)",type="l")
+```
+
+Then we get the log return randomly distributed around 0. And the variance varys differently during different time periods. High volatility usually clusters together.
+```{r data_description2, fig.width = 12}
+par(mfrow = c(1, 1))
+fb_diff_return = diff(log(dat$Close))
+plot(fb_diff_return, type="l", xlab="Business Day (2015-2020)",ylab="Demeaned Facebook Stock Return")
+```
+
+
+
+In ACF plots, we can see that some larger autocorrelations on log-returns and squared log-returns exist.
+
+```{r data_description3, fig.width = 12}
+par(mfrow = c(1, 2))
+acf(fb_diff_return, main = 'ACF plot of return')
+acf(fb_diff_return^2, main = 'ACF plot of return^2')
+```
+
+
+
+# 3 ARMA Model
+Let's get started with ARMA model. What we do first is to decide where to start in terms of values of p and q based on ARMA model. Thus, we tabulate AIC tables below.
+```{r arma}
+ARMA_aic = function(data,P,Q){
+  set.seed(22)
+  aic = matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      aic[p+1,q+1] = arima(data,order=c(p,0,q), method = c("CSS-ML"), optim.control = list(maxit = 1000))$aic
+    }
+  }
+  dimnames(aic) = list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  return(aic)
+}
+ARMA_table = ARMA_aic(fb_diff_return, 3, 3)
+kable(ARMA_table)
+```
+
+From the AIC table, we prefer to choose ARMA(2,2) with the lowest AIC value -6324.953. We refit to the data in ARMA(2,2) and obtain the value of each parameter. Outputs are present as follows,
+
+```{r arma2, fig.width = 12}
+set.seed(22)
+arma_model = arima(fb_diff_return,order=c(2,0,2), optim.control = list(maxit = 1000))
+arma_model
+```
+
+
+From the acf plot of residuals, ARMA(2,2) model indeed succeeds in decreasing autocorrelations when lags are greater than 1. However, there are still some larger autocorrelations existing on squared residuals from the second plot. Also, heavier tails than normal distribution happen. 
+```{r arma2_plot, fig.width = 12}
+par(mfrow = c(1, 3))
+acf(arma_model$residual, main = 'ACF of Residuals From ARMA(2,2)')
+acf(arma_model$residual^2, main = 'ACF of Residuals^2 From ARMA(2,2)')
+qqnorm(arma_model$residual)
+qqline(arma_model$residual^2, col = 2)
+```
+
+
+
+
+
+# 4 GARCH Model
+In order to lower autocorrelations of squared residuals, we consider to use GARCH model to fit volatility dependent on time. The GARCH(P,Q) for $Y_n$ is as follows 
+
+$$Y_n = \epsilon_n \sqrt{V_n}$$
+$$V_n = \alpha_0 + \Sigma_{j=1}^P\alpha_j Y_{n-j}^2 + \Sigma_{k=1}^Q\beta_k V_{n-k}$$
+where {$\epsilon_n$} is a mean-zero weak white-noise process (we still apply the assumption of normal distribution in this section).
+
+Now, we select the optimal (P, Q) pair for GARCH model with the lowest AIC. The table is shown below.
+```{r garch}
+library(tseries)
+library(knitr)
+GARCH_aic = function(data,P,Q){
+  table = matrix(NA,(P),(Q))
+  for(p in 1:P) {
+    for(q in 1:Q) {
+      fit = garch(x = data, order = c(p,q), maxiter = 1000,
+                  grad = "analytical", trace = FALSE)
+      table[p,q] = 2 * length(fit$coef) - 2 * tseries:::logLik.garch(fit)
+    }
+  }
+  dimnames(table) = list(paste("<b> p = ",1:P, "</b>", sep=""),paste("q = ",1:Q,sep=""))
+  table
+}
+fb_aic_table = GARCH_aic(fb_diff_return, 4, 4)
+kable(fb_aic_table, digits=2)
+```
+
+From the table, it suggests that GARCH(1,1) have the smallest value of AIC. Also, due to its simplicity, GARCH(1,1) is the best choice. Its fitting info is shown below. We can see that all the parameters are significant in GARCH(1,1) model and Jarque Bera Test on residuals tells us that the error assumption of normal distribution does not make sense.
+
+```{r garch_norm,  include = FALSE}
+set.seed(22)
+fit_garch = garch(fb_diff_return, order = c(1,1), grad = "analytical", trace = FALSE)
+L_garch = tseries:::logLik.garch(fit_garch)
+```
+
+```{bash garch_output, echo = TRUE, eval = FALSE}
+Call:
+garch(x = fb_diff_return, order = c(1, 1), grad = "analytical", trace = FALSE)
+
+Coefficient(s):
+    Estimate  Std. Error  t value Pr(>|t|)    
+a0 7.217e-05   6.727e-06    10.73   <2e-16 ***
+a1 3.319e-01   2.556e-02    12.98   <2e-16 ***
+b1 5.439e-01   3.192e-02    17.04   <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Diagnostic Tests:
+	Jarque Bera Test
+
+data:  Residuals
+X-squared = 26192, df = 2, p-value < 2.2e-16
+```
+
+Below are shown three plots. From left to right, they are the acf plot of residuals, acf plot of squared residuals and QQ-plot under normal distribution, respectively. The first two ACF plots shows better performance of GARCH(1,1) model. But the problem of heavy tails is still not solved.
+
+```{r garch_norm_qqplot, fig.width = 12}
+par(mfrow = c(1, 3))
+acf(fit_garch$residuals[-1], main = "ACF of residuals")
+acf(fit_garch$residuals[-1]^2, main = "ACF of residuals^2")
+qqnorm(fit_garch$residuals)
+qqline(fit_garch$residuals, col = 2)
+```
+
+
+
+# 5 ARMA-GARCH Model with Assumption of t-distribution
+So far, the problem for heavy tails still occurs as shown in last section so that we have to take it into consideration. Also, we hope to further refine our current garch model by adding ARMA model. The ARMA(p,q) with GARCH(1,1) errors for $Y_n$ corrresponds to
+$$Y_n = \Sigma_{i=1}^p\phi_i Y_{n-i} + \Sigma_{j=1}^q\psi_j\epsilon_{n-j} + \epsilon_n$$
+where the noise process {$\epsilon_n$} is a GARCH(P,Q) process
+
+$$\epsilon_n = \sigma_n\delta_n$$
+$$\sigma_n^2 = \alpha_o+ \Sigma_{i=1}^P\alpha_i \epsilon_{n-i} + \Sigma_{j=1}^Q \beta_j \sigma_{n-j}^2$$
+where $\delta_n$ is iid t-distribution in order to fix the problem for heavy tails.
+
+From the [course note14](https://ionides.github.io/531w20/14/notes14.pdf), We have known that GARCH is a black-box model, in the sense that the
+parameters don't have clear interpretation. Further, ARMA-GARCH model is more complicated than GARCH model. In practice, we hope that the ARMA part should have been simpler. Since GARCH(1,1) performed relatively well on data, we decide to remain this part in the mixed model. Thus, we end up fitting four different mixed models with t-distribution, ARMA(0,0)-GARCH(1,1), ARMA(0,1)-GARCH(1,1), ARMA(1,0)-GARCH(1,1) and ARMA(1,1)-GARCH(1,1). The log-likelihood and AIC are shown below, respectively.
+
+```{r arma_garch}
+library(fGarch)
+library(knitr)
+N = nrow(dat)
+arma_param = matrix(c(0,1, 0,1, 0,0, 1,1), ncol = 2, nrow = 4)
+
+AMRA_GARCH_aic = function(data, arma_param_table){
+  set.seed(22)
+  table = matrix(NA,nrow(arma_param_table), 2)
+  rowname = c()
+  for(i in 1:nrow(arma_param_table)) {
+    garch_formula = as.formula(paste0("~arma(",arma_param_table[i,1],
+                                      arma_param_table[i,2], ")+garch(1,1)"))
+    fit_garch = garchFit(garch_formula, 
+                         data, trace = F, cond.dist = "std")
+    table[i, 1] = - fit_garch@fit$value
+    table[i, 2] = fit_garch@fit$ics[1] * N
+    rowname[i] = paste0("ARMA(",arma_param_table[i,1], ",", 
+                        arma_param_table[i,2], ")-GARCH(1,1)")
+  }
+  colnames(table) = c("LogLike", "AIC")
+  rownames(table) = rowname
+  return(table)
+}
+
+fb_aic_table2 = AMRA_GARCH_aic(fb_diff_return, arma_param)
+kable(fb_aic_table2, digits=2)
+```
+
+```{r arma_garch_model}
+set.seed(22)
+fit_garch = garchFit(~arma(1,1) + garch(1,1), fb_diff_return, trace = F, cond.dist = "std")
+```
+
+We notice that as ARMA part goes more and more complex, the log-likelihood function gets larger and AIC becomes smaller simultaneously. In addition, the information of estimations for paramaters in ARMA(1,1)-GARCH(1,1) model is also listed below. We find $\phi_1$(ar1), $\psi_1$(ma1), $\alpha_1$ and $\beta_1$ are all significantly existing in model.
+
+```{bash arma_garch_outputs, echo = TRUE, eval = FALSE}
+Call:
+ garchFit(formula = ~arma(1, 1) + garch(1, 1), data = fb_diff_return, cond.dist = "std", trace = F) 
+
+Error Analysis:
+         Estimate  Std. Error  t value Pr(>|t|)    
+mu      2.295e-04   1.175e-04    1.954   0.0508 .  
+ar1     8.366e-01   8.010e-02   10.445   <2e-16 ***
+ma1    -8.890e-01   6.482e-02  -13.716   <2e-16 ***
+omega   1.346e-05   9.120e-06    1.475   0.1401    
+alpha1  1.253e-01   4.974e-02    2.520   0.0117 *  
+beta1   8.571e-01   6.112e-02   14.024   <2e-16 ***
+shape   3.448e+00   3.626e-01    9.510   <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Log Likelihood:
+ 3456.57    normalized:  2.733888 
+```
+
+Most importantly, we see that most of points are close to the red line, which means t-distribution should be reasonably included in the error assumption. 
+
+```{r arma_garch_t-qqplot, fig.width = 8}
+par(mfrow = c(1, 1))
+quantv = (1/N) * seq(0.5, N-0.5, 1)
+qqplot(qt(quantv, fit_garch@fit$matcoef[nrow(fit_garch@fit$matcoef),1]), 
+       fit_garch@residuals/fit_garch@sigma.t, 
+       main = "QQ plot for t-dist residuals",
+       xlab = "Sample Quantiles", ylab = "Theoretical Quantiles")
+qqline(fit_garch@residuals/fit_garch@sigma.t, distribution = function(p)
+  qt(p, fit_garch@fit$matcoef[nrow(fit_garch@fit$matcoef),1]), 
+  prob = c(0.1, 0.9), col = 2)
+```
+
+
+
+# 6 POMP Model
+Finally, we present a pomp implementation of Breto (2014), which models $R_n$ as a random walk on a transformed scale
+$$R_n = \frac{e^{2G_n}-1}{e^{2G_n}+1}$$
+where {$G_n$} is the usual Gaussian random walk.
+
+Following the notation and model representation in equation (4) of \citet{breto14}, we propose a model,
+$$
+\begin{align} 
+Y_n &= e^{H_n/2} \epsilon_n, \\
+H_n &= \mu_h(1-\phi) + \phi H_{n-1} +
+\beta_{n-1}R_ne^{-H_{n-1}/2} + \omega_n,\\
+G_n &= G_{n-1}+\nu_n,
+\end{align}
+$$
+where $\beta_n=Y_n\sigma_\eta\sqrt{1-\phi^2}$, $\{\epsilon_n\}$ is an iid $N(0,1)$ sequence, $\{\nu_n\}$ is an iid $N(0,\sigma_{\nu}^2)$ sequence, and $\{\omega_n\}$ is an iid $N(0,\sigma_\omega^2)$ sequence.
+
+Here, $H_n$ is the log volatility.
+
+
+## 6.1 Representing a POMP model
+```{r pomp, echo = TRUE}
+library(pomp)
+fb_statenames = c("H","G","Y_state")
+fb_rp_names = c("sigma_nu","mu_h","phi","sigma_eta")
+fb_ivp_names = c("G_0","H_0")
+fb_paramnames = c(fb_rp_names, fb_ivp_names)
+
+rproc1 = "
+  double beta,omega,nu;
+  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) *
+  sqrt(1-tanh(G)*tanh(G)));
+  nu = rnorm(0, sigma_nu);
+  G += nu;
+  beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+  H = mu_h*(1 - phi) + phi*H + beta * tanh( G )
+  * exp(-H/2) + omega;
+"
+
+rproc2.sim = "Y_state = rnorm( 0,exp(H/2) );"
+rproc2.filt = "Y_state = covaryt;"
+fb_rproc.sim = paste(rproc1, rproc2.sim)
+fb_rproc.filt = paste(rproc1, rproc2.filt)
+
+fb_rinit = "
+  G = G_0;
+  H = H_0;
+  Y_state = rnorm( 0,exp(H/2) );
+"
+fb_rmeasure = "y=Y_state;"
+fb_dmeasure = "lik=dnorm(y,0,exp(H/2),give_log);"
+
+
+fb_partrans = parameter_trans(
+  log=c("sigma_eta","sigma_nu"),
+  logit="phi"
+)
+```
+
+
+## 6.2 Constructing a POMP object 
+
+```{r pomp_obj, echo = TRUE}
+fb.filt = pomp(data=data.frame(
+  y=fb_diff_return, time=1:length(fb_diff_return)),
+  statenames=fb_statenames,
+  paramnames=fb_paramnames,
+  times="time",
+  t0=0,
+  covar=covariate_table(
+    time=0:length(fb_diff_return),
+    covaryt=c(0,fb_diff_return),
+    times="time"),
+  rmeasure=Csnippet(fb_rmeasure),
+  dmeasure=Csnippet(fb_dmeasure),
+  rprocess=discrete_time(step.fun=Csnippet(fb_rproc.filt),
+                         delta.t=1),
+  rinit=Csnippet(fb_rinit),
+  partrans=fb_partrans
+)
+```
+
+
+## 6.3 Fitting the stochastic leverage model
+Next, we use IF2 algorithm to get the maximum likelihood to help us compare POMP model with time series model. Some Diagnoses are also shown below. They are about convergences of parameters and the value of log-likelihood. 
+```{r pomp2, echo = TRUE}
+library(doParallel)
+registerDoParallel()
+library(doRNG)
+registerDoRNG(34118892)
+
+run_level = 3
+fb_Np =           switch(run_level, 100, 1e3, 2e3)
+fb_Nmif =         switch(run_level, 10, 100, 200)
+fb_Nreps_eval =   switch(run_level, 4, 10, 20)
+fb_Nreps_local =  switch(run_level, 10, 20, 20)
+fb_Nreps_global = switch(run_level, 10, 20, 100)
+
+params_test = c(
+  sigma_nu = exp(-4.5),
+  mu_h = -0.25,
+  phi = expit(4),
+  sigma_eta = exp(-0.07),
+  G_0 = 0,
+  H_0=0
+)
+
+fb_rw.sd_rp = 0.02
+fb_rw.sd_ivp = 0.1
+fb_cooling.fraction.50 = 0.5
+fb_rw.sd = rw.sd(
+  sigma_nu = fb_rw.sd_rp,
+  mu_h = fb_rw.sd_rp,
+  phi = fb_rw.sd_rp,
+  sigma_eta = fb_rw.sd_rp,
+  G_0 = ivp(fb_rw.sd_ivp),
+  H_0 = ivp(fb_rw.sd_ivp)
+)
+
+stew(file=sprintf("mif1-%d.rda",run_level),{
+     t.if1 = system.time({
+        if1 = foreach(i=1:fb_Nreps_local, .packages= 'pomp', .combine=c) %dopar% 
+          mif2( fb.filt,
+                params=params_test,
+                Np=fb_Np,
+                Nmif=fb_Nmif,
+                cooling.fraction.50=fb_cooling.fraction.50,
+                rw.sd = fb_rw.sd)
+        
+        L.if1 = foreach(i=1:fb_Nreps_local, .packages= 'pomp', .combine=rbind) %dopar% 
+          logmeanexp(
+                     replicate(fb_Nreps_eval, 
+                               logLik(pfilter(fb.filt, params=coef(if1[[i]]),Np=fb_Np))), se=TRUE)
+                          })
+},seed=318817883,kind="L'Ecuyer")
+
+r.if1 = data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2], t(sapply(if1,coef)))
+
+summary(r.if1$logLik, digits=5)
+
+plot(if1)
+```
+
+After simlulating the process, we can see that the maximum log-likelihood is 3419. It is a little bit less than that of ARMA(1,1)-GARCH(1,1) model (3456). For the convergence diagnostics, we see that the maximum log-likelihood we estimated only happen in some of particles and there are a few particles in which algorthmic parameters are not converged. It is not sufficient to get to the conclusion that POMP model is stable and appropriate for data.
+
+## 6.4 Likelihood maximization using randomized starting values
+To check the stability of POMP model, we decide to randomize the initial values and then simulate processes.
+
+```{r pomp3, echo = TRUE}
+fb_box = rbind(
+  sigma_nu=c(0.005,0.05),
+  mu_h =c(-0.5,0),
+  phi = c(0.95,0.99),
+  sigma_eta = c(0.5,1),
+  G_0 = c(-1,1),
+  H_0 = c(-0.5,0.5)
+)
+
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+     t.box = system.time({
+      if.box = foreach(i=1:fb_Nreps_global, .packages= "pomp", .combine=c) %dopar% 
+        mif2(if1[[1]],
+             params=apply(fb_box,1,function(x)runif(1,x)))
+     
+      L.box = foreach(i=1:fb_Nreps_global, .packages= "pomp", .combine=rbind) %dopar% {
+        logmeanexp(replicate(fb_Nreps_eval, 
+                             logLik(pfilter(fb.filt,params=coef(if.box[[i]]),Np=fb_Np))), se=TRUE)}
+      })
+}, seed=290860873,kind="L'Ecuyer")
+     
+r.box = data.frame(logLik=L.box[,1],logLik_se=L.box[,2], t(sapply(if.box,coef)))
+
+summary(r.box$logLik,digits=5)
+plot(if.box)
+```
+
+From diagnostics plots above, we see that 
+
+- $\sigma_{\nu}$, $\mu_h$, $G_0$ and $H_0$ are convergent after a few 40 MIF iterations 
+
+- log likelihood are also convergent at larger value in more particles. And the maximum is equal to around 3421
+
+- $\phi$, $\sigma_{\eta}$ are not as stable as other parameters. However, most of them finally converge into a certain range.
+
+
+
+# 7 Conclusion
+In terms of the maximum log likehood among these model, I would conclude that ARMA(1,1)-GARCH(1,1) with t-distribution is a good choice to fit the financial volatility of Facebook stock, because it has the smallest log likehood. However, as instructor says, 'GARCH is a black-box model, in the sense that the parameters don't have clear interpretation'. Since we forcely define a model which has financial meaning and time series meaning, POMP Model is much easier to be interpreted. Furthermore, their log likehoods have not an abvious different. Thus, POMP model is better with regards to interpretation.
+
+However, we still notice the unstability in POMP model, no matter when the initial values are fixed or randomly sampled. It may be because the model we pick up is not adequate too much. Modifying the model might be a good idea if possible in the furture.
+
+
+# 8 Reference
+- Facebook stock data come from https://finance.yahoo.com/quote/FB/history?period1=1429056000&period2=1586908800&interval=1d&filter=history&frequency=1d
+
+- stats531 winter2020 course note14 https://ionides.github.io/531w20/14/notes14.pdf
+
+- stats531 winter2018 final project2 https://ionides.github.io/531w18/final_project/2/final.html
+
+- stats531 winter2018 final project19 https://ionides.github.io/531w18/final_project/19/final.html
+
+- stats531 winter2018 final project40 https://ionides.github.io/531w18/final_project/40/final.html
+
+- Carles Bretó, [On idiosyncratic stochasticity of financial leverage effects](https://e-archivo.uc3m.es/bitstream/handle/10016/23480/idiosyncratic_SPL_2014_ps.pdf?sequence=1&isAllowed=y)
+
+- David Ruppert, [Statistics and Data Analysis for Financial Engineering, Chapter18](https://books.google.com/books?id=i2bD50PbIikC&pg=PA485&lpg=PA485&dq=get+Log+Likelihood+from+garchfit&source=bl&ots=G6GHYyPXKN&sig=ACfU3U2i1pasWTjfneoytD0Q4a8Hla6PWA&hl=en&sa=X&ved=2ahUKEwic1o3j9IbpAhWaW80KHSy4AjcQ6AEwCHoECAoQAQ#v=onepage&q=return&f=false)

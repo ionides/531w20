@@ -1,0 +1,491 @@
+---
+title: "Modelling the Spread of Covid-19 in Iceland"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    theme: flatly
+    code_folding: "hide"
+bibliography: Final.bib
+csl: international-journal-of-machine-learning-and-cybernetics.csl
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(plyr)
+library(pomp)
+library(doParallel)
+library(ggplot2)
+library(igraph)
+library(gridExtra)
+registerDoParallel()
+library(doRNG)
+registerDoRNG(3899882)
+```
+
+# Introduction
+The first half of the year 2020 has been marked by the spread of the SARS-CoV-2 virus. Its rapid and pandemic spread has, as of April 25th, resulted in 2.7 million infected people with 187 847 people dying as a consequence of the infection [@who]. Due to these alarming numbers, many countries have introduced strict measures to counter the spread of the virus. These measures have a strong impact on every aspect of life. 
+
+Naturally, this pandemic has elicited a lot of research into the spread of SARS-CoV-2, however, a clear picture of the disease and its spread remains elusive. One of the problems that arises when modelling the spread of SARS-CoV-2 is that the capabilities of testing symptomatic persons for the disease are inadequate in many countries [@wikitesting]. This results in the fact that most country level data, especially in the more affected countries such as the U.S.A. or Italy are likely to underestimate the number of infected persons. This is aggravated by the fact that research has suggested that it is likely that a fraction of the infected shows no symptoms at all. Given that testing capabilities are already insufficient, so far there have been little possibilities to test appropriate samples (including persons with no symptoms) from the general population to get a clearer picture of the distribution of asymptomatic and symptomatic courses of the disease.
+
+This report attempts to avoid these problems by modelling the spread of the disease in Iceland. Modelling data from Iceland has several advantages. First of all, Iceland's testing capabilities are comparatively strong. As of April 25th, 45971 samples have been tested [@covidis] suggesting that more than 10% of the Icelandic population has been tested. Furthermore, the first positive test for SARS-CoV-2 was comparatively late (Feb. 28th) with testing having already started in January. Furthermore, most of the spread has taken place in the greater Rejkjavik area in which the population density is relatively similar.
+This report aims to develop a model for the spread of the disease in Iceland to gain insights to key parameters using inference based on the fitted model.
+
+# SARS-CoV-2 in Iceland
+I give a brief chronological summary of important events in Iceland as they are relevant for modelling later on. All of the facts here are taken from [@wikiiceland] and [@covidis].
+
+* Jan 31. 2020: Targeted testing for persons at high risk for infection starts
+* Feb 28. 2020: The first infection with SARS-CoV-2 is reported
+* Mar 2. 2020: Iceland declares Italy and Ischgl high risk areas and consequently, everyone trying to enter Iceland from these destinations are put under quarantine for 14 days
+* Mar 7. 2020: A special flight from Verona arrives in Rejkjavik. All passengers were Icelandic residents who had spent time in high-risk areas
+* Mar 9. 2020: Two additional passengers from the special flight from Verona on 7 March tested positive for COVID-19
+* Mar 16. 2020: Schools and Universities close down. Gatherings of 100 persons or more are banned
+* Mar 19. 2020: All persons entering Iceland obligated to in to 14 days of quarantine
+* Mar 24. 2020: All gatherings with more than 20 persons are banned. Furthermore, individuals must keep a distance of at least 2 m between each other 
+
+
+# Modelling the Spread of SARS-CoV-2
+
+## The Data
+The report models the number of active cases in the Icelandic county Greater Rejkjavik. This is a daily time series. Data related to the spread of SARS-CoV-2 is published by Iceland's Directorate of Health and the Department of Civil Protection and Emergency Management on the website https://www.covid.is/data [@covidis]. This data is also collected on [@wikiiceland]. Data is published on country level as well as sub-national level. While country level data contains information about the currently active cases, the cumulative recovered cases and cumulative infections, on the sub-national level only information about the cumulative infections is available. However, this report aims to model the spread of the SARS-CoV-2 in the county Greater Rejkjavik in order to have relatively stable population density. Since data regarding active cases is unfortunately not available at this level, I try to infer it from cumulative cases in that region. This is done in the following way. At each point in time, the ratio of cases in "Greater Rejkjavik" and the total number of cases in Iceland is computed. Then, to obtain the cumulative number of recovered persons in Greater Rejkjavik this ratio is multiplied with country level cumulative recovered data. This is done with a lag of 15, which is roughly the average time of recovery. The number of active cases is then 
+$$
+active = cumulative\_infected - cumulative\_recovered.
+$$
+It should be noted that the number of deaths from SARS-CoV-2 is not included. However, the total number of deaths in Iceland is 10 and is thus unlikely to have a great impact on the number of active infections. In the early stages, all infected persons are in Greater Rejkjavik. The first infected not from this area are tested positive only in mid-march 2020. Furthermore, over the whole period, the ratio of cumulative infections in Greater Rejkjavik and cumulative infections in the whole country is above 70%. Below is a plot of the resulting time series.
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.asp=0.5}
+library(ggplot2)
+covidis = read.csv('covidis.csv')
+covidis$Recovered.[is.na(covidis$Recovered.)] <- 0
+covidis["total"] = covidis$Active.infections. + covidis$Recovered.
+
+# Read rejkjavik specific data
+rejkjavik = read.csv('rejkjavik2.csv', header=FALSE)
+rejkjavik["cases"] = cumsum(rejkjavik$V2)
+
+# All cases before the 12.03 are from rejkjavik so combine country level data with rejkjavik
+rejkjavik_cases = c(covidis$Active.infections.[1:13], rejkjavik$cases)
+
+# Approximate active cases (reporting days are shifted in the two datasets)
+li = length(covidis$Active.infections.)
+ratio = rejkjavik_cases/covidis$total
+# Shift ratio so that I have a lag of 14 days
+ratio = c(seq(0,0, length.out = 14), ratio[1:43])
+
+recovered_rejkjavik = ceiling(ratio*covidis$Recovered.)
+active_rejkjavik = rejkjavik_cases - recovered_rejkjavik
+
+# Create the data frame
+rejkjavik_data = data.frame(seq(1:length(active_rejkjavik)), active_rejkjavik)
+colnames(rejkjavik_data) = c("day", "rejkjavik")
+rejkjavik_data["dates"] = seq.Date(as.Date("02.28.2020", "%m.%d.%y"), as.Date("04.24.2020", "%m.%d.%y"), by ="day")
+
+h <- ggplot(rejkjavik_data)
+h <- h + geom_line(aes(dates, rejkjavik)) + labs(x="Time", y="Active Infections")
+h
+
+```
+
+## The Model
+I intend to model the spread via a variation of the SEIR model. Such models are frequently when modelling the spread of diseases [@class]. One extension that is introduced in this model is that I allow a population being infectious while not showing any symptoms. This is justified by many reports [@who]. Furthermore, it is assumed that everyone tested positive is consequently isolated and will not cause any further infections. Below is a diagram visualization of the skeleton of the compartment model. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, fig.align='center'}
+library(igraph)
+names = c("S", "E", "IS", "IA", "Q", "R", " ", "")
+vertices = data.frame(names)
+
+start = c("S", "E","E", "IS", "IA", " ", "", "Q")
+end = c("E","IS","IA","Q","R", "E", "Q", "R")
+
+edgelabels = c("","","","","","Import E", "Import Q", "")
+edges = data.frame(start, end)
+
+net = graph.data.frame(edges, vertices, directed = TRUE)
+V(net)$shape="rectangle"
+
+E(net)$length=1
+coords = matrix(c(0, 0, -0.3, 0.3, -0.3, 0.3, -1.2, -0.4 ,0.4,0.4,1.2,1.2), nrow =6, ncol=2)
+coords = matrix(c(0, 0, -0.3, 0.3, -0.3, 0.3,0.8,-1, -1.2, -0.4 ,0.4,0.4,1.2,1.2, -0.4, 1.2), nrow =8, ncol=2)
+
+node.size=setNames(c(50,50,50,50,50,50,0,0), c("S", "E", "IS", "IA", "Q", "R", " ", ""))
+
+plot(net,
+     edge.arrow.size=.3,
+     layout = coords[,2:1],
+     # Vertices
+     vertex.label.family="Helvetica",
+     vertex.size=as.matrix(node.size),
+     vertex.size2=40,
+     vertex.label.cex=2,
+     vertex.frame.color=NA,
+     rescale=FALSE,
+     # Edges
+     edge.label=edgelabels
+)
+```
+
+The S compartment corresponds to the susceptible population. E stands for exposed and is intended to model the population that has been infected but is not yet infectious. From there, people either become infectious and develop symptoms or people follow a course of the desease where they never develop symptoms. Infectious population exhibiting symptoms is eventually isolated (Q) and will recover at a fixed rate, not necessarily the same as for the asymptomatic population. This gives the state
+
+$$
+X(t) = (S(t), E(t), IA(t), IS(t), Q(t), R(t))
+$$
+
+If $Y(t_n)$ denote the number of active infections at time $t_n$, I then model the data given the state as 
+
+$$
+Y(t_n) \sim \text{Poisson}(\rho Q(t_n))
+$$
+
+to allow for symptomatic people that don't report themselves but isolate and mistakes in reporting. I do not consider deaths and births as a factor in this analysis as the time span is relatively short. The population size is assumed fixed at 122,853.
+
+I use binomial approximations to model the flow between the compartments. Let $\delta$ denote the time-step discretization. Let $N_{XY}(t+\delta)$ denote the counting process for the flow from compartment $X$ to compartment $Y$. Then my model takes the form
+
+$$
+\begin{aligned}
+\tilde{N}_{SE}(t+\delta) &= \tilde{N}_{SE} + \text{Binomial}\left[\tilde{S}(t), 1-\exp(-\beta_1(t)\tilde{IS}+\beta_2(t)\tilde{IS})\delta)\right]\\
+\tilde{N}_{EIA}(t+\delta) &= \tilde{N}_{EIA} + \text{round}((1-p) \cdot \text{Binomial}\left[\tilde{E}(t), 1-\exp(-\mu_{EI}\delta)\right])\\
+\tilde{N}_{EIS}(t+\delta) &= \tilde{N}_{IIS} + \text{round}(p\cdot\text{Binomial}\left[\tilde{E}(t), 1-\exp(-\mu_{EI}\delta)\right])\\
+\tilde{N}_{IAR}(t+\delta) &= \tilde{N}_{IAR} + \text{Binomial}\left[\tilde{IA}(t), 1-\exp(-\mu_{IAR}\delta)\right]\\
+\tilde{N}_{ISQ}(t+\delta) &= \tilde{N}_{ISQ} + \text{Binomial}\left[\tilde{IS}(t), 1-\exp(-\mu_{ISQ}\delta)\right]\\
+\tilde{N}_{QR}(t+\delta) &= \tilde{N}_{QR} + \text{Binomial}\left[\tilde{Q}(t), 1-\exp(-\mu_{QR}\delta)\right]\\
+\end{aligned}
+$$
+
+While the parameters $\mu_{EI}, \mu_{IAR}, \mu_{ISQ}$ and $p$ are treated as variables, I set $\mu_{QR}$ to be equal to $15.6168$, the average amount of time people were listed as active infections. Iceland requires persons tested positive to isolate for at least 14 days. Additionally, to be discharged from isolation, a person has to be free of symptoms for at least 7 days [@covidis]. Thus, an average amount of 15.6168 days of isolation seems reasonable. 
+
+One of the key challenges when modelling the spread of SARS-CoV-2 is that conditions are highly non-stationary. As was mentioned in chapter [SARS-CoV-2 in Iceland], the Icelandic government has introduced multiple measures aimed at reducing the spread of the virus. Furthermore, due to intensive media coverage and government reports it is likely that the population as whole becomes increasingly sensitive to the dangers and adapts a behavior which reduces the spread of the virus. Thus to allow a decreasing rate of transmission I model $\beta_1$ and $\beta_2$ as
+
+$$
+\beta_1(t) = \exp\left(\sum_{i=1}^3 b_i\xi_i(t)\right)~~~~~~~\beta_2(t) = \exp\left(\sum_{i=1}^3 c_i\xi_i(t)\right),
+$$
+
+where the $\xi_i$ are bspline basis functions. Furthermore, imported infections play a crucial part especially in the beginning of the spread. All of the first positive tested persons were imported and almost all imports stemmed from either Italy or Austria. I try to model these imported cases with two poisson distributed random variables. One adds person directly to the $Q$ compartment. The other one dds persons directly to the exposed compartment. Both random variables have mean $5\delta$. However, this adding stops on the 9th of March. At that point in time, a plane designated to bring home Icelandic people from Italy and Austria arrived in Rejkjavik. The parameter of the two poisson distributions have been chosen so that it fits the number of imported infections fairly well. Unfortunately, treating these parameters as variable didn't produce reasonable results. For more information see [Limitations]. 
+
+Lastly, the initial values were $E=5$, $IS=1$ and $IA=1$ and all other states 0. The data starts on Feb 28th, the day of the first positive test result. I initialize the number of exposed persons at 5 because the first infected person had entered Iceland on Feb. 22nd and thus is likely to have been in contact with several people before being tested positive. The starting value of $E$ has significant impact on the results. Treating this as variable, however, gives unreasonable results. Again, see [Limitations] for more details.
+
+## Results
+
+### Model Diagnostics
+Below is a diagnostic plot for the model. The model was run with 100 starting points drawn uniformly from a parameter box, for details, see the code. 
+
+```{r warning=FALSE}
+cov_covar <- covariate_table(
+  t = rejkjavik_data$day,
+  bspline.basis(t, nbasis = 3, degree=2, names = "xi%d"),
+  times = "t"
+)
+
+
+cov_rprocess <- "
+  double Beta_1 = dot_product((int)3, &b1, &xi1);
+  double Beta_2 = dot_product((int)3, &c1, &xi1);
+  double dN_SE = rbinom(S, 1-exp(-dt*(exp(Beta_1)*IS +exp(Beta_2)*IA)));
+  double dN_EI = rbinom(E, 1-exp(-dt*mu_EI));
+  double dN_ISQ = rbinom(IS, 1-exp(-dt*mu_ISQ));
+  double dN_QR = rbinom(Q, 1-exp(-dt/15.61676));
+  double dN_IAR = rbinom(IA, 1-exp(-dt*mu_R));
+  double IQ = rpois((5+1e-10)*dt);
+  if (t > 10){
+    IQ = 0;
+  }
+  double IE = rpois((5+1e-10)*dt);
+  if (t > 10){
+    IE = 0;
+  }
+  S -= dN_SE;
+  E += dN_SE - dN_EI + IE;
+  IS += round(p*dN_EI) - dN_ISQ;
+  IA += round((1-p)*dN_EI) - dN_IAR;
+  Q += dN_ISQ - dN_QR + IQ;
+  R += dN_IAR + dN_QR;
+"
+
+cov_dmeasure <- "
+  lik = dpois(rejkjavik,0.95*Q+1e-10,give_log);
+"
+
+cov_rmeasure <- "
+  rejkjavik = rpois(0.95*Q+1e-10);
+"
+
+cov_rinit <- "
+ S=122853;
+ E=5;
+ IS=1;
+ IA=1;
+ Q=0;
+ R=0;
+"
+
+cov_statenames <- c("S","E","IS","IA", "Q", "R")
+cov_paramnames <- c("b1","b2","b3","c1","c2","c3","mu_EI", "p","mu_ISQ", "mu_R")
+
+cov2 <- pomp(
+  data=rejkjavik_data,
+  times="day",
+  t0=0,
+  rprocess=pomp::euler(
+    step.fun=Csnippet(cov_rprocess),
+    delta.t=1/12
+  ),
+  rmeasure=Csnippet(cov_rmeasure),
+  dmeasure=Csnippet(cov_dmeasure),
+  partrans=parameter_trans(
+    log=c("mu_EI","mu_ISQ", "mu_R"),
+    logit=c("p")
+  ),
+  statenames=cov_statenames,
+  paramnames=cov_paramnames,
+  rinit=Csnippet(cov_rinit),
+  covar = cov_covar
+)
+
+cov_box <- rbind(b1=c(-13,-8), 
+                 b2=c(-18,-13),
+                 b3=c(-18,-15),
+                 c1=c(-13,-8), 
+                 c2=c(-18,-13),
+                 c3=c(-18,-15),
+                 mu_EI=c(0.00001,0.8),
+                 p=c(0.4,0.8),
+                 mu_ISQ=c(0.001,0.8),
+                 mu_R=c(0.001,0.4)
+                )
+
+run_level<-3
+switch(run_level,
+       {
+         cov_Np=100; cov_Nmif=10; cov_Neval=10;
+         cov_Nglobal=10; cov_Nlocal=10
+       },
+       {
+         cov_Np=8000; cov_Nmif=60; cov_Neval=10;
+         cov_Nglobal=10; cov_Nlocal=10
+       },
+       {
+         cov_Np=60000; cov_Nmif=300; cov_Neval=10;
+         cov_Nglobal=10; cov_Nlocal=10
+       }
+)
+
+cov_rw.sd <- 0.02; cov_cooling.fraction.50 <- 0.5; cov_rw_spline.sd=0.1
+
+stew(
+  file=sprintf("box_eval-%d.rda",run_level),{
+    t_global <- system.time({
+      mifs_global <- foreach(i=1:cov_Nglobal,.combine=c,.packages='pomp') %dopar%{
+        mif2(cov2,
+             Np=cov_Np,
+             Nmif=cov_Nmif,
+             cooling.fraction.50=cov_cooling.fraction.50,
+             rw.sd=rw.sd(
+                b1=cov_rw_spline.sd,
+                b2=cov_rw_spline.sd,
+                b3=cov_rw_spline.sd,
+                c1=cov_rw_spline.sd,
+                c2=cov_rw_spline.sd,
+                c3=cov_rw_spline.sd,
+                mu_ISQ=cov_rw.sd,
+                mu_EI=cov_rw.sd,
+                mu_R=cov_rw.sd,
+                p=cov_rw.sd
+                ),
+            params=c(apply(cov_box,1,function(x)runif(1,x[1],x[2]))),
+            #params=params,
+            verbose=TRUE
+            )
+        }
+      })
+    },
+  seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("lik_global-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:cov_Nglobal,
+                          .combine=rbind) %dopar% {
+                            evals <- replicate(cov_Neval,
+                                               logLik(pfilter(cov2,
+                                                              params=coef(mifs_global[[i]]),Np=cov_Np)))
+                            logmeanexp(evals, se=TRUE)
+                          }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global <- data.frame(
+  logLik=liks_global[,1],
+  logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+
+which_global_mle = which.max(results_global[,"logLik"])
+cov_global_mle = results_global[which_global_mle,][cov_paramnames]
+
+plot(mifs_global)
+```
+
+These plots indicate some issues. It appears that none of the parameters converge to a unique value. I think this is partly due to the fact that the parameter $p$ is not identified and depending on this parameter, the others converge to different values. To make this more precise, below is a histogram of the parameter values for $p$
+
+```{r fig.height=4, fig.width=4}
+hist(results_global["p"][,1], main="", xlab="p")
+```
+
+As can be seen, for most starting points, $p$ ends up in an interval between 0.4 and 0.5. If I restrict to those trajectories that end up with this parameter for $p$, I see slightly clearer convergence behavior. Below is a plot for only those trajectories that end up with a value of $p$ between 0.4 and 0.5.
+
+```{r }
+res = c(mifs_global[[1]], mifs_global[[5]])
+for (iter in which(results_global$p > 0.4 & results_global$p < 0.5)){
+  if (iter == 1 || iter == 5){
+    next
+  }
+  res = c(res, mifs_global[[iter]])
+}
+plot(res)
+```
+
+To further investigate this issue, I created a profile likelihood slice for the parameter $p$. Below is the resulting plot. The blue dashed line corresponds to the line one would use to construct a 95% confidence interval based on Wilks theorem. As can be seen, the entire interval [0.1, 0.49] would be inside this interval. Values for $p$ less than 0.1 were not considered. This further indicates that the model is not able to identify a set of parameters but rather possible combinations. Furthermore, the plot also indicates that profile likelihood might not be continuous at 0.5. 
+
+```{r }
+
+h_profile_n = 4
+lower=c(b1=-16, b2=-18, b3=-32, c1=-17, c2=-25, c3=-27, mu_EI=0.4, mu_ISQ=0.5, mu_R=0.1)
+upper=c(b1=-10, b2=-8, b3=-17, c1=-10, c2=-10, c3=-11, mu_EI=0.7, mu_ISQ=0.8, mu_R=0.5)
+K_profile_box <- profileDesign(
+p=seq(0.1,
+         0.9,
+         length.out=25),
+lower=lower,
+upper=upper,
+nprof=h_profile_n
+)
+
+run_level<-3
+switch(run_level,
+       {
+         cov_Np=100; cov_Nmif=10; cov_Neval=10;
+         cov_Nglobal=10; cov_Nlocal=10
+       },
+       {
+         cov_Np=8000; cov_Nmif=60; cov_Neval=10;
+         cov_Nglobal=10; cov_Nlocal=10
+       },
+       {
+         cov_Np=40000; cov_Nmif=150; cov_Neval=10;
+         cov_Nglobal=10; cov_Nlocal=10
+       }
+)
+
+cov_rw.sd <- 0.02; cov_cooling.fraction.50 <- 0.5; cov_rw_spline.sd=0.1
+
+stew(file=sprintf("P_box_eval-%d.rda",run_level),{
+  P_t_global <- system.time({
+    P_mifs_global <- foreach(i=1:nrow(K_profile_box),.combine=c) %dopar% {
+      mif2(
+        cov2,
+        Np=cov_Np,
+        Nmif=cov_Nmif,
+        cooling.fraction.50=cov_cooling.fraction.50,
+        params=unlist(K_profile_box[i,]),
+        # Dont perturb Beta
+        rw.sd=rw.sd(
+          b1=cov_rw_spline.sd,
+          b2=cov_rw_spline.sd,
+          b3=cov_rw_spline.sd,
+          c1=cov_rw_spline.sd,
+          c2=cov_rw_spline.sd,
+          c3=cov_rw_spline.sd,
+          mu_ISQ=cov_rw.sd,
+          mu_EI=cov_rw.sd,
+          mu_R=cov_rw.sd
+        ),
+        verbose=TRUE
+      )}
+  })
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("P_lik_global_eval-%d.rda",run_level),{
+  P_t_global_eval <- system.time({
+    P_liks_global <- foreach(i=1:nrow(K_profile_box),
+                             .combine=rbind) %dopar% {
+                               evals <- replicate(cov_Neval,
+                                                  logLik(pfilter(cov2,
+                                                                 params=coef(P_mifs_global[[i]]),Np=cov_Np)))
+                               logmeanexp(evals, se=TRUE)
+                             }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+P_results_global <- data.frame(
+  logLik=P_liks_global[,1],
+  logLik_se=P_liks_global[,2],t(sapply(P_mifs_global,coef)))
+
+xnew = P_results_global %>%
+  plyr::ddply(~p, subset, rank(-logLik) == 1) 
+
+xnew %>%
+  ggplot(aes(x=p, y = logLik))+
+  geom_point()+
+  geom_hline(yintercept=max(xnew$logLik)-1.92, linetype="dashed", col="blue")
+```
+
+
+### Parameter Values
+
+Below is a summary of the likelihoods reached by the 100 mif trajectories. Below this is the parameter combinations that achieved the highest likelihood.
+
+```{r }
+summary(results_global$logLik,digits=5)
+cov_global_mle
+```
+
+This parameter estimates combination seems to give data that doesn't perfectly correspond to recent reports [@cdc][@cnn]. It suggest that it takes very little time to become infectious and quarantined. Furthermore, a recent report reported the fraction of asymptotic infections closer to 0.5 [@cnn]. The very small value for the rate of recovery for asymptomatic infectious suggests that it takes around 20 days to not be infectious anymore. This seems too high. Finally, the estimates for $b1, b2, b3, c1, c2, c3$ suggest that the transmission rates $\beta_1$ and $\beta_2$ actually increase for a time. This seems unlikely to me and might be an artifact of too large initial values.
+
+As most mif trajectories ended up with a parameter value for $p$ between 0.4 and 0.5, I also list the resulting estimates based on those trajectories only. 
+
+```{r}
+results_global_res <- data.frame(
+  logLik=liks_global[,1][which(results_global$p > 0.4 & results_global$p < 0.5)],
+  logLik_se=liks_global[,2][which(results_global$p > 0.4 & results_global$p < 0.5)],t(sapply(res,coef)))
+
+which_global_mle_res = which.max(results_global_res[,"logLik"])
+cov_global_mle_res = results_global_res[which_global_mle_res,][cov_paramnames]
+
+summary(results_global_res$logLik,digits=5)
+cov_global_mle_res
+```
+
+While for these parameters the time to become infectious is closer to what was found in previous reports, the time to recovery for asymptomatic infections is even longer. However, most trajectories give more reasonable numbers with time to recovery between 3 and 14 days.
+
+## Simulations
+Lastly, I simulate 20 trajectories of the number of isolated persons in Iceland from the two parameter combinations mentioned above. The simulations seem to qualitatively match the observed data. 
+
+```{r warning=FALSE, fig.width=10, fig.cap="Simulations of active infections that have been detected. Left hand side corresonds to the maximum likelihood estimate, right hand side corresponds to the maximum likelihood when restricting 0.4 < p <0.5. Red lines are simulated values, blue lines correspond to the data."}
+sims <- simulate(cov2,params=cov_global_mle,
+                 nsim=20,format="data.frame",include=TRUE)
+
+h1 <- ggplot(sims)
+h1 <- h1 + geom_line(aes(day, rejkjavik, group=.id, color=.id=="data"))
+h1 <- h1 + guides(color=FALSE)
+h1 <- h1 + labs(x="Time", y="Active Infections")
+
+sims <- simulate(cov2,params=cov_global_mle_res,
+                 nsim=20,format="data.frame",include=TRUE)
+
+h2 <- ggplot(sims)
+h2 <- h2 + geom_line(aes(day, rejkjavik, group=.id, color=.id=="data"))
+h2 <- h2 + guides(color=FALSE)
+h2 <- h2 + labs(x="Time", y="Active Infections")
+
+grid.arrange(h1, h2, ncol = 2)
+```
+
+# Limitations
+There are several limitations to the above analysis. First of all, I am dealing with approximate data rather than with the true number of reported active infections in the Greater Rejkjavik area. While I hope this approximation is reasonably close, the analysis would likely improve with the true data. 
+
+Secondly, it appears that the model is not completely identified using the data available. This is due to the fact that the ratio of symptomatic/asymptomatic infections and the time to recovery for asymptomatic cases are not known. An increase in the number asymptomatic infections could always be compensated by reducing the ratio of symptomatic/asymptomatic cases. While this has been discussed in the section [Parameter Values], I found further indications for this while modeling the rate of the imported exposed population. If this parameter isn't fixed, the likelihood maximization lets this parameter grow very large. This gave unreasonable amounts of people entering Iceland. Furthermore, the recovered population grew to an amount that seems incompatible with recent reports [@cnn] even though these reports might be imprecise themselves. Similar issues arise when treating the initial value for the E compartment as variable. More precise data on the fraction of asymptomatic/symptomatic cases would greatly improve the analysis. In general, more research should be done to investigate the impact of changing the initial values for the compartments.
+
+Furthermore, several aspects of the model would have greatly benefited if more time would have been available. For example, the precise rate of imported cases could have been modeled more precisely. Furthermore, the model doesn't take into account that many people are quarantined (not isolated). Lastly, there are several cases of detected asymptomatic infections. The current model only allows for these cases if they are imported. A sensible extension of the model would be to include a possibility for asymptomatic infections to be detected. 
+
+
+# Conclusion
+Given the little amount of data and information available for the spread SARS-CoV-2, I found that modelling the spread of SARS-CoV-2 presents a great challenge. The model presented in this report is not capable of providing precise insights into the fraction of asymptomatic and symptomatic courses of the disease. Furthermore, estimates of quantities such as the mean force of infection or the time until recovery seem to greatly depend on this fraction. However, for fixed fractions the results become clearer. Thus, the model might allow to gain some insights by fixing more parameters and investigating the resulting change on the remaining variable parameters.
+
+# References

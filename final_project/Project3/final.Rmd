@@ -1,0 +1,313 @@
+---
+title: "Study of COVID-19 data"
+date: "4/26/2020"
+output: 
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Introduction
+
+The data I got are cases of Covid-19 from China, Hubei from 22/01/2020 to 21/04/2020. The data is from humdata website dataset (https://data.humdata.org/dataset/novel-coronavirus-2019-ncov-cases).
+The original dataset contains the global data of cases, recovery numbers and death count. Here I only choose the data of infection and recovery cases.
+
+However, the COVID-19 is a serious infectious disease which is very contagious and during its spread in Hubei there are many other factors affect the number of cases such as the number of reagent and the close of city from public transportation. 
+
+So the question I have is that will the traditional SIR model we learned from lecture be suitable for COVID-19? If not, what may be the reason for that.
+In my project I'm going to apply SIR model to my data to see how suitable it can fit the situation of coronavirus.
+
+
+
+## Data overview
+The original data from website are accumulation cases, recovery and death from lots of countries globally. However, here I only select data from China, Hubei. Also, I extract the number of infection by calculating accumulation cases - recovery.
+
+```{r, warning = FALSE, echo=FALSE}
+bsflu_data <- read.csv(file="energydata_complete.csv", header = TRUE)
+```
+
+The plot of infection is shown as below.
+
+```{r, warning = FALSE, echo=FALSE}
+Infection <- bsflu_data$B
+plot(Infection ,type = "l")
+```
+
+The plot of recovery is shown as below.
+
+```{r, warning = FALSE, echo=FALSE}
+app <- bsflu_data$C
+plot(app,type = "l")
+```
+
+From the above two graph we can see the rough trend of infection and recovery plot of COVID-19 is similar to traditional infectious disease. So we first try to use a simple SIR model to fit the data.
+
+
+## Model fit.
+
+### SIR
+
+We can first use a simple SIR model with three states: susceptible; Infected and recovered which is sutible for our data.
+
+To apply the SIR model on our data, we will use POMP framework.
+
+
+```{r warning=FALSE, echo=FALSE}
+library(doParallel)
+library(doRNG)
+library(ggplot2)
+theme_set(theme_bw())
+library(plyr)
+library(reshape2)
+library(magrittr)
+library(pomp)
+
+sir_step <- Csnippet("
+double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt));
+double dN_IR = rbinom(I,1-exp(-gamma*dt));
+S -= dN_SI;
+I += dN_SI - dN_IR;
+R += dN_IR;
+")
+sir_rinit <- Csnippet("
+S = N-1;
+I = 1;
+R = 0;
+")
+
+pomp(subset(bsflu_data,select=c(day,B)),
+time="day",t0=0,rprocess=euler(sir_step,delta.t=1/6),
+rinit=sir_rinit,paramnames=c("N","Beta","gamma"),
+statenames=c("S","I","R")) -> sir
+
+sir_step <- Csnippet("
+double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt));
+double dN_IR = rbinom(I,1-exp(-gamma*dt));
+S -= dN_SI;
+I += dN_SI - dN_IR;
+R += dN_IR;
+H += dN_IR;
+")
+
+sir_rinit <- Csnippet("
+S = N-1;
+I = 1;
+R = 0;
+H = 0;
+")
+pomp(sir,rprocess=euler(sir_step,delta.t=1/6),rinit=sir_rinit,
+paramnames=c("Beta","gamma","N"),
+statenames=c("S","I","R","H")) -> sir
+
+pomp(sir,accumvars="H") -> sir
+dmeas <- Csnippet("lik = dbinom(B,H,rho,give_log);")
+rmeas <- Csnippet("B = rbinom(H,rho);")
+sir <- pomp(sir,rmeasure=rmeas,dmeasure=dmeas,
+statenames="H",paramnames="rho")
+```
+
+First, we can see the simulation of a simple SIR model with original data with parameters:
+
+Beta=1.5,gamma=1,rho=0.9,N=1000000.
+
+```{r warning=FALSE, echo=FALSE}
+sims <- simulate(sir,params=c(Beta=1.5,gamma=1,rho=0.9,N=1000000),
+nsim=20,format="data.frame",include=TRUE)
+ggplot(sims,mapping=aes(x=day,y=B,group=.id,color=.id=="data"))+
+geom_line()+guides(color=FALSE)
+
+
+
+```
+
+We can see from the simulation plot that the simulation graph is not close to the data. It's not a weird thing since the single SIR model is to simple for a complex situation. So I think of adding three extra states R1, R2 and R3 as taught on Lecture.
+
+
+### SIR with two extra states R1, R2 and R3
+After add R1 R2 there will be five states S, I, R1, R2, R3. And there will also be two extra parameters $\mu_{R1}$ and $\mu_{R2}$. 
+
+In my case, I now assume R1 to be the state that patient are confined and under cure process. R2 are patients who are still under convalescent. R3 are patients who are viewed as under healthy state.
+
+
+```{r, warning = FALSE, echo=FALSE}
+library(doParallel)
+library(doRNG)
+
+library(ggplot2)
+theme_set(theme_bw())
+library(plyr)
+library(reshape2)
+library(magrittr)
+library(pomp)
+
+bsflu_statenames <- c("S","I","R1","R2")
+bsflu_paramnames <- c("Beta","mu_IR","rho","mu_R1","mu_R2")
+bsflu_obsnames <- "B"
+
+bsflu_dmeasure <- "
+  lik = dpois(B,rho*R1+1e-6,give_log);
+"
+
+bsflu_rmeasure <- "
+  B = rpois(rho*R1+1e-6);
+"
+
+bsflu_rprocess <- "
+  double dN_SI = rbinom(S,1-exp(-Beta*I*dt));
+  double dN_IR1 = rbinom(I,1-exp(-dt*mu_IR));
+  double dN_R1R2 = rbinom(R1,1-exp(-dt*mu_R1));
+  double dN_R2R3 = rbinom(R2,1-exp(-dt*mu_R2));
+  S -= dN_SI;
+  I += dN_SI - dN_IR1;
+  R1 += dN_IR1 - dN_R1R2;
+  R2 += dN_R1R2 - dN_R2R3;
+"
+bsflu_rinit <- "
+ S=70000;
+ I=28;
+ R1=0;
+ R2=0;
+"
+
+bsflu2 <- pomp(
+  data=subset(bsflu_data,select=c(day,B)),
+  times="day",
+  t0=0,
+  rprocess=euler(
+    step.fun=Csnippet(bsflu_rprocess),
+    delta.t=1/12
+  ),
+  rmeasure=Csnippet(bsflu_rmeasure),
+  dmeasure=Csnippet(bsflu_dmeasure),
+  partrans=parameter_trans(
+    log=c("Beta","mu_IR","mu_R1","mu_R2"),
+    logit="rho"),
+  obsnames = bsflu_obsnames,
+  statenames=bsflu_statenames,
+  paramnames=bsflu_paramnames,
+  rinit=Csnippet(bsflu_rinit)
+)
+
+run_level <- 2
+bsflu_Np <-      switch(run_level, 100, 20000, 60000)
+bsflu_Nmif <-    switch(run_level,  10,   100,   300)
+bsflu_Neval <-   switch(run_level,  10,    10,    10)
+bsflu_Nglobal <- switch(run_level,  10,    10,   100)
+bsflu_Nlocal <-  switch(run_level,  10,    10,    20)
+
+
+
+bsflu_fixed_params <- c(mu_R1=1/(sum(bsflu_data$B)/70000),mu_R2=1/(sum(bsflu_data$C)/70000))
+
+
+bsflu_box <- rbind(
+  Beta=c(1,10),
+  mu_IR=c(0.5,2),
+  rho = c(0.5,1)
+)
+
+bsflu_rw.sd <- 0.02
+bsflu_cooling.fraction.50 <- 0.5
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:bsflu_Nglobal,
+      .packages='pomp', .combine=c) %dopar% mif2(     
+        bsflu2,
+        params=c(apply(bsflu_box,1,function(x)runif(1,x[1],x[2])),
+      bsflu_fixed_params),
+        Np=bsflu_Np,
+        Nmif=bsflu_Nmif,
+        cooling.fraction.50=bsflu_cooling.fraction.50,
+        rw.sd=rw.sd(
+          Beta=bsflu_rw.sd,
+          mu_IR=bsflu_rw.sd,
+          rho=bsflu_rw.sd
+        )
+      )
+    })
+})
+
+stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:bsflu_Nglobal,
+      .packages='pomp',.combine=rbind) %dopar% {
+        evals <- replicate(bsflu_Neval,
+      logLik(pfilter(bsflu2,params=coef(mifs_global[[i]]),Np=bsflu_Np)))
+          logmeanexp(evals, se=TRUE)
+    }
+  })
+})
+
+results_global <- data.frame(logLik=liks_global[,1],
+  logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+
+
+
+```
+
+We can first apply local search on our data to find proper parameters
+
+
+```{r, warning = FALSE, echo=FALSE}
+pairs(~logLik+Beta+mu_IR+rho,
+  data=subset(results_global,logLik>max(logLik)-250))
+```
+
+
+From the local search we can find parameter set that get the largest likelihood:
+Beta=2,mu_IR=0.5,rho=1,mu_R1=0.1, mu_R2 = 0.3
+
+To see the simulation graph with our parameters. The simulation is still not closed to our real data.
+
+```{r, warning = FALSE, echo=FALSE}
+sims <- simulate(bsflu2,params=c(Beta=2,mu_IR=1,rho=1,mu_R1=0.01, mu_R2 = 0.01),
+nsim=20,format="data.frame",include=TRUE)
+ggplot(sims,mapping=aes(x=day,y=B,group=.id,color=.id=="data"))+
+geom_line()+guides(color=FALSE)
+
+```
+
+
+Then we can see the plot of mif2 filter diagnostic
+
+
+```{r, warning = FALSE, echo=FALSE}
+plot(mifs_global)
+```
+
+The first plot is weird that lots of sample points are zero which may means that this model is not so suitable for COVID-19 data. The second plot shows that for loglik and parameters it's also hard to find a converge trend. So it is obvious that simple SIR and modified SIR is not suitable for COVID-19 data. 
+
+
+
+
+
+
+
+## Conclusion
+
+From the analysis above we can see that although the original data plot of COVID-19 have a pattern similar to normal convalescent. The model of simple SIR is not suitable of COVID-19 situation. We can see from my experiments that the parameters of model didn't show a converge trend and the likelihood analysis also seems not correct.
+
+Reason assumed:
+
+1. Coronavirus cases numbers are depend on the number of professional reagent. So the number of reagent can also be latent contraint on the data of coronavirus states.
+
+2. Some political measures also need to be considered. For instance, the control of public transportation can have a greate influence on the case of COVID-19.
+
+3. Another reason may be that the COVID-19 has a extreme long incubation period. So only infection and recovery state will be too weak to simulate the propagation of COVID-19.
+
+Future works: Some more complexed model such as SEIR model may have better performances on fitting the data of COVID-19. Since the SEIR model consider more complex situtation and add some states such as exposed which is proper for COVID-19.
+
+
+Also, there may be more trend explored if I run the model with more iterations. However, I'm now under really bad network condition and the situation will last until May. So sorry for the simple demo of plot and project.
+
+
+
+## Reference
+[1]Dataset https://archive.ics.uci.edu/ml/machine-learning-databases/00235/
+
+[2]STATS 531 course notations.

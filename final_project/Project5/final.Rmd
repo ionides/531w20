@@ -1,0 +1,574 @@
+---
+title: 'Volatility Analysis on Apple Stock'
+date: "4/29/2020"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    nember_sections: true
+    toc_depth: 2
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    toc: yes
+  word_document:
+    toc: yes
+subtitle: STATS 531 FINAL PROJECT
+bibliography: references.bib
+---
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+```{r setup, include=FALSE}
+myround<- function (x, digits = 1) {
+  # taken from the broman package
+  if (digits < 1) 
+    stop("This is intended for the case digits >= 1.")
+  if (length(digits) > 1) {
+    digits <- digits[1]
+    warning("Using only digits[1]")
+  }
+  tmp <- sprintf(paste("%.", digits, "f", sep = ""), x)
+  zero <- paste0("0.", paste(rep("0", digits), collapse = ""))
+  tmp[tmp == paste0("-", zero)] <- zero
+  tmp
+}
+
+
+options(
+  keep.source=TRUE,
+  encoding="UTF-8"
+)
+knitr::opts_chunk$set(echo = TRUE)
+if (!require('MASS')) install.packages('MASS'); library('MASS')
+if (!require('foreign')) install.packages('foreign'); library('foreign')
+if (!require('datasets')) install.packages('datasets'); library('datasets')
+if (!require('FNN')) install.packages('FNN'); library('FNN')
+if (!require('dplyr')) install.packages('dplyr'); library('dplyr')
+if (!require('tidyr')) install.packages('tidyr'); library('tidyr')
+if (!require('ggplot2')) install.packages('ggplot2'); library('ggplot2')
+if (!require('ISLR')) install.packages('ISLR'); library('ISLR')
+if (!require('gam')) install.packages('gam'); library('gam')
+if (!require('forecast')) install.packages('forecast'); library('forecast')
+if (!require('xts')) install.packages('xts'); library('xts')
+if (!require('zoo')) install.packages('zoo'); library('zoo')
+if (!require('fma')) install.packages('fma'); library('fma')
+if (!require('expsmooth')) install.packages('expsmooth'); library('expsmooth')
+if (!require('lmtest')) install.packages('lmtest'); library('lmtest')
+if (!require('tseries')) install.packages('tseries'); library('tseries')
+if (!require('fpp')) install.packages('fpp'); library('fpp')
+if (!require('knitr')) install.packages('knitr'); library('knitr')
+if (!require('ggpubr')) install.packages('ggpubr'); library('ggpubr')
+if (!require('simEd')) install.packages('simEd'); library('simEd')
+if (!require('bibtex')) install.packages('bibtex'); library('bibtex')
+if (!require('knitcitations')) install.packages('knitcitations');
+if (!require('doRNG')) install.packages('doRNG');
+if (!require('doParallel')) install.packages('doParallel');
+if (!require('plyr')) install.packages('plyr');
+if (!require('reshape2')) install.packages('reshape2');
+if (!require('magrittr')) install.packages('magrittr');
+if (!require('tidyverse')) install.packages('tidyverse');
+if (!require('foreach')) install.packages('foreach');
+if (!require('doMC')) install.packages('doMC');
+if (!require('pomp')) install.packages('pomp');
+if (!require('fBasics')) install.packages('fBasics');
+if (!require('zoo')) install.packages('zoo');
+if (!require('forecast')) install.packages('forecast');
+if (!require('tseries')) install.packages('tseries');
+theme_set(theme_bw())
+registerDoRNG(3899882)
+library(knitcitations); cleanbib()
+cite_options(citation_format = "pandoc", check.entries=FALSE)
+set.seed(4292020)
+```
+
+
+# 1.Introduction
+
+As one of the most successful and famous tech company in the world, [Apple](https://www.apple.com/)'s stock has always been financial practioner's focus ever since Apply stocks were traded publicly in NASDAQ from 1980. What's more interesting, Apple(AAPL) has gone through a very big Internet booming period last year and three great meltdowns recently. Last year is a great case for study stocks, especially for Apple, a representitive company which involves in both hardware and software high-end tech. Aside the effects from the market environment, Apple's stock performance is also affected by its productions' performances. For example, the launch of Iphone 11 and Ipad Pro took a hit in the market and improved Apple's stock performances. Gievn the US stock markets just went through [three melt-downs](https://www.wsj.com/articles/stock-market-meltdowns-historic-velocity-bruises-investors-11584955800), the instability certainly becomes a hot and interesting topic that people would like to investigate in. Volatility, as a measure of market's instability, certainly becomes an interesting topic that we would like to apply statistical knowledge to model it. In this paper, we will model Apple stock prices in both classic statistical models and Markov-property based models, and compare their results. We hope this project could provide some insight for investors in understanding stock volatility in time series sense.
+
+--------------------------------------------------------------------------------
+
+## 1.1 Questions
+
+Following our discussion above, I would like to raise one questions that I want to solve in my report:
+
+* Question: Could POMP model help us to describe stock price volatility better than GARCH model?
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+# 2.Data
+
+## 2.1 Data Source and Setting up
+
+The data were collected open-sourcely from [Yahoo! Finance](https://finance.yahoo.com/). The data covered Apple's stock information daily from Nov.13 2018 to Apr.28 2020. The data includes the timestamp, open price, daily high/low prices, close price, adjusted close prices, and volumn. Since we are interested in the volatility, we will use the adjusted close prices, which is a financial concept that the prices are adjusted for splits and dividends. More detailed information could be refered at [Investopedia](https://www.investopedia.com/terms/a/adjusted_closing_price.asp). Let's first take a look at the original data attributes(**Figure 1**).
+
+```{r,echo=FALSE,fig.align='center', fig.cap="Figure 1: Original Data"}
+AppleData = read.csv2(file = "AAPL.csv", sep = ",", header = TRUE)
+AppleData = tail(AppleData,365)
+head(AppleData)
+```
+
+----------------------------------------------------------------------------------
+
+## 2.2 Explortorary Data Analysis
+
+First we could take a look at the general distribution by looking at the summary statistics and plot for the time series along with the the time series on the log scale(**Figure 1**):
+
+```{r,echo=FALSE, warning=FALSE,fig.align='center', fig.cap="Figure 1: Adjusted Closing Price of Apple from 2018 to 2020 (Daily)"}
+par(mfrow=c(2,1))
+closingPrice = as.numeric(as.character(AppleData$Adj.Close))
+basicStats(closingPrice)
+plot(as.Date(AppleData$Date),as.numeric(closingPrice), type = "l", main = "Adjusted Closing Price of Apple from 2018 to 2020 (Daily)", ylab = "Closing Price", xlab = "Date", col = "red")
+plot(as.Date(AppleData$Date),log(as.numeric(closingPrice)), type = "l", main = "Log(Adjusted Closing Price) of Apple from 2018 to 2020 (Daily)", ylab = "Log(Closing Price)", xlab = "Date", col = "blue")
+```
+
+From the statistics summary, we could see that the daily adjusted closing prices for Apple has a very wide distribution across the 1 year(from \$139 to \$327) with a big variance of 2433.6876. Along with the plots on the right, we could see that the variances are pretty big across the whole time series. In general, the stock has an obvious increasing trend. The stock has some sudden spikes and dips happening during the gradual increases in its adjusted prices. After the log for the adjusted closing prices, the data pattern did not change, with only the magnitude becoming smaller
+
+However, since we are dealing with the volatility related problem, we need to introduce the concept of return, which has the concept introduced in [class note 14](https://ionides.github.io/531w20/14/notes14.pdf):
+
+$Return_{n}=\log \left(Price_{n}\right)-\log \left(Price_{n-1}\right)$
+
+where $n$ denotes the timestamp as day.
+
+In order to make more statoinary, we would de-mean the $Return_{n}$ by:
+
+$DemeanedReturn_{n}=Return_{n} - (1/N) *\sum_{k=1}^{N} Return_{k}$
+
+Then we could look at the plot of the time series data (**Figure 2**):
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center', fig.cap="Figure 2: LogDiffAppleDmean Closing Price from 2018 to 2020 (Daily)"}
+LogDiffApple = diff(log(as.numeric(as.character(AppleData$Adj.Close))))
+LogDiffAppleDmean=LogDiffApple - mean(LogDiffApple) ##Dmean
+plot(LogDiffAppleDmean, type="l", main = "Demeaned Log Diff Closing Price from 2018 to 2020 (Daily)", ylab = "Demeaned Log Diff Closing Price", xlab = "Date", col = "red")
+```
+
+We could see that after taking the difference of logrithmed adjusted closing prices and demeaning the data, the time series is much more weakly stationary. We could clealy observe the volatility across different sections on the time series, with a heavier tail due to the affect to market melt-down and corona virus. But we could observe that the variance is pretty random while the mean is around constant around 0, which still supports the facts towards the weakly stationary assumption.
+
+Before we move on to model the data, we would like to check the ACF(**Figure 3**) for the de-meaned return too.
+
+ACF is defined as [based on class note 2](http://ionides.github.io/531w20/02/notes02.pdf): 
+
+ <center>$\rho_h = \frac{\gamma_h}{\gamma_0}$  </center>  
+ 
+where $\gamma_h$ and $\gamma_0$ are actually $\gamma_{n,n+h}$ and $\gamma_{n,n}$ repectively. They are the autocovariances. h is the lag inbetween time.
+
+For random variable $Y_{1:N}$, autocovariances are $\gamma_{m, n}=\mathbb{E}\left[\left(Y_{m}-\mu_{m}\right)\left(Y_{n}-\mu_{n}\right)\right]$
+
+By plotting thr autocovariance versus the lags, we can get ACF plot for the de-meaned return:
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center', fig.cap="Figure 3: ACF plot of the Demeaned Return for Apple Stock"}
+acf(LogDiffAppleDmean, main="ACF plot of the Demeaned Return for Apple Stock")
+```
+
+We could observe that there are several spikes that indicates the autocorrealtions exisiting in between some of the lags, which we need to pay attention to in the later modeling. Though it seems correlated for some time points, it could coming from the relatively short period we sample from, and also it could be coming from the recent frequent emergencies happening all around. It is hard to conclude the autocorrelation is robust and valid from a simple ACF. But knowing the potentail relationship in between data points could help us to draw careful conclusion later on.
+
+One way to compare the result to is to leverage some mature package on the shelf to comapre our randomness to. For example, the [decompose](https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/decompose) function is a additive model that can help users to dempose a time series into seasonal (seasonal pattern), trend(long-term tendency), and short-term pattern with moving average. The additive model used is:
+
+<center>$Y_{t}=T_{t}+S_{t}+e_{t}$<center>
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center', fig.cap="Figure 4: Decompose of the Apple Stock Price by Seasonality and Trend"}
+appleTS = decompose(ts(closingPrice, frequency = 7), type = "additive")
+plot(appleTS)
+```
+
+I chose to assume a seasonl pattern of weekly pattern(infered from ACF above) on the stock and extract the long-term upward trend to check on the errors left(**Figure 4**). We could see the "random" section is showing the residuals defined as random volatility. By the begining of the year 2020, we could see that there are data with random high variance. Also the fluctuation at the end of year 2018 is higher than the middle of the year. Those patterns match the de-meaned return we showed in (**Figure 2**)
+
+
+
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+# 3.Model Fitting
+
+## 3.1 GARCH Model Fitting
+
+From [class note 14](https://ionides.github.io/531w20/14/notes14.pdf) we learned the generalized Autogressive Conditional Heteroskedasticity model(GARCH), which is GARCH(p,q) has the form of:
+
+<center>$Y_{n}=\epsilon_{n} \sqrt{V_{n}}$<center>
+
+<center>$V_{n}=\alpha_{0}+\sum_{j=1}^{p} \alpha_{j} Y_{n-j}^{2}+\sum_{k=1}^{q} \beta_{k} V_{n-k}$<center>
+
+where $\epsilon_{1: N}$ is the white noise.
+
+```{r,echo=FALSE, warning=FALSE}
+garchModel <- garch(LogDiffAppleDmean, grad = "numerical", trace = FALSE)
+garchLikelihood <- tseries:::logLik.garch(garchModel)
+garchModel
+garchLikelihood
+```
+
+The 3 parameter GARCH model has a maximized log likelihood of 916.0265. The three parameters concludes at $\alpha_{0} = 1.612e-05$, $\alpha_{1} = 1.831e-01$, and $\beta_{1} = 7.954e-01 $. This GARCH model's likelihood will be used as a benchmark for later comparison with POMP. However, we need to pay attention to that GARCH is hard to interpret that the parameters does not have a clear meaning. It is hard to draw conclusion from GARCH's output directly.
+
+
+
+## 3.2 POMP Model
+
+### 3.2.1 Model Background
+The POMP model fisrt would need a volatility model. Using the introduced concept of leverage in [class note 14](https://ionides.github.io/531w20/14/notes14.pdf), we want to define $R_{n}$ as the correlation between returns on day n and day n-1. The idea is from Breto`r citep(c("10.1016/j.spl.2014.04.003"))`, which uses a transformed scale to model a AR(1) random walk.
+
+<center>$R_{n}=\frac{\exp \left\{2 G_{n}\right\}-1}{\exp \left\{2 G_{n}\right\}+1}$<center>
+
+where $G_{n}$ is the random walk with Gaussian property.
+
+Given $G_{n}$ defines $R_{n}$ we would have
+
+<center>$Y_{n}=\exp \left\{H_{n}* 0.5\right\} \epsilon_{n}$ <center>
+
+<center>$H_{n}=\mu_{h}(1-\phi)+\phi H_{n-1}+\beta_{n-1} R_{n} \exp \left\{-H_{n-1} / 2\right\}+\omega_{n}$<center>
+
+<center>$G_{n}=G_{n-1}+\nu_{n}$<center>
+
+where we would have:
+
+$H_{n}$ is the log of volatility on the return we are modeling on
+
+$\beta_{n}=Y_{n} \sigma_{\eta} \sqrt{1-\phi^{2}}$, which indicates $\beta_{n}$ depends on $Y_{n}$
+
+$\epsilon_{n}$ is iid $N(0,1)$
+
+$v_{n}$ is iid $N\left(0, \sigma_{\nu}^{2}\right)$ sequence
+
+$\left\{\omega_{n}\right\}$ is an iid $N\left(0, \sigma_{\omega}^{2}\right)$ sequence
+
+### 3.2.2 Model Structure
+
+Gievn above-mentioned backgournd, we have constructed our volatility model. Then by transform the latent variables from $(G_{n},H{n})$ to $(G_{n + 1},H{n + 1})$ , we could use the state variable $X_{n}=\left(G_{n}, H_{n}$, Y_{n}\right) to model the process as a observation of $Y_{n}$ . The derivation could be refered at [class note 14](https://ionides.github.io/531w20/14/notes14.pdf)'s appendix. In this way, we are building a pomp object that could do filtering and estimation for parameters.
+
+In other words, we will define a recurssive particle filter by defining particle $j$ at time n-1:
+
+$X_{n-1, j}^{F}=\left(G_{n-1, j}^{F}, H_{n-1, j}^{F}, y_{n-1}\right)$
+
+Then we can build prediction particles:
+
+$\left(G_{n, j}^{P}, H_{n, j}^{P}\right) \sim f_{G_{n}, H_{n} | G_{n-1}, H_{n-1}, Y_{n-1}}\left(g_{n} | G_{n-1, j}^{F}, H_{n-1, j}^{F}, y_{n-1}\right)$ with weight $w_{n, j}=f_{Y_{n} | G_{n}, H_{n}}\left(y_{n} | G_{n, j}^{P}, H_{n, j}^{P}\right)$
+
+The notations follows the class notes introduced in [class note 12](http://ionides.github.io/531w20/12/notes12.pdf)To combine the above-metioned idea with Monte Carlo, we start with speicfying the POMP model parameters and volatility model, we would have two pomp objects (filter abd simulation). Per report's requirement, I will show the model structure so readers do not need to review my code by themselves. The model is built on the lecture node and with my own parameters choice for fine-tuning the results
+
+```{r}
+Apple_ivp_names <- c("G_0","H_0") ##initial values
+Apple_statenames <- c("H","G","Y_state") 
+Apple_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta") ##regular parameters
+Apple_paramnames <- c(Apple_rp_names,Apple_ivp_names)
+
+rproc1 <- "
+  double beta;
+  double omega;
+  double nu;
+  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * 
+    sqrt(1-tanh(G)*tanh(G)));
+  nu = rnorm(0, sigma_nu);
+  G += nu;
+  beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+  H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) 
+    * exp(-H * 0.5) + omega;
+"
+rproc2.filt <- "
+  Y_state = covaryt;
+ "
+rproc2.sim <- "
+  Y_state = rnorm( 0,exp(H/2) );
+ "
+
+
+Apple_rproc.filt <- paste(rproc1,rproc2.filt)
+Apple_rproc.sim <- paste(rproc1,rproc2.sim)
+
+```
+
+Moreover, we need to initilize Y, G, and H for the pomp model, then we could define the initilizing value of rmeasure and dmeasure.
+
+```{r}
+##The two objects share the common initializer
+Apple_rinit <- "
+  G = G_0;
+  H = H_0;
+  Y_state = rnorm( 0,exp(H/2) );
+"
+#d and r measures
+
+Apple_rmeasure <- "
+   y=Y_state;
+"
+
+Apple_dmeasure <- "
+   lik=dnorm(y,0,exp(H/2),give_log);
+"
+
+#Do log transform and logit transform
+Apple_partrans <- parameter_trans(
+  log=c("sigma_eta","sigma_nu"),
+  logit="phi"
+)
+```
+
+Here we build the main body of the POMP model by sub-in all the parameters we showed above
+
+```{r}
+Apple.filt <- pomp(data=data.frame(
+  y=LogDiffAppleDmean,time=1:length(LogDiffAppleDmean)),
+  statenames=Apple_statenames,
+  paramnames=Apple_paramnames,
+  times="time",
+  t0=0,
+  covar=covariate_table(
+    time=0:length(LogDiffAppleDmean),
+    covaryt=c(0,LogDiffAppleDmean),
+    times="time"),
+  rmeasure=Csnippet(Apple_rmeasure),
+  dmeasure=Csnippet(Apple_dmeasure),
+  rprocess=discrete_time(step.fun=Csnippet(Apple_rproc.filt),
+                         delta.t=1),
+  rinit=Csnippet(Apple_rinit),
+  partrans=Apple_partrans
+)
+```
+
+### 3.2.3 Stochastic Leverge Model with fixed parameters (Local Search)
+
+Here we show the fixed parameter choices of our self and also we build the simulation pomp object 
+
+```{r}
+params_test <- c(
+  sigma_nu = exp(-3),  
+  mu_h = -0.3,    
+  phi = expit(3.5),  
+  sigma_eta = exp(-0.06),
+  G_0 = 0,
+  H_0=0
+)
+
+sim1.sim <- pomp(Apple.filt, 
+                 statenames=Apple_statenames,
+                 paramnames=Apple_paramnames,
+                 rprocess=discrete_time(
+                   step.fun=Csnippet(Apple_rproc.sim),delta.t=1)
+)
+
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+```
+
+Similarily we build up the filter pomp object based on those parameter set up
+
+```{r}
+sim1.filt <- pomp(sim1.sim, 
+                  covar=covariate_table(
+                    time=c(timezero(sim1.sim),time(sim1.sim)),
+                    covaryt=c(obs(sim1.sim),NA),
+                    times="time"),
+                  statenames=Apple_statenames,
+                  paramnames=Apple_paramnames,
+                  rprocess=discrete_time(
+                    step.fun=Csnippet(Apple_rproc.filt),delta.t=1)
+)
+```
+
+First we choose runing level with 3, which corresponding to the size parameters listed below.
+
+```{r}
+run_level <- 3
+Apple_Np <-           switch(run_level, 100, 1e3, 2e3, 1000)
+Apple_Nmif <-         switch(run_level,  10, 100, 200, 100)
+Apple_Nreps_eval <-   switch(run_level,   4,  10,  20, 10)
+Apple_Nreps_local <-  switch(run_level,  10,  20,  20, 20)
+Apple_Nreps_global <- switch(run_level,  10,  20, 100, 75)
+stew(file=sprintf("p1f1-%d.rda",run_level),{
+  t.pf1 <- system.time(
+    pf1 <- foreach(i=1:Apple_Nreps_eval,
+                   .packages='pomp') %dopar% pfilter(sim1.filt,Np=Apple_Np))
+},seed = 4292020, kind = "L'Ecuyer")
+# (L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE))
+```
+
+Running the fixed-parameter model
+
+```{r}
+Apple_rw.sd_rp <- 0.02
+Apple_rw.sd_ivp <- 0.1
+Apple_cooling.fraction.50 <- 0.7
+Apple_rw.sd <- rw.sd(
+  sigma_nu  = Apple_rw.sd_rp,
+  mu_h      = Apple_rw.sd_rp,
+  phi       = Apple_rw.sd_rp,
+  sigma_eta = Apple_rw.sd_rp,
+  G_0       = ivp(Apple_rw.sd_ivp),
+  H_0       = ivp(Apple_rw.sd_ivp)
+)  
+stew(file=sprintf("m1if1-%d.rda",run_level),{
+  t.if1 <- system.time({
+    if1 <- foreach(i=1:Apple_Nreps_local,
+                   .packages='pomp', .combine=c) %dopar% mif2(Apple.filt,
+                                                              params=params_test,
+                                                              Np=Apple_Np,
+                                                              Nmif=Apple_Nmif,
+                                                              cooling.fraction.50=Apple_cooling.fraction.50,
+                                                              rw.sd = Apple_rw.sd)
+    L.if1 <- foreach(i=1:Apple_Nreps_local,
+                     .packages='pomp', .combine=rbind) %dopar% logmeanexp(
+                       replicate(Apple_Nreps_eval, logLik(pfilter(Apple.filt,
+                                                                  params=coef(if1[[i]]),Np=Apple_Np))), se=TRUE)
+  })
+},seed = 4292020, kind = "L'Ecuyer")
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],
+                    t(sapply(if1,coef)))
+if (run_level>1) write.table(r.if1,file="Apple_params.csv",
+                             append=TRUE,col.names=FALSE,row.names=FALSE)
+```
+
+Let's evaluate the fixed parameter models with diagnostic plots
+
+```{r}
+summary(r.if1 $logLik,digits=5)
+```
+
+From the summary above, we could see the Maxium likelihood is 932.6
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center', fig.cap="Figure 5: Pair Plot for Stochastic Leverge Model"}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,
+      data=subset(r.if1,logLik>max(logLik)-20))
+```
+
+From **Figure 5**, we could see the $\sigma_{\nu}$ is around 0.005, which is away from exp(-3); $\mu$ is distributed around our preset value of -3; $\phi$ is distributed sparsely as two groups, which is not a good sign for comparing to our preset value; $\sigma_{\eta}$ is distributed around 1, which is close to our preset $exp(-0.06)$
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center', fig.cap="Figure 6: Trajectory of Parameter Convergence over Iterations"}
+plot(if1)
+```
+
+From **Figure 6**, we could see that our convergences of parameters are decent. $\sigma_{\nu}$ , $\sigma_{\eta}$, $G_{0}$ and $H_{0}$  have a rough convergence except some deviations. Out of our expection, $\mu_{h}$ did not converge well as iterations goes up. $\phi$'s behaivor is dividing its convergence into two parts, which matches our findings from the pair plot. But it is not a good sign for the parameter.Moreover, we could see some randm dips in effective sample sizes along the iterations, but the average levels seems good.
+
+### 3.2.4 Global Search for Likelihood with Randomized Starting Value
+
+In order to address the potential problem, and double check our model's validaility, we need to run global search for likelihood with randomized starting value.
+Here we could see the ranges we set for each parameters
+
+```{r}
+Apple_box <- rbind(
+  sigma_nu=c(0.001,0.1),
+  mu_h    =c(-10,0),
+  phi = c(0.5,0.99),
+  sigma_eta = c(0.5,1),
+  G_0 = c(-2,2),
+  H_0 = c(-1,1)
+)
+
+
+
+stew(file=sprintf("box1_eval-%d.rda",run_level),{
+  t.box<- system.time({
+    if.box <- foreach(i=1:Apple_Nreps_global,
+                      .packages='pomp',.combine=c) %dopar% mif2(if1[[1]],
+                                                                params=apply(Apple_box,1,function(x)runif(1,x)))
+    L.box <- foreach(i=1:Apple_Nreps_global,
+                     .packages='pomp',.combine=rbind) %dopar% {
+                       logmeanexp(replicate(Apple_Nreps_eval, logLik(pfilter(
+                         Apple.filt,params=coef(if.box[[i]]),Np=Apple_Np))), 
+                         se=TRUE)
+                     }
+  })
+},seed = 4292020, kind = "L'Ecuyer")
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],
+                    t(sapply(if.box,coef)))
+```
+
+
+```{r}
+write.table(r.box,file="Apple_params1.csv", append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.box$logLik,digits=5)
+
+```
+
+From the summary, we could see that our model has a little bit improvement on maxium likelihood, which reaches 932.8. It imporves a little bit from the Stochastic Leverge Model.
+
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center', fig.cap="Figure 7: Pair Plot for Global Search"}
+pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,
+      data=subset(r.box,logLik>max(logLik)-10))
+```
+
+However, from **Figure 7**, we could the see the projected convergency might be pretty bad given parameters like $\mu_{h}$ and $\phi$ are showing inconvergent patterns.
+
+```{r,echo=FALSE, warning=FALSE, fig.align='center', fig.cap="Figure 8: Trajectory of Parameter Convergence over Iterations for Global Search"}
+plot(if.box)
+```
+
+
+Not as guessed from the pair plot, we could see from **Figure 8** that the parameters have pretty good convergency as iteration grows. $\sigma_{\nu}$, $G_{0}$ and $H_{0}$, and $\sigma_{\eta}$ shows pretty good trend for convergency. While $\mu_{h}$ and $\phi$ behaves similarly from local search.
+
+Moreover, we could see some random dips in effective sample sizes along the iterations, but the average levels seems good.
+
+
+## 3.3 Model Results Comparison
+
+Recall from out output above, GARCH model yields the maximum likelihood of 916.0265, which is lower than both local search(932.6) and global search(932.8) from POMP models. Hence based on how AIC works introduced in [class notes 5](https://ionides.github.io/531w20/05/notes05.pdf), we would pick POMP models over GARCH model in modeling volatility for apple.
+
+The global search has a maximum likelihood higher the maximum likelihood than local search, but not guranteed to be statistically significant.
+
+Both of the POMP models shows stable performances on the effective sample sizes, but they both suffer from some parameters convergence problems ($\mu_{h}$ and $\phi$).
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+# 4.Conclusion and Limitations
+
+## 4.1 Conclusion
+
+To put it into a nutshell, we could arrive at these conclusion from our analysis and answer the Question raised in section 1.1:
+
+* Question1: Could POMP model help us to describe stock price volatility better than GARCH model?
+
+By conducting likilihood test based on AIC value, we could see the maximum likelihood from POMP model did defeat the GARCH model. In other words, POMP model could do a better job in modeling Apple stock's volatility in our case study. To be specific, Random Walk Leverage volatility based POMP model with randomized starting parameters in global search usually do best job in modeling Apple stock volitility. However, the convergency of the model parameters would need more attention, which will be discussed in the following section.
+
+--------------------------------------------------------------------------------
+
+## 4.2 Limitations and Next Steps
+
+### 4.2.1 Limitations
+
+The Apple stock is going through market effects, government effects, and COVID-19 with a lot of interesting chain reactions. The current volatility model we choose might need some adptations to better describe the stock. Given we are doing case study on a single stock, we could introduce more specific parameters into the model to catch up the domain knolwdge. While limited by the coding period and learning depth, I did not dig through more detailed model that might be able to improve the POMP model performance.
+
+Given we have several parameters did not converge as we expected, it is not statistically reliable to conclude a "best" model. Even though I tried parameter tunings in many different combinations, I was not able to manage in between the time complexity and space complexity, which left my job using too much runtime. If I could find a better way to monitoring the dynamic relationship inbetween parameters, the job of finding "best" model parameters would be much more efficient.
+
+### 4.2.2 Next Steps
+
+Given we are using a lot of dataframe in the code, I would try to use a more fundamental data strucutre to try to carry out the computation job in higher dimensions to save some runtime for the project.
+
+I would like to try some optimization methods in leading to POMP model parameters convergency. I was thinking about adding penlties to some parameters to balance the performances in between parameters, which would lead to a more robust POMP model.
+
+In stead of only modeling volatility, I want to leverage POMP model into portfolio building in order to maxmize the return from investment. Learning POMP from time series domain opened up a differnt angle for me to handle time information. I want to apply pomp to generate more features from time series, which could benefit my study in Data Science a lot.
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
+# 5.Sources
+
+## 5.1 Packages
+
+All packages used are from [cran.r-project.org](https://cran.r-project.org/web/packages/available_packages_by_nam) 
+
+--------------------------------------------------------------------------------
+
+## 5.2 In-Class References
+
+[STATS 531 Class Notes](https://ionides.github.io/531w20/)
+
+[STATS 531 Past Projects](https://ionides.github.io/531w18/midterm_project/)
+
+The format of the RMD layout is learned from https://github.com/ionides/531w18/blob/master/final_project/21/final.Rmd
+
+--------------------------------------------------------------------------------
+
+## 5.3 Data
+
+The data set is obtained from [Yahoo! Finance](https://finance.yahoo.com/)
+
+--------------------------------------------------------------------------------
+
+## 5.4 Out-Class References
+
+```{r echo=FALSE, warning=FALSE,message=FALSE, error=FALSE} 
+  write.bibtex(file="references.bib")
+```

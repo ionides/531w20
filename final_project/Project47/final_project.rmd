@@ -1,0 +1,292 @@
+---
+title: "STATS 531 Final Project"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+fontsize: 16pt
+---
+\def\blank{\medskip\hrule\medskip}
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\usepackage{enumitem}
+
+```{r setup, include=FALSE}
+library(knitr)
+library(ggplot2)
+theme_set(theme_bw())
+library(plyr)
+library(reshape2)
+library(foreach)
+library(pomp)
+library(doParallel)
+registerDoParallel()
+library(doRNG)
+registerDoRNG(3899882)
+stopifnot(packageVersion("pomp")>="2.0")
+set.seed(2050320976)
+options(warning.length = 2000L)
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE
+)
+```
+-----------
+
+**<big>Overview</big>**.
+
+In this report, we want to apply time series technique to analyze the spread in Gold. The spread is definded as the difference between spot and futures price of a certain underlying asset, including commodities, stock indexes,etc. Theoretically, spread is determined by many factors, including storage costs and transaction commisions. Unlike the unpredictatble price trend of underlying asset, the spread sequence shows some features of stability, no matter for which asset and in which market. 
+
+Due to this reason, people both in academy and industry show strong interests in modelling spread <sup>[1],[2],[3]</sup>.Ideally, if we can descirble the movement of spread series correctly and make reasonable prediction, then we can set up corresponding trading strategy and make profits.
+
+Motivated by this, we want to find out which model could describe spread movement best and explore whether we can design profitable trading strategy based on this model.In the following, we will try 3 type of model, including ARIMA, GARCH and POMP. We will fit the data using these models and compare their fitted performance. Finally, we set up trading strategy and back-test the performance of 3 models.
+
+**<big>Data Exploraton</big>**.
+
+We retrieve gold spots and futures prices data between 2017/1/1 - 2019/12/31. This data could be downloaded from Wind Financial Terminal <sup>[4]</sup>, which is a leading data provider based in China. We will focus on LBMA gold spot price and COMEX gold futures price in this project.
+
+```{r,echo=FALSE}
+dat = read.csv("Gold Spreads.csv")
+t = as.character(dat$DateTime)
+t = as.Date(t,"%Y-%m-%d")
+y = dat$Spread
+plot(t,y,type = "l",xlab = "Year",ylab = "Spread",main = "History Spread Plot")
+```
+
+We can see that the spread series shows the feature of long-term mean reversion as well as short-term trend.
+
+**<big>Model Comparison</big>**.
+
+As mentioned above, we will try ARIMA, GARCH and POMP model in the following. Since POMP is much more complicated, so we will try this model at first and then use ARIMA and GARCH as benchmark to compare the fitted performance.
+
+**POMP**
+
+In this part, we build a model on the spread variable $\{Y_t\}$, with the assumption that it is a oservation of a latent state process<sup>[5]</sup> $\{X_k\}$.The dynamic of this process satisfies the discrete version of Ornstein–Uhlenbeck model<sup>[6]</sup>.
+
+$$X_{t+\Delta t} = X_t + (a-bX_t)\Delta t+\sigma\sqrt{\Delta t}\epsilon_{t+\Delta t}$$
+where $\{\epsilon_t\}$ is i.i.d standard normal variables which is also independent of $\{X_t\}$.Since we will deal with the daily data, so we can rewrite the equation above as: 
+$$X_{t+1} = A + BX_t +C\epsilon_{t+1}$$
+And we also assume $\{Y_k\}$ is the observation of $\{X_k\}$ with normal noise.
+$$Y_t = X_t + |D|\omega_t$$
+where $\{\omega_t\}$ is also i.i.d standard normal variables and independent of $\{\epsilon_t\}$. To summarize, our model is:
+
+$$X_{t} = A + BX_{t-1} +C\epsilon_{t}\; \text{(state process)}$$
+$$Y_t = X_t + |D|\omega_t\; \text{(observation process)}$$
+
+Our goal is use POMP model to estimate parameters `A`,`B`,`C`,`D`.
+ In the following, we try to build up a pomp model and estimate the parameters using IF2 algorithm. In our model, since `X` represents the mean-reversion level of `Y`, so we choose long-term mean of the spread as our initial guess of `X`.
+
+```{r}
+Spread_statenames<-c("X","e")
+Spread_paramnames<-c("A","B","C","D")
+Spread_obsnames<-"Spread"
+Spread_rinit <- Csnippet("
+  X = 0.57;
+")
+
+stochStep <- Csnippet("
+  e = rnorm(0,1);
+  X = A+B*X+C*e;
+")
+rmeas <- Csnippet("Spread=X+abs(D)*rnorm(0,1);")
+dmeas <- Csnippet("lik=dnorm(Spread,X,abs(D),give_log);")
+Spread_pomp <- pomp(
+  data=subset(dat,select=c(day,Spread)),
+  times="day",
+  t0=0,
+  rprocess=discrete.time.sim(step.fun=stochStep,delta.t=1),
+  rmeasure=rmeas,
+  dmeasure=dmeas,
+  obsnames = Spread_obsnames,
+  statenames=Spread_statenames,
+  paramnames=Spread_paramnames,
+  rinit=Spread_rinit
+)
+
+Spread_Np = 5000
+Spread_Nmif = 100
+Spread_Neval = 100
+Spread_Nglobal = 100
+Spread_box <- rbind(
+  A = c(-1,1),
+  B = c(-1,1),
+  C = c(-1,1),
+  D = c(-1,1)
+)
+Spread_rw.sd <- 0.02
+Spread_cooling.fraction.50 <- 0.5
+stew(file=sprintf("box_eval.rda"),{
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:Spread_Nglobal,
+      .packages='pomp', .combine=c) %dopar% mif2(     
+        Spread_pomp,
+        params=c(apply(Spread_box,1,function(x)runif(1,x[1],x[2]))),
+        Np=Spread_Np,
+        Nmif=Spread_Nmif,
+        cooling.fraction.50=Spread_cooling.fraction.50,
+        rw.sd=rw.sd(
+          A=Spread_rw.sd,
+          B=Spread_rw.sd,
+          C=Spread_rw.sd,
+          D=Spread_rw.sd
+        )
+      )
+    })
+})
+stew(file=sprintf("lik_global_eval.rda"),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:Spread_Nglobal,
+      .packages='pomp',.combine=rbind) %dopar% {
+        evals <- replicate(Spread_Neval,
+      logLik(pfilter(Spread_pomp,params=coef(mifs_global[[i]]),Np=Spread_Np)))
+          logmeanexp(evals, se=TRUE)
+    }
+  })
+})
+results_global <- data.frame(logLik=liks_global[,1],
+  logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(results_global$logLik,digits=5)
+```
+```{r}
+est_index = which.max(results_global$logLik)
+A_est = results_global$A[est_index]
+B_est = results_global$B[est_index]
+C_est = results_global$C[est_index]
+D_est = results_global$D[est_index]
+params_sim <- c(
+  A = A_est,
+  B = B_est,
+  C = C_est,
+  D = D_est
+)
+set.seed(1234)
+sim<- simulate(Spread_pomp,params=params_sim)
+plot(Spread~day,data=sim,type="l",col="red")
+lines(dat$Spread,type = "l",col="black")
+legend("topleft",legend=c("Real Spread","Simulated Spread"),col=c("black","red"),
+       cex=0.8,lt=1,bty = "n")
+```
+
+From the result above,we can see that the max logliklihood is around -1888. And from the simulated data, we can see that our POMP model looks ok but reasonably perfect.
+
+**GARCH and ARIMA**
+
+In this part, we try to fit the Spread series with GARCH and ARIMA model as well. For Garch model, we try Garch(1,1) with constant mean, one of the most popular time series model in financial territory. And for ARIMA model, we use the built-in auto.arima function to select the best fitted model in terms of AIC criteria. 
+
+```{r}
+library(fGarch)
+library(forecast)
+Spread_garch<-garchFit(~1+garch(1,1),data=dat$Spread,trace=F) 
+summary(Spread_garch)
+Spread_arima = auto.arima(dat$Spread,max.p = 4,max.q = 4, ic = "aic")
+summary(Spread_arima)
+```
+
+From the result above we can see that even though our fitted POMP model is the most complicated one,but it has the worst performance in terms of logliklihood. So one lesson we can learn from here is that more sophisticated model not necessarily fits any dataset better all the time. Even though we could already tell the fitted performance of those 3 models,we can still compare their trading performance under the same setting.
+
+**<big>Trading Strategy</big>**.
+
+Pairs trading<sup>[7]</sup> is one of the most popular trading strategies in Wall Street. It consists of a long position in one securites and short position in another. Based on statistical analyze, traders can choose appropriate time to open and close positions in order to make profits. We will use this strategy in the following. To be clear, when we say "long spread", we are referring to buying spots and selling futures.
+
+In k-th trading day, denote $\hat{Y_k}$ by the fitted value from estimated model, and ${Y_k}$ is the real value of spread. We determine the trading signal as follows: If $Y_k >\hat{Y_k }$, we will open the position and long the spread. When $Y_k \leq\hat{Y_k }$,we close the position. On the other hand, If $Y_k <\hat{Y_k }$, we will open the position and long the spread. When $Y_k \geq\hat{Y_k }$,we close the position. In the following, we compute the total return under 3 models with the same trading strategy.
+
+```{r}
+pomp_fit = sim@data
+garch_fit = Spread_garch@fitted
+arima_fit = Spread_arima$fitted
+N = length(dat$DateTime)
+y = dat$Spread
+spot = dat[,2]
+future = dat[,3]
+fit_array = array(c(pomp_fit,garch_fit,arima_fit),dim=c(N,3))
+total_ret = rep(0,3)
+for (j in c(1:3))
+{
+  y_hat = fit_array[,j]
+  pos = rep(0,N)
+for (i in c(1:N))
+{
+  if (i==1){
+    p = 0
+  }
+  else{
+    p = pos[i-1]
+  }
+  
+  if(p==0){
+    if(y[i]>y_hat[i]){
+    pos[i] = 1
+    spot_0 = spot[i]
+    future_0 = future[i]
+    }
+    else if (y[i]<y_hat[i]){
+    pos[i] = -1
+    spot_0 = spot[i]
+    future_0 = future[i]
+    }
+    else{
+    pos[i] = 0
+    }
+    ret = 0
+  }
+  
+  else if (p==-1){
+    if (y[i]>=y_hat[i]){
+      ret = spot[i] - spot_0 + future_0 - future[i]
+      pos[i] = 0
+    }
+    else{
+      ret = 0
+      pos[i] = p
+    }
+  }
+  else if (p==1){
+    if (y[i]<=y_hat[i]){
+      ret = -spot[i] + spot_0 - future_0 + future[i]
+      pos[i] = 0
+    }
+    else{
+      ret = 0
+      pos[i] = p
+    }
+  }
+  total_ret[j] = total_ret[j] + ret
+}
+}
+```
+```{r,echo=FALSE}
+cat("Total return of POMP model: ",total_ret[1])
+cat("\n")
+cat("Total return of GARCH model: ",total_ret[2])
+cat("\n")
+cat("Total return of ARIMA model: ",total_ret[3])
+```
+
+From the result above, we can see that the GARCH model also records the best trading perforamce. The POMP model can generate positive return but still remains the lowest relative ranking among 3 models.
+
+**<big>Conclusions</big>**.
+
+In this report, we use 3 type of time series model to fit the Gold Spread series and set up trading strategy based on that. For the fitting part, we can see that GARCH is the best and POMP is the worst. For the trading part, the relative ranking remains same.
+
+One lesson we can learn from this project is that the most sophisticated model is not necessarily the one fits the dataset best, so one should be very careful when choosing model. However, we only choose one type of POMP model. As long as we can propose appropriate ODE of Spread mathematically, we can try to rebuild the POMP model, which may lead a better fit as well as trading performance.
+
+**<big>Reference</big>**.
+
+[1].Tenyakov, A., Mamon, R. A computing platform for pairs-trading online implementation via a blended Kalman-HMM filtering approach. J Big Data 4, 46 (2017).
+
+[2].POMP Modeling for Spot-futures Spreads by a Variation of CIR Model.
+https://ionides.github.io/531w18/final_project.
+
+[3].Henrard M. (2014) Options and Spread Modelling. In: Interest Rate Modelling in the Multi-curve Framework. Applied Quantitative Finance. Palgrave Macmillan, London.
+
+[4].Wind Financial Terminal.
+https://www.wind.com.cn/en/wft.html.
+
+[5].Yuxiang Chen, Weiluo Ren, Xiaoxiong Lu. Machine Learning in Pairs Trading Strategies. Stanford University.
+
+[6].Ornstein–Uhlenbeck process.https://en.wikipedia.org/wiki/Ornstein%E2%80%93Uhlenbeck_process
+
+[7].Pairs trade.https://www.investopedia.com/terms/p/pairstrade.asp
+

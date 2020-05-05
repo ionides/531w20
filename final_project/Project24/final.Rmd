@@ -1,0 +1,499 @@
+---
+title: "A Throughout Analysis on Amazon Stock Price"
+date: "4/26/2020"
+output: 
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+Stock investments are one of the most popular ways for people to choose to grow their wealth. According to data from yahoo finance, Amazon went for IPO on May 15th, 1997, with an IPO price of $18 per share. There had been two 2-for-1 split and one 3-for-1 split. So if someone bought 100 shares of amazon stock with $1,800 in 1997, and still holding those stocks today, that money would grow to 100*2*2*3*2366 = $2,839,200 (calculated by amazon stock price on 4/27/2020). That is 157,733% of overall return in 23 years without adjusting inflation. The massive growth in stock price also sent Jeff Bezos to become the richest man in the world. 
+
+However, as an average investor (and a student took stats courses), how could someone like me benefit from the stock growth? Therefore, in this report, I will try to analyze the performance of amazon stock with the last 10 years of performance with different techniques, including ARMA (ARIMA models), GARCH model, and using pomp package to do the financial analysis. The ultimate goal is to try to provide some insight to readers about information and predictions about Amazon stock. Therefore, try to provide some investment insights.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE}
+set.seed(594709947L)
+library(ggplot2)
+theme_set(theme_bw())
+library(tidyverse)
+library(plyr)
+library(reshape2)
+library(foreach)
+#library(doMC)
+library(pomp)
+stopifnot(packageVersion("pomp")>="2.0")
+library(doParallel)
+registerDoParallel(cores = 6)
+options(warn = -1)
+```
+
+## Read in Data
+
+The data is a daily data consists of a total of 2,518 data points. The data are ranging from 4/26/2010  to 4/24/2020. We will first plot out the data and see how it looks like. The variable we interested in is the adjusted close price.
+
+```{r}
+AMZN <- read.csv("amzn.csv",sep=",",header=TRUE)
+AMZN$log_close <- log(AMZN$Adj.Close)
+diff <- diff(AMZN$log_close)
+demean <- diff - mean(diff)
+```
+
+## Plot the data
+
+I will show three different plots for this dataset. First, I will plot the relationship between time and the adjusted close price. Then I will plot the relationship between time and log-transformed adjusted close price. Finally, I will plot the relationship between time and difference of log return. 
+
+The difference of log return is defined as following:
+
+Let's denote the Amazon stock price on day t is $Z_t$, then difference of log return $D_t$ is defined as
+$$ D_t = log(Z_t) - log(Z_{t-1})$$
+
+The reason we want to see the difference in log return is that differenced data is typically mean stationary. We will see such characteristics in the following third plot. 
+
+```{r echo=FALSE}
+plot(as.Date(AMZN$Date),AMZN$Adj.Close,
+  xlab="date",ylab="close price",type="l", main="amazon stock price from 2010-2020")
+plot(as.Date(AMZN$Date),AMZN$Adj.Close, log="y",
+  xlab="date",ylab="close price",type="l", main="amazon stock price from 2010-2020 on log scale")
+plot(demean, type='l', main="demeaned log close price")
+```
+
+
+## ARMA? ARIMA? Auto-ARIMA?
+
+### ARMA with mean difference data
+
+Here is some information about ARIMA model:
+
+Here, the way I fit with ARIMA is actually fit ARMA with the demeaned data. In other words, I have already calculated the difference and then fit the processed data to the ARMA model. Therefore, below is the set up for the ARMA model.
+
+In the mathematical formula, an ARMA{p,q} model is defined by 
+$$Y_n = \mu + \phi_1(Y_{n-1} - \mu) + \phi_2(Y_{n-2} - \mu) + ... + \phi_p(Y_{n-p} - \mu) + \epsilon_n + \psi_1\epsilon_{n-1} + ... + \psi_q\epsilon_{n-q}$$  </br>
+
+The assumption for the ARMA model is stationary, and error term $\epsilon$ are idd, drawn from $N(0, \sigma^2)$  
+To choose the best ARMA(p,q) model, we could use Akaike information criteria (AIC) values to help us make that decision. Recall that lower AIC values mean better fits. Below are the AIC values from ARIMA(0,0) to ARIMA(5,5)
+
+```{r echo=FALSE}
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+AA_AIC_Table <- aic_table(demean,5,5)
+require(knitr)
+kable(AA_AIC_Table,digits=2)
+```
+
+As we could see from the AIC table, the model with the lowest AIC is ARIMA(3,1,3) with AIC value -12607.32. This model has moderate complexity and the lowest AIC value. Therefore, if we want to model Amazon stock with the ARIMA model, ARIMA(3,1,3) should be the right choice. 
+
+
+### ARIMA by auto.arima
+
+However, there is a package called forecast which has a function "auto.arima". According to the documentation, $^{[3]}$, auto.arima returns the best ARIMA model according to either AIC, AICc, or BIC value. The function searches for a possible model within the order constraints provided. Therefore, I will fit the adjusted close price on the log scale with auto.arima to see how the result will be different from what I did above.
+
+Also, if interested, the information of ARIMA model could be found at reference $^{[6]}$
+
+```{r echo=FALSE}
+# Make sure all package installed
+if(!require(forecast)) install.packages("forecast")
+if(!require(tseries)) install.packages("tseries")
+if(!require(timeSeries)) install.packages("timeSeries")
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(fGarch)) install.packages("fGarch")
+if(!require(rugarch)) install.packages("rugarch")
+library(forecast)
+library(tseries)
+library(timeSeries)
+library(dplyr)
+library(fGarch)
+library(rugarch)
+modelfit <- auto.arima(AMZN$log_close, lambda = "auto")
+summary(modelfit)
+```
+
+We could see here the choice becomes different from auto.arima. Now auto.arima suggests I should use ARIMA(1,1,1) instead of ARIMA(3,1,3), even before with ARIMA(3,1,3), I reach to an AIC value of -12607.32, and with auto.arima, the ARIMA(1,1,1) only has an AIC value of -11014.16. In the next step, I will try to do some forecasting the price of Amazon stock for the next 30 days, and try to construct a confidence interval with ARIMA(1,1,1). Let's see what will happen.
+
+### Forecasting 30 days of stock price with ARIMA(1,1,1) and Condifence Interval
+
+```{r}
+price_forecast <- forecast(modelfit, h=30)
+plot(price_forecast, main="Forecast plot with ARIMA(1,1,1)")
+```
+
+As we could see in this plot, ARIMA(1,1,1) predicted an increasing trend. We could identify this by the solid blue line, which slightly pointing upward. Moreover, one nice thing about the forecast package is that it will also provide confidence intervals. The two confidence intervals presented by default is 80% CI and 95% CI. Now let's take a look at what those numbers are. One thing we need to keep in mind is that our value is currently on the log scale. To make the result looks make sense, we need to perform an exponential transformation first.
+
+```{r}
+# Confidence interval
+CI <- as.data.frame(cbind(exp(price_forecast$lower), exp(price_forecast$upper)))
+CI
+```
+
+Just to keep in mind that the adjusted close price on 4/24/2020 is \$2,410.22. According to ARIMA(1,1,1) model, if we use a 95% confidence interval, that value could be either as low as \$2,043.438, or as high as \$2,926.585. So another way to think about this is if you bought one stock of Amazon on 4/24/2020, according to ARIMA(1,1,1) model, after one month, in most extreme cases, you could either lose \$366.79, or gain a whooping \$516.37. However, most likely, the number should be somewhere between. And that is the beauty of the stock market: higher risk, higher return. And that is why so many people, including me, were so into it.
+
+### Training / Testing Split and Model Validation
+
+One final thing is we cannot validate the model without talking about training/testing split. And here we go. Let's split the original data to the first 70% as the training set, and the last 30% as the testing set. Still, we will work on the adjusted close price, and we will work on the log scale. Let's see how our model fits the data. Again, since the data is on the log scale, we should always remember to do the exponential transformation to make the result easier to interpret. 
+
+```{r echo=FALSE}
+#Dividing the data into train and test, applying the model
+close_price <- AMZN$log_close
+N = length(close_price)
+n = ceiling(0.7*N)
+train = close_price[1:n]
+test  = close_price[(n+1):N]
+trainarimafit <- auto.arima(train, lambda = "auto")
+predlen=length(test)
+trainarimafit <- forecast(trainarimafit, h=predlen)
+#Plotting mean predicted values vs real data
+meanvalues <- as.vector(trainarimafit$mean)
+precios <- as.vector(exp(test))
+plot(exp(meanvalues), type= "l", col= "red", main="predicted price vs actual price on test set")
+lines(precios, type = "l")
+legend("bottomright", legend=c("Acutal Price", "Predicted Price"),
+       col=c("black", "red"), lty=1:1, cex=0.8,
+       box.lty=0)
+```
+
+As we could see above, the ARIMA(1,1,1) successfully caught the peak at the end. However, if we take a look near time 350, we could see Amazon stock price was relatively high at that time, too. However, ARIMA (1,1,1) was not able to catch that. That suggests us maybe we should try out other models. 
+
+## GARCH $^{[1]}$
+
+The generalized ARCH model, known as GARCH(p,q), has the form
+$$Y_n=\epsilon_n\sqrt{V_n}$$
+
+where 
+$$V_n=a_0+\sum_{j=1}^pa_jY_{n-j}^2+\sum_{k=1}^qb_kY_{n-k}^2$$
+and $\epsilon_{1:N}$ is white noise.
+
+The GARCH(1.1) model is a popular choice (Cowpertwait and Metcalfe; 2009) which can be fitted using garch() in the tseries R package.
+
+```{r}
+## ----garch--------------------------------------------------------------------
+require(tseries)
+fit.garch = garch(demean, order = c(1,1), grad = "numerical", trace = FALSE)
+L.garch <- tseries:::logLik.garch(fit.garch)
+L.garch
+```
+
+This 3-parameter model has a maximized log likelihood of 6338.532 with degree of freedom equals to 3.
+
+## GARCH take two
+
+As I explained the GARCH(1,1) above, it's time to use some prebuilt package to do some work. Here, I will try to apply a standard GARCH(1,1) model over ARMA(2,2), and we want to check whether or not any improvements are made comparing to our ARIMA model. 
+
+```{r echo=FALSE}
+#Dataset forecast upper first 5 values
+fitarfima = autoarfima(data = close_price, ar.max = 2, ma.max = 2, 
+criterion = "AIC", method = "full")
+fitarfima
+```
+
+From the summary above, we could see that we should use the ARFIMA(2,0,1) model. ARFIMA stands for Autoregressive fractionally integrated moving average. The detailed explanation of the ARFIMA model is below $^{[5]}$
+
+With the parameters collected, we choose ARFIMA (2,0,1) and incorporate the parameters into a garch model.
+
+
+```{r echo=FALSE}
+#define the model
+garch11closeprice=ugarchspec(variance.model=list(garchOrder=c(1,1)), mean.model=list(armaOrder=c(2,1)))
+#estimate model 
+garch11closepricefit=ugarchfit(spec=garch11closeprice, data=close_price)
+#conditional volatility plot
+plot.ts(sigma(garch11closepricefit), ylab="sigma(t)", col="blue", main="volatility plot")
+```
+
+As we could see, the volatility is somehow stationary with respect to time. Now let's see how the combined model performs and how the prediction looks like.
+
+```{r echo=FALSE}
+#GARCH Forecasting
+garchforecast <- ugarchforecast(garch11closepricefit, n.ahead = 30 )
+plot(garchforecast, which=1)
+```
+
+As we could see on the plot, the combined model provided a much smaller confidence interval, and the trend is still upwards. One thing to keep in mind is that the plot is different than all plots above; it is on the log scale. Since I didn't figure out a way to transform it back to the normal scale, I just keep it there. However, we should expect that if we transfer it to the normal scale, the upward slope should be steeper 
+
+## Pomp model with financial leverge $^{[1]}$ $^{[2]}$
+
+As we fitted the GARCH model before, we noticed that GARCH is more like a black box model, and it's parameters don't have a clear interpretation. To develop and test the hypothesis, we need the help of a pomp model.
+
+"$R_n$ is formally defined as leverage on day n as the correlation between index return on day (n-1) and the inincrease in the log volatility from day (n-1) to day n." Here, we introduce a pomp implementation of Breto (2014), which models $R_n$ as a random walk on a transformed scale $$R_n=\frac{exp(2G_n)-1}{exp(2G_n)+1}$$
+where $G_n$ is the usual, Gaussian random walk.
+
+$$Y_n=exp(H_n/2)\epsilon_n$$
+$$H_n=\mu_h(1-\phi)+\phi H_{n-1}+\beta_{n-1}R_nexp(-H_{n-1}/2)+W_n$$
+$$G_n=G_{n-1}+v_n$$
+where $\beta_n=Y_n\sigma_{\eta}\sqrt{1-\phi^2}$, $\epsilon_n \sim  i.i.d. N(0,1)$, $v_n \sim i.i.d. N(0,\sigma_v^2)$,
+and $w_n \sim i.i.d. N(0,\sigma_{\omega}^2)$
+
+
+Here, we choose the iterated filtering algorithm (IF2) to converge toward the region of parameter space maximizing the maximum likelihood. In this case, we use the state variable $X_n=(G_n,H_n,Y_n)$.
+
+To determinene a recursive particle filter, we write the filtered particle j at time n - 1 as
+
+$$X_{n-1,j}^F=(G_{n-1,j}^F,H_{n-1,j}^F,y_{n-1}^*)$$
+
+Now we can construct prediction particles at time n,
+$$(G_{n,j}^p,H_{n,j}^p)\sim f_{G_n,H_n|G_{n-1},H_{n-1},Y_{n-1}}(g_n|G_{n-1,j}^F,H_{n-1,j}^F,y_{n-1}^*)$$
+with corresponding weight $w_{n,j}=f_{Y_n|G_n,H_n}(y_n^*|G_{n,j}^P,H_{n,j}^P)$
+
+```{r}
+## ----names--------------------------------------------------------------------
+amzn_statenames <- c("H","G","Y_state")
+amzn_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta")
+amzn_ivp_names <- c("G_0","H_0")
+amzn_paramnames <- c(amzn_rp_names,amzn_ivp_names)
+amzn_covarnames <- "covaryt"
+
+## ----rproc--------------------------------------------------------------------
+rproc1 <- "
+  double beta,omega,nu;
+  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * 
+    sqrt(1-tanh(G)*tanh(G)));
+  nu = rnorm(0, sigma_nu);
+  G += nu;
+  beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+  H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) 
+    * exp(-H/2) + omega;
+"
+rproc2.sim <- "
+  Y_state = rnorm( 0,exp(H/2) );
+ "
+
+rproc2.filt <- "
+  Y_state = covaryt;
+ "
+amzn_rproc.sim <- paste(rproc1,rproc2.sim)
+amzn_rproc.filt <- paste(rproc1,rproc2.filt)
+
+
+## ----rinit--------------------------------------------------------------------
+amzn_rinit <- "
+  G = G_0;
+  H = H_0;
+  Y_state = rnorm( 0,exp(H/2) );
+"
+
+
+## ----measure------------------------------------------------------------------
+amzn_rmeasure <- "
+   y=Y_state;
+"
+
+amzn_dmeasure <- "
+   lik=dnorm(y,0,exp(H/2),give_log);
+"
+
+
+## ----transforms---------------------------------------------------------------
+amzn_partrans <- parameter_trans(
+  log=c("sigma_eta","sigma_nu"),
+  logit="phi"
+)
+
+
+## ----sp_pomp------------------------------------------------------------------
+amzn.filt <- pomp(data=data.frame(
+    y=demean,time=1:length(demean)),
+  statenames=amzn_statenames,
+  paramnames=amzn_paramnames,
+  times="time",
+  t0=0,
+  covar=covariate_table(
+    time=0:length(demean),
+    covaryt=c(0,demean),
+    times="time"),
+  rmeasure=Csnippet(amzn_rmeasure),
+  dmeasure=Csnippet(amzn_dmeasure),
+  rprocess=discrete_time(step.fun=Csnippet(amzn_rproc.filt),
+    delta.t=1),
+  rinit=Csnippet(amzn_rinit),
+  partrans=amzn_partrans
+)
+
+## ----run_level----------------------------------------------------------------
+run_level <- 1
+amzn_Np <-           switch(run_level, 100, 1e3, 2e3)
+amzn_Nmif <-         switch(run_level,  10, 100, 200)
+amzn_Nreps_eval <-   switch(run_level,   4,  10,  20)
+amzn_Nreps_local <-  switch(run_level,  10,  20,  20)
+amzn_Nreps_global <- switch(run_level,  10,  20, 100)
+
+## ----sim_pomp-----------------------------------------------------------------
+params_test <- c(
+  sigma_nu = exp(-4.5),  
+  mu_h = -0.25,  	 
+  phi = expit(4),	 
+  sigma_eta = exp(-0.07),
+  G_0 = 0,
+  H_0=0
+)
+
+
+
+## ----parallel-setup,cache=FALSE-----------------------------------------------
+library(doRNG)
+registerDoRNG(34118892)
+
+
+## ----mif_setup----------------------------------------------------------------
+amzn_rw.sd_rp <- 0.02
+amzn_rw.sd_ivp <- 0.1
+amzn_cooling.fraction.50 <- 0.5
+amzn_rw.sd <- rw.sd(
+  sigma_nu  = 0.02,
+  mu_h      = 0.02,
+  phi       = 0.02,
+  sigma_eta = 0.02,
+  G_0       = ivp(0.1),
+  H_0       = ivp(0.1)
+)	 
+
+## ----box----------------------------------------------------------------------
+amzn_box <- rbind(
+ sigma_nu=c(0.005,0.05),
+ mu_h    =c(-1,0),
+ phi = c(0.95,0.99),
+ sigma_eta = c(0.5,1),
+ G_0 = c(-2,2),
+ H_0 = c(-1,1)
+)
+varName <- c("amzn_rw.sd", "amzn.filt", "params_test", "amzn_Np", "amzn_Nmif", "amzn_cooling.fraction.50", "amzn_Nreps_eval", "amzn_box")
+stew(file=sprintf("mif1-%d.rda",run_level),{
+  t.if1 <- system.time({
+  if1 <- foreach(i=1:amzn_Nreps_local,
+    .packages='pomp', .combine=c, .export=varName) %dopar% mif2(amzn.filt,
+      params=params_test,
+      Np=amzn_Np,
+      Nmif=amzn_Nmif,
+      cooling.fraction.50=amzn_cooling.fraction.50,
+      rw.sd = amzn_rw.sd)
+  L.if1 <- foreach(i=1:amzn_Nreps_local,
+    .packages='pomp', .combine=rbind, .export=varName) %dopar% logmeanexp(
+      replicate(amzn_Nreps_eval, logLik(pfilter(amzn.filt,
+        params=coef(if1[[i]]),Np=amzn_Np))), se=TRUE)
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],
+  t(sapply(if1,coef)))
+if (run_level>1) write.table(r.if1,file="amzn_params.csv",
+  append=TRUE,col.names=FALSE,row.names=FALSE)
+
+## ----pairs_plot,echo=F,eval=T,out.width="11cm"--------------------------------
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,
+  data=subset(r.if1,logLik>max(logLik)-20))
+
+## ----box_eval-----------------------------------------------------------------
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  t.box <- system.time({
+    if.box <- foreach(i=1:amzn_Nreps_global,
+      .packages='pomp',.combine=c, .export = c("if1", "amzn_box")) %dopar% mif2(if1[[1]],
+        params=apply(amzn_box,1,function(x)runif(1,x)))
+    L.box <- foreach(i=1:amzn_Nreps_global,
+      .packages='pomp',.combine=rbind, .export = varName) %dopar% {
+         logmeanexp(replicate(amzn_Nreps_eval, logLik(pfilter(
+	     amzn.filt,params=coef(if.box[[i]]),Np=amzn_Np))), 
+           se=TRUE)
+       }
+  })
+},seed=290860873,kind="L'Ecuyer")
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],
+  t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="amzn_params.csv",
+  append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.box$logLik,digits=5)
+
+
+## ----pairs_global_plot,eval=T,echo=F,out.width="11cm"-------------------------
+pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,
+  data=subset(r.box,logLik>max(logLik)-10))
+
+plot(if.box)
+```
+
+By looking at the diagnosis plot, I found one thing that is very interesting. With run level = 3, the log-likelihood converges very fast; it converged after around ten iterations. Moreover, other parameters also converged after 150 iterations. That suggests we could save some computation power by reducing the number of iterations to 150. 
+
+## Compare GARCH with Pomp model
+
+```{r}
+## ----garch_benchmark,eval=F,echo=F--------------------------------------------
+library(tseries)
+fit.garch.benchmark <- garch(demean,grad = "numerical", trace = FALSE)
+L.garch.benchmark <- tseries:::logLik.garch(fit.garch.benchmark)
+L.garch.benchmark
+```
+
+```{r}
+# Log likelihood with Pomp
+summary(r.box$logLik,digits=5)
+```
+
+As we could see, the benchmark GARCH has log-likelihood of 6338.532. However, with the pomp model, the minimum value of log-likelihood is 6585. That brings the point why we should try out pomp model. 
+
+## Summary
+
+In a word, about all the analysis I did above, I personally think it's still a good time to hold amazon stocks since due to our model, the price should increase in the future. However, this is just a report for a class project, and any result I came up with cannot be treated as a piece of financial advice. I hope everyone reading this report could achieve financial success in the future. 
+
+
+## Refernece
+
+
+1. Lecture Notes 14
+
+2. https://ionides.github.io/531w18/final_project/1/final.html#conclu
+
+3. https://www.rdocumentation.org/packages/forecast/versions/8.12/topics/auto.arima
+
+4. https://rpubs.com/kapage/523169
+
+5. ARFIMA model: https://en.wikipedia.org/wiki/Autoregressive_fractionally_integrated_moving_average
+
+6. ARIMA model: https://en.wikipedia.org/wiki/Autoregressive_integrated_moving_average
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,392 @@
+---
+title: "Investigation on NASDAQ Price Volatility"
+date: "4/24/2020"
+output: 
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+# 1. Introduction
+
+Volatility is a statistical measure of the dispersion of returns for a given security or market index. In most cases, the higher the volatility, the riskier the security and in financial world, volatility often comes with big swings.[1] Therefore, I think modeling financial volatility is very important and worth of invetigation.
+
+The NASDAQ-100 index is a stock market index made up of 103 equity securities issued by 100 of the largest non-financial companies listed on the Nasdaq stock market.[2] Most of the NASDAQ-100 companies are very famous companies in all fields such as Apple, Costco, Intel etc. Therefore, I think it would be interesting to find out what the trend is for NASDAQ-100 and industry-leading companies in the past few years.
+
+To conduct the volutatiy analysis of NASDAQ-100 index time series data, I will try using GARCH model and POMP model to find the best model that can describe the financial volatility of NASDAQ-100 index in this project.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(594709947L)
+library(knitr)
+require(ggplot2)
+require(plyr)
+require(reshape2)
+require(magrittr)
+require(foreach)
+require(doParallel)
+require(doMC)
+require(tseries)
+theme_set(theme_bw())
+library(tidyverse)
+library(pomp)
+stopifnot(packageVersion("pomp")>="2.0")
+cores <- 2
+```
+
+# 2. Data Description
+
+In this project, the data is acquired from Federal Reserve Economic Data (FRED)[5], which is a database maintained by the Research division of the Federal Reserve Bank of St. Louis.[6]
+
+The data on which I'm conducting research is the NASDAQ-100 index data. There are a total of 463 data points ranging from 6-11-2001 to 04-26-2010. Each data point represents an average of that week's NASDAQ-100 index price, ending Friday.
+
+First, let's have a quick look at the data:
+```{r echo=F}
+dat <- read.table("NASDAQ100.csv",sep=",",header=TRUE)
+head(dat)
+```
+
+There are two columns in the data set. For each data point, we have parameter "DATE" which is its date, and parameter "NASDAQ100", which is its NASDAQ-100 price, reflecting the average price of the week this date resides, ending Friday.
+
+Let's look at a brief summary of the data below:
+
+```{r echo=F}
+summary(dat$NASDAQ100)
+```
+
+We can see that the maximum of the NASDAQ-100 index during this time period is 2212.2, while the minimum is 832.7, and it has an average of 1539.9.
+
+To have a more thorough idea of the data, let's make a time plot directly and see what it looks like!
+
+```{r echo=F}
+par(mfrow=c(1,2),mai=c(0.8,0.8,0.1,0.3))
+plot(as.Date(dat$DATE),dat$NASDAQ100,
+     xlab="date",ylab="NASDAQ100",type="l")
+abline(h=mean(dat$NASDAQ100),col="red")
+plot(as.Date(dat$DATE),log(dat$NASDAQ100),
+     xlab="date",ylab="NASDAQ100",type="l")
+abline(h=mean(log(dat$NASDAQ100)),col="red")
+```
+
+As we can see from above, both before and after log-transformation time plots are increasing during the period, while there are two sudden drops, during 2003 and 2008, which could be explained by the two huge financial crisis (economic recession). Here, we notice that, there is a trend in both plots. The average of log-transformed data is around 7.3. Then I take the difference of log-transformed data, which still has a slight mean. We eventually take the mean off this data set and use it as our final data set.
+
+
+```{r echo=F}
+N = nrow(dat)
+par(mfrow=c(1,2),mai=c(0.8,0.8,0.1,0.3))
+plot(as.Date(dat$DATE)[2:N-1],diff(log(dat$NASDAQ100)),type="l",xlab="Date",ylab="",main="Returns of price")
+abline(h=mean(diff(log(dat$NASDAQ100))),col="red")
+ret <- diff(log(dat$NASDAQ100))
+ret.de <- ret-mean(ret)
+plot(as.Date(dat$DATE)[2:N-1],ret.de,type="l",xlab="Date",ylab="",
+     main="Demeaned returns")
+abline(h=mean(ret.de),col="red")
+
+```
+
+From the plots, we notice that the demeaned return time plot is a random process around 0, while the variances around 2003 and 2008 are higher than other years. In other words, volatility is changing over time as well through the years. High volatilities often show up together as well.
+
+# 3. Garch Model
+
+The generalized autoregressive conditional heterosdacity model (known as GARCH model) is usually pretty useful in modeling financial data.
+
+### 3.1 Definition
+
+A GARCH(p,q) model has the form 
+$$y_n = \epsilon_n \sqrt V_n$$ 
+where $y_n$ is the return at time n, $V_n$ is the volatility at time n, and
+$$ V_n = \alpha_0 + \sum_{j=1}^p \alpha_j y_{n-j}^2 + \sum_{k=1}^q \beta_k V_{n-k} $$ 
+and $\epsilon_{1:n}$ is white noise.
+
+### 3.2 Fit a GARCH model
+
+Here, we want to fit a GARCH model which is a popular choice (Cowpertwait and
+Metcalfe; 2009) which can be fitted using garch() in the tseries R
+package.[4]
+
+```{r echo=F}
+require(tseries)
+fit.garch <- garch(ret.de,grad = "numerical",
+                   trace = FALSE)
+L.garch <- tseries:::logLik.garch(fit.garch)
+L.garch
+```
+
+This function builds a 3-parameter GARCH model which gives a maximized conditional log-likelihood of 1045.844 given the first max(p,q) values.
+
+This seems promising, but GARCH model is a black-box model, and we have no idea what those 3 parameters mean. They don't have clear interpretation. This might be helpful in terms of forcasting. However, if we want to develop and test a hypothesis that goes beyond the class of GARCH models, it is useful to have the POMP framework available.[4]
+
+# 4. POMP Model
+
+### 4.1 Random-Walk Leverage
+
+“Rn is formally defined as leverage on day n as the correlation between index return on day (n-1) and the inincrease in the log volatility from day (n-1) to day n.”
+
+Here, we will use a pomp implementation of Breto(2014) and model $R_n$ as a random walk on a transformed scale
+$$R_n=\frac{exp{\{2G_n\}}-1}{exp{\{2G_n\}}+1}$$ 
+where $\{G_n\}$ is the usual, Gaussian random walk.[4]
+
+### 4.2 Model Description
+
+Here, I want to use the Iterated Filtering algorithm (IF2)[8] to try to find the optimal parameter space which maximizes log-likelihood.[4]
+
+Filter particle j at time (n-1) is denoted as: 
+$$X_{n-1,j}^F=(G_{n-1,j}^F,H_{n-1,j}^F,y_{n-1}^*)$$
+Prediction particles at time n are denoted as:
+$$(G_{n,j}^p,H_{n,j}^p)\sim f_{G_n,H_n|G_{n-1},H_{n-1},Y_{n-1}}(g_n|G_{n-1,j}^F,H_{n-1,j}^F,y_{n-1}^*)$$
+with corresponding weight $w_{n,j}=f_{Y_n|G_n,H_n}(y_n^*|G_{n,j}^P,H_{n,j}^P)$
+
+### 4.3 Fit a POMP model
+
+```{r include=F}
+## ----names--------------------------------------------------------------------
+nsdq_statenames <- c("H","G","Y_state")
+nsdq_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta")
+nsdq_ivp_names <- c("G_0","H_0")
+nsdq_paramnames <- c(nsdq_rp_names,nsdq_ivp_names)
+
+rproc1 <- "
+  double beta,omega,nu;
+  omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * 
+    sqrt(1-tanh(G)*tanh(G)));
+  nu = rnorm(0, sigma_nu);
+  G += nu;
+  beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+  H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) 
+    * exp(-H/2) + omega;
+"
+rproc2.sim <- "
+  Y_state = rnorm( 0,exp(H/2) );
+ "
+
+rproc2.filt <- "
+  Y_state = covaryt;
+ "
+nsdq_rproc.sim <- paste(rproc1,rproc2.sim)
+nsdq_rproc.filt <- paste(rproc1,rproc2.filt)
+
+## ----rinit--------------------------------------------------------------------
+nsdq_rinit <- "
+  G = G_0;
+  H = H_0;
+  Y_state = rnorm( 0,exp(H/2) );
+"
+
+
+## ----measure------------------------------------------------------------------
+nsdq_rmeasure <- "
+   y=Y_state;
+"
+
+nsdq_dmeasure <- "
+   lik=dnorm(y,0,exp(H/2),give_log);
+"
+
+
+## ----transforms---------------------------------------------------------------
+nsdq_partrans <- parameter_trans(
+  log=c("sigma_eta","sigma_nu"),
+  logit="phi"
+)
+
+nsdq.filt <- pomp(data=data.frame(
+  y=ret.de,time=1:length(ret.de)),
+  statenames=nsdq_statenames,
+  paramnames=nsdq_paramnames,
+  times="time",
+  t0=0,
+  covar=covariate_table(
+    time=0:length(ret.de),
+    covaryt=c(0,ret.de),
+    times="time"),
+  rmeasure=Csnippet(nsdq_rmeasure),
+  dmeasure=Csnippet(nsdq_dmeasure),
+  rprocess=discrete_time(step.fun=Csnippet(nsdq_rproc.filt),
+                         delta.t=1),
+  rinit=Csnippet(nsdq_rinit),
+  partrans=nsdq_partrans
+)
+```
+
+Initial values and starting values of the parameters are given below. We will use these parameters to fit the first model.
+
+```{r}
+params_test <- c(
+  sigma_nu = exp(-4.5),  
+  mu_h = -0.25,  	 
+  phi = expit(4),	 
+  sigma_eta = exp(-0.07),
+  G_0 = 0,
+  H_0=0
+)
+nsdq_rw.sd_rp <- 0.02
+nsdq_rw.sd_ivp <- 0.1
+nsdq_cooling.fraction.50 <- 0.5
+```
+
+```{r include=F}
+sim1.sim <- pomp(nsdq.filt, 
+                 statenames=nsdq_statenames,
+                 paramnames=nsdq_paramnames,
+                 rprocess=discrete_time(
+                   step.fun=Csnippet(nsdq_rproc.sim),delta.t=1)
+)
+
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+
+sim1.filt <- pomp(sim1.sim, 
+                  covar=covariate_table(
+                    time=c(timezero(sim1.sim),time(sim1.sim)),
+                    covaryt=c(obs(sim1.sim),NA),
+                    times="time"),
+                  statenames=nsdq_statenames,
+                  paramnames=nsdq_paramnames,
+                  rprocess=discrete_time(
+                    step.fun=Csnippet(nsdq_rproc.filt),delta.t=1)
+)
+```
+
+Here, we will be using level 3 parameter setting to fit the model
+
+```{r}
+run_level <- 1
+nsdq_Np <-           switch(run_level, 100, 1e3, 2e3)
+nsdq_Nmif <-         switch(run_level,  10, 100, 200)
+nsdq_Nreps_eval <-   switch(run_level,   4,  10,  20)
+nsdq_Nreps_local <-  switch(run_level,  10,  20,  20)
+nsdq_Nreps_global <- switch(run_level,  10,  20, 100)
+```
+
+
+```{r echo=F}
+## ----parallel-setup,cache=FALSE-----------------------------------------------
+library(doParallel)
+registerDoParallel()
+library(doRNG)
+registerDoRNG(34118892)
+
+nsdq_rw.sd <- rw.sd(
+  sigma_nu  = nsdq_rw.sd_rp,
+  mu_h      = nsdq_rw.sd_rp,
+  phi       = nsdq_rw.sd_rp,
+  sigma_eta = nsdq_rw.sd_rp,
+  G_0       = ivp(nsdq_rw.sd_ivp),
+  H_0       = ivp(nsdq_rw.sd_ivp)
+)	 
+
+stew(file=sprintf("mif1-%d.rda",run_level),{
+  t.if1 <- system.time({
+    if1 <- foreach(i=1:nsdq_Nreps_local,
+                   .packages='pomp', .combine=c) %dopar% mif2(nsdq.filt,
+                                                              params=params_test,
+                                                              Np=nsdq_Np,
+                                                              Nmif=nsdq_Nmif,
+                                                              cooling.fraction.50=nsdq_cooling.fraction.50,
+                                                              rw.sd = nsdq_rw.sd)
+    L.if1 <- foreach(i=1:nsdq_Nreps_local,
+                     .packages='pomp', .combine=rbind) %dopar% logmeanexp(
+                       replicate(nsdq_Nreps_eval, logLik(pfilter(nsdq.filt,
+                                                                  params=coef(if1[[i]]),Np=nsdq_Np))), se=TRUE)
+  })
+},seed=318817883,kind="L'Ecuyer")
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],
+                    t(sapply(if1,coef)))
+if (run_level>1) write.table(r.if1,file="nsdq_params.csv",
+                             append=TRUE,col.names=FALSE,row.names=FALSE)
+```
+
+Below is the summary of the log-likelihood we got from this model.
+
+```{r}
+summary(r.if1$logLik,digits=5)
+```
+
+As we can see, using a simple POMP model without parameter searching is already better than a GARCH model! This is very promising and let's dig more into it by making plots of the model.
+
+```{r}
+## ----pairs_plot,echo=F,eval=T,out.width="11cm"--------------------------------
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,
+      data=subset(r.if1,logLik>max(logLik)-20))
+```
+
+As we can see from the pairs plots, the optimal value of $\sigma_{\nu}$ is roughly between (0, 0.03), the optimal value of $\mu_h$ is roughly between (-8, 4), the optimal value of $\phi$ is roughly between (0.95, 1) and the optimal value of $\sigma_\eta$ is roughly between (0, 20). Therefore, now we want to optimize the parameter settings for the POMP model, by trying many different potential start values for the parameters. This is useful since carrying out searches starting randomly throughout a large box can lead to reasonble evidence for successful global maximization.[4]
+
+```{r include=F}
+nsdq_box <- rbind(
+  sigma_nu=c(0,0.03),
+  mu_h    =c(-8,4),
+  phi = c(0.95,1),
+  sigma_eta = c(0,20),
+  G_0 = c(-2,2),
+  H_0 = c(-1,1)
+)
+
+
+## ----box_eval-----------------------------------------------------------------
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  t.box <- system.time({
+    if.box <- foreach(i=1:nsdq_Nreps_global,
+                      .packages='pomp',.combine=c) %dopar% mif2(if1[[1]],
+                                                                params=apply(nsdq_box,1,function(x)runif(1,x)))
+    L.box <- foreach(i=1:nsdq_Nreps_global,
+                     .packages='pomp',.combine=rbind) %dopar% {
+                       logmeanexp(replicate(nsdq_Nreps_eval, logLik(pfilter(
+                         nsdq.filt,params=coef(if.box[[i]]),Np=nsdq_Np))), 
+                         se=TRUE)
+                     }
+  })
+},seed=290860873,kind="L'Ecuyer")
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],
+                    t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="nsdq_params.csv",
+                            append=TRUE,col.names=FALSE,row.names=FALSE)
+```
+
+Now, let's look at the summary of the globally optimized model!
+
+```{r}
+summary(r.box$logLik,digits=5)
+```
+
+As we notice, this globally optimized model has a better performance than the IF2 model! The maximum log-likelihood 1059 is higher than 1053 and 1045, which are the maximum log-likelihood of IF2 model and GARCH model respectively.
+
+Now, let's have a look at the pairs graph of the parameters.
+
+```{r echo=F}
+## ----pairs_global_plot,eval=T,echo=F,out.width="11cm"-------------------------
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta+H_0,
+      data=subset(r.box,logLik>max(logLik)-10))
+```
+
+As we can see above, there are more points as compared to IF2 model, since we updated the range of parameters during this global optimization.
+
+From the plots, we can summarize that $\phi$ around 0.98, $H_0$ around -6, $\mu_h$ around -7.5, $\sigma_\eta$ around 0 might give us optimal log-likelihood. But other parameters don't show clear pattern here.
+
+```{r echo=F}
+plot(if.box)
+```
+
+From the convergence diagonostics, we know that log-likelihood, $G_0$ and $\phi$ converged pretty well during the time. However, other parameters did not converge well enough during this experiement. There are several things we could potentially try in the future: increase the number of iterations and refine the global box search parameter ranges.
+
+# Conclusion
+
+After running all the experiments above and conducting the diagonostices, I think POMP model outperforms the GARCH model in two perspectives:
+
+1. In terms of the maximized log-likelihood, POMP model gives higher value than the GARCH model, which is what we want.
+
+2. In terms of the interpretation, GARCH model is a black-box and we don't what the parameters stand for. However, each parameter in POMP model has its specific meaning and is easier to interpret. 
+
+Therefore, I think POMP model will do a better job in modeling the NASDAQ-100 time series data. In the future, increasing the number of iterations and refining the global box optimization might even improve the performance more.
+
+# Reference
+
+[1] https://www.investopedia.com/terms/v/volatility.asp
+[2] https://en.wikipedia.org/wiki/NASDAQ-100
+[3] https://ionides.github.io/531w18/final_project/2/final.html
+[4] https://ionides.github.io/531w20/14/notes14.pdf
+[5] https://fred.stlouisfed.org/series/NASDAQ100#0
+[6] https://en.wikipedia.org/wiki/Federal_Reserve_Economic_Data
+[7] https://ionides.github.io/531w18/final_project/1/final.html
+[8] Ionides, E.L., D.Nguyen, Y.Atchadé, S.Stoev, and A.A. King. 2015. Inference for dynamic and latent variable models via iterated, perturbed Bayes maps. Proceedings of the National Academy of Sciences of the U.S.A. 112:719–724.

@@ -1,0 +1,401 @@
+---
+title: "POMP modeling for SARS infection in HONG KONG"
+date: "4/18/2020"
+output: 
+  html_document:
+    theme: flatly
+    toc: yes
+---
+\newcommand\prob{\mathbb{P}}
+\newcommand\E{\mathbb{E}}
+\newcommand\var{\mathrm{Var}}
+\newcommand\cov{\mathrm{Cov}}
+\newcommand\R{\mathbb{R}}
+\newcommand\bi{\mathrm{Binomial}}
+--------
+
+
+```{r include=FALSE}
+# run but not shown code
+options(warn=-1)  # disable the warnings
+library(knitr)
+library(dplyr)
+library(plyr)
+library(reshape2)
+library(pomp)
+library(ggplot2)
+theme_set(theme_bw())
+
+library(doParallel)
+registerDoParallel()
+library(doRNG)
+registerDoRNG(3899882)
+```
+
+```{r include=FALSE, cache=TRUE}
+df <- read.table("sars_HK.csv",header=TRUE, sep=",",colClasses=c("Date",rep("numeric",4)))
+# typeof(df$Date)
+
+df$day = seq(1, length(df$Date))
+
+sir_step <- Csnippet("
+  double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt)); 
+  double dN_IR = rbinom(I,1-exp(-mu_IR*dt));
+  S -= dN_SI;
+  I += dN_SI - dN_IR;
+  R += dN_IR;
+  H += dN_IR;
+")
+sir_skel <- Csnippet("
+  double dN_SIdt = Beta*S*I/N;
+  double dN_IRdt = mu_IR*I;
+  DS = -dN_SIdt;
+  DI = dN_SIdt - dN_IRdt;
+  DR = dN_IRdt;
+  DH = dN_IRdt;
+")
+# At day zero, we’ll assume that I = 50 and R = 0, 
+# but we don’t know the actual population, 
+# so we treat N as a parameter to be estimated and let S(0) = N −50. 
+
+sir_rinit <- Csnippet("
+  S = nearbyint(N)-50;
+  I = 50;
+  R = 0;
+  H = 0;
+")
+
+sir_dmeas <- Csnippet("lik = dbinom(Current,H,rho,give_log);")
+sir_rmeas <- Csnippet("Current = rbinom(H,rho);")
+
+sir <- pomp(
+  subset(df,select=c(day,Current)),
+  time="day",t0=0, rprocess=euler(sir_step,delta.t=1/6),
+  rmeasure=sir_rmeas, dmeasure=sir_dmeas, rinit=sir_rinit,
+  skeleton = vectorfield(sir_skel),
+  paramnames=c("Beta","mu_IR","N","rho"), statenames=c("S","I","R","H"),
+  accumvars="H",
+  partrans=parameter_trans(log=c("Beta","mu_IR","N"),logit="rho")
+) 
+```
+
+## Introduction
+
+In the middle of the 2020 winter semester, COVID-19 ravaged the globe, causing great losses and inconvenience to the lives of people all over the world. Since the genetic sequence of this coronavirus is similar to the SARS virus, analyzing the regularities of SARS may provide inspiring insights in helping us fight against COVID-19.
+
+In this project, we study the number of SARS patients over time. SARS first broke out in 2003 in the Guangdong Province in China. To make the prorblem setting clear, we fixed the location of our study to Hong Kong, China, with the time period from March 17, 2003 to July 11, 2003.
+
+## Exploratory data analysis
+
+Our data source is derived from Kaggle's original data source "SARS 2003 Outbreak Complete Dataset" [1]. We extracted the statistics associated with Hong Kong into a separate file. First, we take a look at the distribution of our data:
+
+```{r echo=FALSE, cache=TRUE, fig.align='center'}
+ggplot(df, aes(Date, Current)) + 
+  geom_line() + geom_point() +
+  labs(title="Number of patients over time (Hong Kong, 2003)",
+        x ="Date", y = "Number of patients")
+```
+
+As we can see, the number of patients first increased with the outbreak of the disease. In April, the disease developed somewhat to the worst situation.  After it reached some peak value, the number of patients gradually dropped and the epidemic ceased. In the following parts, we are going to use the SIR model to describe this data.
+
+## POMP model fitting
+
+### Simulation and parametere finding
+
+The SIR model consists of three states, and the total population $N = S + I + R$. In our scenario, we don't know the exact value of $N$, so we have to estimate $N$ in the process. In addition, the relationships between the states are described as \[
+\begin{aligned}
+\Delta N_{SI} &= \bi (S, 1 - e^{-\frac{\beta}{N}I\cdot\Delta t}) \\
+\Delta N_{IR} &= \bi (I, 1-e^{-\mu_{IR}\cdot\Delta t}) \\
+S &= S - \Delta N_{SI} \\
+I &= I + \Delta N_{SI} - \Delta N_{IR} \\
+R &= R + \Delta N_{IR}
+\end{aligned}
+\]
+
+In addition, we use $\rho$ to represent the probability that an infection would results confinement. Since we know that SARS is a severe infectious disease, it is almost surely that an infected person gets quarantined. Therefore, we expect $\rho$ to have a value very close to 1.
+
+To start with, we randomly try some combination of parameters and test the conformity of their simulation. After many attempts, I discovered that when $\beta$ is slightly better than $\mu_{IR}$ (about $0.05\sim 0.1$), the simulation results are satisfactory. For example, we plot the simulation for $\beta=1.15$, $\mu_{IR} = 1.1$ and $\rho=0.99$,
+
+```{r fig.align='center'}
+sims <- simulate(sir,params=c(Beta=1.15,mu_IR=1.1,rho=0.99,N=100000),
+                 nsim=10,format="data.frame",include=TRUE)
+ggplot(sims,mapping=aes(x=day,y=Current,group=.id,color=.id=="data"))+
+  geom_line()+guides(color=FALSE)
+```
+
+Since we don't know the exact value of $N$, we refer to the maximum number of accumulated patients and set $N=100000$ as an approximation.
+
+Through the process of finding satisfactory simulation, we could discover that the value of $\beta$ and $\mu_{IR}$ affects the shape and scale of the simulated curve significantly. Therefore, in order to determine a most appropriate combination of parameters, we perform slicing in the $\beta$ and $\mu_{IR}$ dimension. 
+
+```{r, cache=TRUE, echo=FALSE, warning=FALSE}
+p <- sliceDesign( 
+  c(Beta=1.15,mu_IR=1.1,rho=0.99,N=100000), 
+  Beta=rep(seq(from=0.5,to=4,length=40),each=3),
+  mu_IR=rep(seq(from=0.5,to=2,length=40),each=3)
+)
+foreach (theta=iter(p,"row"), .combine=rbind, .inorder=FALSE) %dopar% {
+  pfilter(sir,params=unlist(theta),Np=5000) -> pf 
+  theta$loglik <- logLik(pf)
+  theta
+} -> p
+```
+
+```{r, fig.align='center', warning=FALSE}
+foreach (v=c("Beta","mu_IR")) %do% {
+  x <- subset(p,slice==v);
+  plot(x[[v]],x$loglik,xlab=v,ylab="loglik",ylim=range(x$loglik, na.rm=TRUE));
+} -> tmp # take foreach output
+```
+
+As we could see from the plots, the maximum likelihood is achieved when $\beta \approx 1.20$ and $\mu_{IR} \approx 1.05$, which is close to the findings of our simulation.
+
+```{r echo=FALSE, warning=FALSE, cache=TRUE}
+expand.grid(
+  Beta=seq(from=0.5,to=1.5,length=30), 
+  mu_IR=seq(from=0.5,to=1.5,length=30),
+  rho=0.99, N=100000) -> p
+foreach (theta=iter(p,"row"),.combine=rbind, .inorder=FALSE) %dopar% {
+  pfilter(sir,params=unlist(theta),Np=100) -> pf 
+  theta$loglik <- logLik(pf)
+  theta
+} -> p
+```
+
+In addition, we can perform a two-dimensional likelihood maximization and plot the cross section. The contour plot reveals interesting findings, as it suggests an almost linear relationship between $\beta$ and $\mu_{IR}$. This suggests that the two stages are highly correlated.
+
+```{r cache=TRUE, warning=FALSE, fig.align='center'}
+pp <- mutate(p,loglik=ifelse(loglik>max(loglik)-500,loglik,NA))
+ggplot(data=pp,mapping=aes(x=Beta,y=mu_IR,z=loglik,fill=loglik)) +
+  geom_tile(color=NA) + scale_fill_gradient() + 
+  geom_contour(color='black',binwidth=0.1) + 
+  labs(x=expression(beta),y=expression(mu[IR]))
+```
+
+### Likelihood maximization
+
+```{r include=FALSE}
+sars_rprocess <- "
+double dN_SI = rbinom(S,1-exp(-Beta*I*dt)); 
+double dN_IR1 = rbinom(I,1-exp(-dt*mu_IR)); 
+double dN_R1R2 = rbinom(R1,1-exp(-dt*mu_R1)); 
+double dN_R2R3 = rbinom(R2,1-exp(-dt*mu_R2)); 
+S -= dN_SI;
+I += dN_SI - dN_IR1;
+R1 += dN_IR1 - dN_R1R2;
+R2 += dN_R1R2 - dN_R2R3;
+"
+sars_dmeasure <- "
+lik = dpois(Current,rho*R1+1e-10,give_log);
+"
+sars_rmeasure <- "
+Current = rpois(rho*R1+1e-10);
+"
+# 1e-10 tolerance value prevents the code from crashing when all particles have R1=0.
+sars_rinit <- " 
+S=100000-50;
+I=50;
+R1=0;
+R2=0; "
+sars_statenames <- c("S","I","R1","R2")
+sars_paramnames <- c("Beta","mu_IR","rho","mu_R1","mu_R2")
+
+sars2 <- pomp( 
+  data=subset(df,select=c(day,Current)), times="day", t0=0,
+  rprocess=euler(step.fun=Csnippet(sars_rprocess),delta.t=1/12),
+  rmeasure=Csnippet(sars_rmeasure), dmeasure=Csnippet(sars_dmeasure),
+  partrans=parameter_trans(log=c("Beta","mu_IR","mu_R1","mu_R2"), logit="rho"),
+  statenames=sars_statenames, paramnames=sars_paramnames, rinit=Csnippet(sars_rinit)
+)
+
+run_level <- 2
+switch(run_level, {
+sars_Np=100; sars_Nmif=10; sars_Neval=10; sars_Nglobal=10; sars_Nlocal=10
+},{
+sars_Np=20000; sars_Nmif=100; sars_Neval=10; sars_Nglobal=10; sars_Nlocal=10
+},{
+sars_Np=60000; sars_Nmif=300; sars_Neval=10; sars_Nglobal=100; sars_Nlocal=20}
+)
+sars_params <- data.matrix( read.table("mif_sars_params.csv", row.names=NULL,header=TRUE))
+which_mle <- which.max(sars_params[,"logLik"]) 
+sars_mle <- sars_params[which_mle,][sars_paramnames]
+
+sars_fixed_params <- c(mu_R1=0.99, mu_R2=0.8) # mu_confined, mu_recovered
+```
+
+We further apply the IF2 algorithm to get insights of the parameters. 
+```{r}
+sars_rw.sd <- 0.02; 
+sars_cooling.fraction.50 <- 0.5 
+stew(file=sprintf("local_search-%d.rda",run_level),{
+  t_local <- system.time({
+    mifs_local <- foreach(i=1:sars_Nlocal, .packages='pomp', .combine=c) %dopar% {
+      mif2(sars2, params=sars_mle, Np=sars_Np,
+           Nmif=sars_Nmif, cooling.fraction.50=sars_cooling.fraction.50,
+           rw.sd=rw.sd(Beta=sars_rw.sd, mu_IR=sars_rw.sd, rho=sars_rw.sd))
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+stew(file=sprintf("lik_local-%d.rda",run_level),{
+  t_local_eval <- system.time({
+    liks_local <- foreach(i=1:sars_Nlocal,.combine=rbind) %dopar% {
+      evals <- replicate(sars_Neval, 
+                         logLik(pfilter(sars2,params=coef(mifs_local[[i]]),Np=sars_Np)))
+      logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+results_local <- data.frame(logLik=liks_local[,1], logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+
+summary(results_local$logLik, digits=10)
+```
+
+According to the local search results, we can generate the pairs plot of the likelihood and the parameters. The summary for the local search results suggested that the likelihood search has a wide range. Therefore, we set a threshold 500 lower than the maximum likelihood as condition and filter out the associated parameters.
+
+```{r, echo=FALSE, fig.align='center'}
+pairs(~logLik+Beta+mu_IR+rho, data=subset(results_local,logLik>max(logLik)-500))
+```
+
+From the pair plot, we can see conclude that $(0, 1)$ would be a proper range for $\beta$ and $\mu_{IR}$. In addition, a proper range for $\rho$ would be $(0.7, 1)$, which is in consistent with our previous assumption. Based on these results, we can set the range of the search box and perform a global likelihood search with random starting values.
+
+```{r}
+sars_box <- rbind(Beta=c(0,1), mu_IR=c(0,1),rho = c(0.7,1))
+```
+
+```{r, echo=FALSE}
+stew(file=sprintf("box_eval-%d.rda",run_level),{ 
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:sars_Nglobal,.combine=c) %dopar% { 
+      mif2(mifs_local[[1]], params=c(
+        apply(sars_box,1,function(x)runif(1,x[1],x[2])),
+        sars_fixed_params) 
+    )}
+  }) 
+},seed=1270401374,kind="L'Ecuyer")
+
+stew(file=sprintf("lik_global_eval-%d.rda",run_level),{ 
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:sars_Nglobal, .combine=rbind) %dopar% {
+      evals <- replicate(sars_Neval, 
+                         logLik(pfilter(sars2,params=coef(mifs_global[[i]]),Np=sars_Np))) 
+      logmeanexp(evals, se=TRUE)
+} })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global <- data.frame(
+  logLik=liks_global[,1], logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(results_global$logLik,digits=5)
+```
+
+From the summary of global search results, we could see that most of the parameter settings have a likelihood much lower than the maximum value, thus we could set a higher lower bound for the likelihood to filter out the noise simulations.
+
+```{r include=FALSE}
+if (run_level>1) 
+  write.table(rbind(results_local,results_global),
+              file="mif_sars_params.csv", append=TRUE,
+              col.names=FALSE,row.names=FALSE)
+```
+
+```{r, echo=FALSE, fig.align='center'}
+pairs(~logLik+Beta+mu_IR+rho, data=subset(results_global,logLik>max(logLik)-650))
+```
+
+```{r warning=FALSE}
+plot(mifs_global)
+```
+
+From the diagnostics, we could see that in the number of iterations we perform, $\beta$ and $\mu_{IR}$ hasn't show ideal converging behaviors yet. After tried out several different settings, I got similar plots (where $\beta$ and $\mu_{IR}$ has no apparrent convergent behavior but $\rho$ converges to values within $(0.6, 0.8)$. However, this seems to be coincident with previous simulation experiments. From previous simulation tests, we discovered that as long as $\beta$ is slightly larger than $\mu_{IR}$, we would obtain a reasonable simulation results. As a consequence, the maximization search result is somewhat consistent with my empirical findings. 
+
+### Profile likelihood
+
+We plot the profile likelihood for $\beta$, and we could see that when $\beta\approx 0.83$, the likelihood is maximized. 
+
+```{r, echo=FALSE}
+It=20
+nprof=20
+profile.box <- profileDesign(  
+  Beta=seq(0.1,1.5,length.out=It),
+  lower=c(mu_IR=0,rho=0.5),
+  upper=c(mu_IR=1.5,rho=1.0),
+  nprof=nprof
+)
+
+sars_rw.sd <- 0.02;
+stew(file=sprintf("profile_phi-%d.rda",It),{
+  t_pro <- system.time({
+    prof.llh <- foreach(i=1:dim(profile.box)[1], .packages='pomp', .combine=rbind) %dopar%{
+      mif2(
+        mifs_local[[1]],
+        params=c(unlist(profile.box[i,]),sars_fixed_params),
+        Np=sars_Np,
+        Nmif=sars_Nmif,
+        rw.sd=rw.sd(
+          mu_IR=sars_rw.sd,
+          rho=sars_rw.sd
+        )
+      ) -> mifs_pro
+      evals = replicate(10, logLik(pfilter(mifs_pro,Np=sars_Np)))
+      ll=logmeanexp(evals, se=TRUE)
+      data.frame(as.list(coef(mifs_pro)),
+                 loglik = ll[1],
+                 loglik.se = ll[2])
+    }
+  })
+},seed=5556129,kind="L'Ecuyer")
+
+prof.llh %<>%
+  mutate(Beta=exp(signif(log(Beta),5))) %>%
+  ddply(~Beta,subset,rank(-loglik)<=1)
+
+a=max(prof.llh$loglik)
+b=a-1.92
+CI=which(prof.llh$loglik>=b)
+c=prof.llh$Beta[min(CI)]
+d=prof.llh$Beta[max(CI)]
+
+```
+
+```{r, echo=FALSE, fig.align='center'}
+as.data.frame(prof.llh) %>%
+  ggplot(aes(x=Beta,y=loglik))+
+  geom_point()+
+  geom_smooth(method="loess")+
+  geom_hline(aes(yintercept=a),linetype="dashed")+
+  geom_hline(aes(yintercept=b),linetype="dashed")+
+  geom_vline(aes(xintercept=c),linetype="dashed")+
+  geom_vline(aes(xintercept=d),linetype="dashed") -> img
+plot(img)
+print(c(lower=c,upper=d))
+```
+
+## Discussion
+
+We use the set of parameters inferred from previous sections and performed several simulations. From the simulation plots, the estimation of parameters are reasonable.
+
+```{r echo=FALSE, fig.align='center',fig.height=6}
+sims <- simulate(sir,params=c(Beta=0.83,mu_IR=0.725,rho=0.78,N=100000),
+                 nsim=9,format="data.frame",include=TRUE)
+ggplot(data=sims,aes(x=day,y=Current,group=.id,color=(.id=="data"))) + 
+  geom_line() + 
+  guides(color=FALSE) + 
+  facet_wrap(~.id,ncol=2)
+```
+
+However, there are also some insufficiency in this modeling. Some of the stages and parameters have to be estimated in advance, and the rest of the search is based on the estimation. I attempted this project in the same approach as the lecture slides analyzed the boarding school influenza [3]. However, there are many differences between the two cases. First, Hong Kong is a large city, there are far more uncontrollable factors exists than a boarding school case. The population and human interaction has a more complex structure, which the simple SIR model may not capture and reflect. According to the Richards growth curve [4], the accumulated population under a natural environment will first increase and after some point reaches saturation and becomes stable. The current illness approximately reflects the slope of the accumulated infectious cases, but there also exists external factors that may affect the process, such as government policies, public health developments and inventions of new medications. Secondly, timely policies and treatment can be taken for a boarding school influenza. On the other hand, SARS broke out as a brand new disease and efficient treatment needs time to develop. In future, I may try to improve this modeling by taking into considerations of the development of external factors.
+
+## References
+
+1. *SARS 2003 Outbreak Complete Dataset.* Data on number of cases, deaths and recovered from across the globe. https://www.kaggle.com/imdevskp/sars-outbreak-2003-complete-dataset.
+2. Yicang Zhou, Zhien Ma, F. Brauer,
+*A discrete epidemic model for SARS transmission and control in China*, Mathematical and Computer Modelling, Volume 40, Issue 13, 2004, Pages 1491-1506, ISSN 0895-7177, https://doi.org/10.1016/j.mcm.2005.01.007.
+3. Stats531 Winter 2020, lecture slides.
+4. Richards curve, http://www.pisces-conservation.com/growthhelp/index.html?richards_curve.htm.
+5. Interactive mode for debugging on Great Lakes:
+```{bash eval=FALSE}
+srun --pty --account=stats531w20_class --cpus-per-task=16 --mem-per-cpu=8gb --partition=standard --time=1-00:00  /bin/bash
+```
+
+
+
+

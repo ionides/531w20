@@ -1,0 +1,900 @@
+---
+title: "Modeling stochastic growth and volality with Heston model on Google log-returns"
+date: "4/29/2020"
+output:
+  bookdown::html_document2:
+    number_sections: TRUE
+    theme: flatly
+    highlight: pygments
+    toc: TRUE
+    code_folding: hide
+---
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+  TeX: { equationNumbers: { autoNumber: "AMS" } }
+});
+</script>
+
+<style type="text/css">
+h1.title {
+  font-size: 28px;
+}
+h1 { /* Header 1 */
+  font-size: 22px;
+}
+h2 { /* Header 2 */
+    font-size: 18px;
+}
+h3 { /* Header 3 */
+  font-size: 16px;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+library(kfigr)
+
+# Packages
+library(ggplot2)
+library(ggfortify)
+library(BatchGetSymbols)
+library(bizdays)
+library(dplyr)
+library(xts)
+library(pomp)
+library(fGarch)
+library(e1071)
+library(GGally)
+library(grid)
+library(gridExtra)
+library(doParallel)
+library(kableExtra)
+mcopts <- list(set.seed=TRUE)
+
+
+# Introduction --------------------------------------------------------------
+load("Code/data.rda")
+
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	eval = TRUE
+)
+```
+
+# Introduction
+
+Stochastic volatility models are widely in econometrics and finance. In this case GARCH time series models are good candidates for modeling time varying volatility. Another kind of stochastic volatility model is the Heston model. Whereas the GARCH model parameters are estimated by maximum likelihood, we will estimate the Heston model parameters with a particle filter. 
+
+------------------------------------------
+
+# Data
+
+For our example, we will use daily Google stock prices from ($2015$-$03$-$06$) to ($2020$-$03$-$06$). The stock price data comes from Yahoo Finance. 
+
+```{r plot1, out.width = "70%", out.height = "70%", fig.align = "center", fig.cap= "Google Log-Returns.", anchor = "figure"}
+
+# Plot lrets ----------------------------------------------------------
+returns = xts(data, order.by=as.Date(rownames(data)))
+lrets = log(returns + 1)
+
+autoplot(lrets, colour = I("steelblue")) + ylab("log-returns")
+```
+
+```{r}
+df = as.data.frame(lrets$GOOG)
+summary(df)
+colnames(df) = "log-return variance"
+var(df)
+```
+
+In order to detect presence of volatility clustering, we plot the ACF of squared log-returns. In the plot below, we see that log-returns and square log-returns exhibit some serial correlation. This indicates that log-returns are not independent and there is some evidence of volatility clustering. 
+
+```{r plot22, fig.height = 6, fig.width = 12, out.height = "80%", fig.align = "center", fig.cap= "ACF plots of Google log-returns.", anchor = "figure"}
+p1 = autoplot(acf(lrets, plot = FALSE)[1:30]) + ggtitle("ACF of log-returns")
+p2 = autoplot(acf(lrets^2, plot = FALSE)[1:30]) + ggtitle("ACF of squared log-returns")
+
+grid.arrange(p1, p2, ncol = 2)
+```
+
+------------------------------------------
+
+# Methodology
+
+To model Google's log-returns, we propose a Heston model structure
+with time varying mean and variance [[2](https://en.wikipedia.org/wiki/Heston_model)]. This project builds upon a previous project on stochastic volatility [[7](https://ionides.github.io/531w18/final_project/16/final.html)]. Denote $S_{t}$ as the stock
+price process, $v_{t}$ as the volatility process, and $\mu_{t}$
+as the mean process. Then the dynamics can be written as, 
+\begin{align*}
+dS_{t} & =\mu_{t}S_{t}dt+\sqrt{v_{t}}S_{t}dW_{t}^{S}\\
+dv_{t} & =\kappa\left(\bar{\sigma}-v_{t}\right)dt+\sigma v_{t}dW_{t}^{v}\\
+d\mu_{t} & =\lambda\left(\bar{\mu}-\mu_{t}\right)dt+\eta dW_{t}^{\mu}\\
+\end{align*}
+
+where $d\left\langle W^{S},W^{v}\right\rangle =\rho$ are correlated
+brownian motions, but independent of $dW_{t}^{\mu}$, and each brownian
+motion term is distributed $N\left(0,t\right)$. The volatility and
+mean processes are Vasicek type models [[5](https://en.wikipedia.org/wiki/Vasicek_model)], where 
+
+- $\kappa,\lambda>0$ are the speeds of mean-reversion 
+- $\bar{\sigma},\bar{\mu}$ are the long-term variance and mean
+- $\sigma,\eta$ are known as volatility of volatility parameters
+
+Next we will derive a scheme for the log-returns process [[6](https://srdas.github.io/MLBook/FinanceModels.html)]. We know
+the solution of the price process $S_{t}$ on the interval $\Delta t$
+is log-normal,
+\begin{align}
+S_{t+\Delta t} & =S_{t}\exp\left\{ \left(\mu_{t}-\frac{1}{2}v_{t}\right)\Delta t+\sqrt{v_{t}}W_{\Delta t}\right\} \label{eq:1}
+\end{align}
+
+Dividing by $S_{t}$ and taking log of equation (\\ref{eq:1}), the log return
+process is given by,
+\begin{align*}
+R_{t+\Delta t} & :=\log\left(\frac{S_{t+\Delta t}}{S_{t}}\right)\\
+ & =\left(\mu_{t}-\frac{1}{2}v_{t}\right)\Delta t+\sqrt{v_{t}}W_{\Delta t}
+\end{align*}
+
+This implies that the distribution of log returns $R_{t+\Delta t}\sim N\left(\left(\mu_{t}-\frac{1}{2}v_{t}\right)\Delta t,v_{t}\Delta t\right)$.
+Next, in order for us to impose the condition that volatility be nonnegative,
+we also take its log transformation and compute the dynamics of the
+log-volatility process. Define $\nu_{t}:=\log\left(v_{t}\right)$. Using Ito's formula [[8](https://en.wikipedia.org/wiki/Itô%27s_lemma)], the dynamics of $\nu_{t}$ are given by,
+\begin{align*}
+d\nu_{t} & =\left[\kappa\left(\frac{\bar{\sigma}}{v_{t}}-1\right)-\frac{1}{2}\sigma^{2}\right]dt+\sigma dW_{t}^{\nu}\\
+ & =\left[\kappa\left(\bar{\sigma}e^{-\nu_{t}}-1\right)-\frac{1}{2}\sigma^{2}\right]dt+\sigma dW_{t}^{\nu}
+\end{align*}
+
+Taking $\Delta t=1$, we have the following Euler discretization. 
+\begin{align*}
+R_{n+1} & =\left(M_{n}-\frac{1}{2}V_{n}\right)+\sqrt{V_{n}}\epsilon_{1}\\
+V_{n+1} & =V_{n}+\kappa\left(\bar{\sigma}e^{-V_{n}}-1\right)-\frac{1}{2}\sigma^{2}+\sigma\left(\rho\epsilon_{1}+\sqrt{1-\rho^{2}}\epsilon_{2}\right)\\
+M_{n+1} & =M_{n}+\lambda\left(\bar{\mu}-M_{n}\right)+\eta\epsilon_{3}
+\end{align*}
+
+where $\epsilon_{1},\epsilon_{2},\epsilon_{3}\stackrel{iid}{\sim}N\left(0,1\right)$.
+
+
+------------------------------------------
+
+# Results {.tabset}
+
+## Normally Distributed 
+
+### Create pomp object
+
+```{r create_pomp}
+##### POMP object
+path = "Code/final_version/"
+
+lret_statenames <- c("Z", "M","Y_state")
+lret_rp_names <- c("k","s_bar","s", # volatility parameters
+                   "l", "m_bar", "e", # growth parameters
+                   "rho") # corr between brownian motions
+lret_ivp_names <- c("M_0", "Z_0")
+lret_paramnames <- c(lret_rp_names, lret_ivp_names)
+lret_covarnames <- "covaryt"
+
+
+rproc1 <- "
+  double dW, dW_v, dW_m, delta_t;
+  delta_t = 1;
+  dW = rnorm(0,sqrt(delta_t));
+  dW_v = rnorm(0,sqrt(delta_t));
+  dW_m = rnorm(0,sqrt(delta_t));
+  Z = Z + (k*(exp(-Z) * s_bar - 1) - 0.5*pow(s,2))*delta_t + s*(rho*dW + sqrt(1-pow(rho,2))*dW_v);
+  M = M + l*(m_bar - M)*delta_t + e*dW_m;
+"
+
+rproc2.sim <- "
+  Y_state = (M - 0.5*exp(Z))*delta_t + exp(Z/2)*dW;
+ "
+rproc2.filt <- "
+  Y_state = covaryt;
+ "
+lret_rproc.sim <- paste(rproc1,rproc2.sim)
+lret_rproc.filt <- paste(rproc1,rproc2.filt)
+
+# Define the initializer and assume that the measurement process is a perfect 
+# observation of Yt component of the state space.
+lret_rinit <- "
+  M = M_0;
+  Z = Z_0;
+  Y_state = rnorm( M - 0.5*exp(Z), exp(Z/2) );
+"
+
+lret_rmeasure = "
+  y = Y_state;
+"
+
+
+lret_dmeasure = "
+  lik = dnorm(y, M - 0.5*exp(Z), exp(Z/2), give_log);
+"
+
+# Perform log and logit transformations on parameters.
+lret_partrans <- parameter_trans(
+  log = c("s_bar","k", "s", "l", "e"), 
+  logit = "rho"
+)
+
+df = data.frame(y= lrets,
+                time=1:length(lrets))
+colnames(df) = c("y", "time")
+lret.filt <- pomp(data=df,
+                  statenames=lret_statenames, 
+                  paramnames=lret_paramnames, 
+                  times="time",
+                  t0=0,
+                  covar=covariate_table(time=0:length(lrets), 
+                                        covaryt=c(0,lrets), 
+                                        times="time"),
+                  rmeasure=Csnippet(lret_rmeasure), 
+                  dmeasure=Csnippet(lret_dmeasure), 
+                  rprocess= discrete_time(step.fun = Csnippet(lret_rproc.filt),
+                                          delta.t=1), 
+                  rinit=Csnippet(lret_rinit), 
+                  partrans=lret_partrans
+                  )
+```
+
+```{r create_sims, echo=FALSE}
+# Get most recent optimal params ---------------------------------------------
+r.if1 = read.table(paste0(path, "lret_params.csv"), sep = "" , header = F)
+params = c("k", "s_bar", "s", "l", "m_bar", "e", "rho", "M_0", "Z_0")
+colnames(r.if1) = c("logLik", "logLik_se", params)
+
+ind = which.max(r.if1$logLik)
+
+##################################################
+init_vals = r.if1[ind, -c(1,2)]
+for (param in params) {
+  assign(param, init_vals[param][[1]])
+  #assign(param, 0.1)
+}
+
+params_test <- c( 
+  k = k, 
+  s_bar = var(lrets)[1],
+  s = s, 
+  l = l, 
+  m_bar = mean(lrets),
+  e = e,
+  rho = rho,
+  M_0 = M_0,
+  Z_0 = Z_0
+)
+sim1.sim <- pomp(lret.filt, 
+                 statenames=lret_statenames, 
+                 paramnames=lret_paramnames, 
+                 rprocess=discrete_time(step.fun = Csnippet(lret_rproc.sim),
+                                        delta.t=1))
+```
+
+From the recursions derived in the previous section, we obtain a POMP model framework. We will call $M_n$ and $V_n$ our latent variables and use the state variable $R_n$ to model the measurement process as a perfect observation of the data. Next we will set $\bar{\mu},\bar{\sigma}$ parameters equal to the mean and variance of our historical log-returns. Below we print our initial parameters. We notice that $\kappa=0.019$ is low, which can be interpreted with the concept of half-life [[1](https://quant.stackexchange.com/questions/18602/speed-of-mean-reversion-of-an-interest-rate-model)]. $$\textrm{Half-Life} = \frac{\ln(2)}{0.019}=36.5 \textrm{ years}$$
+
+which means it takes rougly 37 business days for volatility to travel back to equilibrium from the current level. On the other hand $\lambda =1.95$, so the process is mean-reverting much quicker. We also notice that $\rho=0.95$ is quite high, which implies that the brownian motion from our log-volatility process is highly correlated with the brownian motiono of the log-reeturns process.  
+
+```{r}
+print(init_vals)
+```
+
+
+### Simulate with initial parameters
+
+Below we show a couple simulations to see how close they are to the data. We notice that our simulations tend to exhibit slightly higher volatility, but still provide a reasonably goood fit to the data. In section 4.1.5, we compare our model to ARMA(1,1)+GARCH(1,1). We also print the log-likelihoods of each simulation after filtering, which shows that our simulations can vary widely.
+
+```{r, echo = FALSE}
+# RUN PARTICLE FILTER
+## ----run_level----------------------------------------------------------------
+run_level <- 3
+lret_Np <-           switch(run_level, 100, 1e3, 2e3)
+lret_Nmif <-         switch(run_level,  10, 100, 200)
+lret_Nreps_eval <-   switch(run_level,   4,  10,  20)
+lret_Nreps_local <-  switch(run_level,  20,  20,  30)
+lret_Nreps_global <- switch(run_level,  20,  40, 100)
+```
+
+```{r plot2, fig.height = 5, fig.width = 12, out.height = "100%", fig.align = "center", fig.cap= "Comparing Simulations.", anchor = "figure"}
+nsims = 11
+set.seed(1)
+sims = sim1.sim %>%
+  simulate(nsim=nsims,format="data.frame",params=params_test, 
+           include.data=TRUE) 
+
+p1 = sims %>%
+  mutate(time = rep(index(lrets), nsims+1)) %>%
+  ggplot(mapping=aes(x=time,y=y,group=.id,alpha=(.id=="data")))+
+  scale_alpha_manual(values=c(`TRUE`= 1,`FALSE`=0.2),
+                     labels=c(`FALSE`="simulations",`TRUE`="data"))+
+  labs(alpha="", y = "log-returns", title = "Simulations vs true data") +
+  geom_line(color = "steelblue")+
+  theme_bw()
+
+p2 = sims %>%
+  mutate(time = rep(index(lrets), nsims+1)) %>%
+  ggplot(mapping=aes(x=time,y=y,group=.id,color=(.id=="data")))+
+  scale_color_manual(values=c(`TRUE`="steelblue",`FALSE`="steelblue1"),
+                     labels=c(`FALSE`="simulation",`TRUE`="data"))+
+  labs(color="", y = "log-returns")+
+  geom_line()+
+  facet_wrap(~.id)
+
+grid.arrange(p1, p2, ncol=2)
+```
+
+
+```{r}
+## ----pf1----------------------------------------------------------------------
+set.seed(1)
+sims = sim1.sim %>%
+  simulate(nsim=nsims,params=params_test)
+
+stew(file=sprintf(paste0(path,"pf1","-%d.rda"),run_level),{
+  ppf1 = foreach(i=1:nsims,.packages='pomp', .options.multicore=mcopts) %dopar% {
+    sim1.filt = pomp(sims[[i]], 
+                     covar=covariate_table(
+                       time=c(timezero(sims[[i]]), time(sims[[i]])),
+                       covaryt=c(obs(sims[[i]]),NA),
+                       times="time"),
+                     statenames=lret_statenames,
+                     paramnames=lret_paramnames,
+                     rprocess=discrete_time(step.fun=Csnippet(lret_rproc.filt), delta.t=1))
+    pf1 = foreach(i=1:lret_Nreps_eval, .packages='pomp', .options.multicore=mcopts) %dopar% {
+      pfilter(sim1.filt,Np=lret_Np)
+    }
+    pf1
+  }
+},kind="L'Ecuyer")
+
+L.pf1 = foreach(i=1:nsims, .packages='pomp', .options.multicore=mcopts, 
+                .combine=rbind) %dopar%
+  logmeanexp(sapply(ppf1[[i]],logLik),se=TRUE)
+
+r.pf1 <- data.frame(logLik=L.pf1[,1],logLik_se=L.pf1[,2])
+
+summary(r.pf1$logLik,digits=5)
+```
+
+
+### Local Search
+
+From our local search, we were able to find a narrow range of log-likelihoods with the best being 3662. This value likely corresponds to a local optimum. 
+
+```{r}
+## ----mif----------------------------------------------------------------------
+stew(file=sprintf(paste0(path,"mif1","-%d.rda"),run_level),{
+  t.if1 <- system.time({
+    if1 <- foreach(i=1:lret_Nreps_local, .packages='pomp', .combine=c) %dopar% 
+      mif2(lret.filt, 
+           params=params_test,
+           Np=lret_Np,
+           Nmif=lret_Nmif,
+           cooling.fraction.50 = lret_cooling.fraction.50,
+           rw.sd = lret_rw.sd)
+    L.if1 <- foreach(i=1:lret_Nreps_local,
+                     .packages='pomp', .combine=rbind, 
+                     .options.multicore=mcopts) %dopar% 
+      tryCatch(logmeanexp(replicate(lret_Nreps_eval,
+                                    logLik(pfilter(lret.filt, 
+                                                   params=coef(if1[[i]]),
+                                                   Np=lret_Np))), se=TRUE), 
+               error = function(e){c(0,0)})
+  })
+},kind="L'Ecuyer")
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],
+                    t(sapply(if1,coef)))
+
+summary(r.if1$logLik,digits=5)
+```
+
+
+
+### Global Search
+
+Our global search was able to find parameters that gave us a higher log-likelihood of 3666. We also print those parameters below. These values are similar to the ones from our initial parameters and have the same interpretation. 
+
+```{r}
+## ----box_eval--------------------------------------------------------------
+stew(file=sprintf(paste0(path,"box_eval","-%d.rda"),run_level),{
+  t.box <- system.time({
+    if.box <- foreach(i=1:lret_Nreps_global, .packages='pomp',.combine=c) %dopar% 
+      mif2(if1[[1]],
+           params=apply(lret_box,1,function(x) runif(1,x[1], x[2])))
+    
+    L.box <- foreach(i=1:lret_Nreps_global, .packages='pomp',.combine=rbind, 
+                     .options.multicore=mcopts) %dopar% 
+      logmeanexp(replicate(lret_Nreps_eval,
+                           logLik(pfilter(lret.filt, 
+                                          params=coef(if.box[[i]]),
+                                          Np=lret_Np))),se=TRUE)
+  })
+},kind="L'Ecuyer")
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],
+                    t(sapply(if.box,coef)))
+
+summary(r.box$logLik,digits=5)
+r.box[which.max(r.box$logLik),]
+```
+
+Below we show the convergence of our estimated parameters. We can see that the mean parameters $l$ and $e$ have more difficulty converging. However the log-likelihood does seem to have converged. 
+
+```{r plot3, out.width = "80%", out.height = "80%", fig.align = "center", fig.cap= "MIF2 convergence diagnostics.", anchor = "figure"}
+# Fix nfail issue by assigning each nfail to 0
+# for (i in 1:length(if.box)) {
+#   if.box[[i]]@nfail = integer(0)
+#   if.box[[i]]@traces[,"k"] = log(if.box[[i]]@traces[,"k"])
+#   if.box[[i]]@traces[,"e"] = log(if.box[[i]]@traces[,"e"])
+# }
+
+# ggplot traces
+if.box %>%
+  traces() %>%
+  melt()  %>%
+  dplyr::filter(variable != "s_bar") %>%
+  dplyr::filter(variable != "m_bar") %>%
+  dplyr::filter(variable != "nu") %>%
+  droplevels() %>%
+  ggplot(aes(x=iteration,y=value,group=L1,color=L1))+
+  geom_line()+
+  facet_wrap(~variable,scales="free_y")+
+  guides(color=FALSE)
+```
+
+```{r plot4, out.width = "80%", out.height = "80%", fig.align = "center", fig.cap= "Filter Diagnostics (last iteration).", anchor = "figure"}
+# ESS, conditional likelihood, covaryt
+if.box %>% 
+  as("data.frame") %>% 
+  tidyr::gather(variable,value,-time,-.id) %>%
+  dplyr::filter(variable == c("cond.loglik","ess")) %>%
+  ggplot(aes(x=time,y=value,group=.id,color=.id))+
+  geom_line()+
+  facet_wrap(~variable,scales="free_y",ncol=1)+
+  guides(color=FALSE)
+```
+
+From the likelihood surface plot we see that higher values of each parameter typically result in a higher likelihood. We also see that there is a strong relationship between the volatility parameters $\kappa$ and $\sigma$. 
+
+```{r plot5, out.width = "80%", out.height = "80%", fig.align = "center", fig.cap= "Likelihood surface.", anchor = "figure"}
+# ESS, conditional likelihood, covaryt
+r.box %>%
+  dplyr::filter(is.na(logLik) | logLik>max(logLik,na.rm=TRUE)-30) %>%
+  ggpairs(columns = c("logLik", "k", "s", "l", "rho", "M_0", "Z_0"),
+          upper = list(continuous = wrap("points", color = "steelblue")),
+          lower = list(continuous = wrap(ggally_cor, alignPercent = 0.8, 
+                                         color = "black")),
+          diag = list(continuous = wrap("densityDiag", color = "steelblue")))
+```
+
+
+### Benchmark model
+
+```{r results= "hide"}
+library(fGarch)
+
+bench_fit = garchFit( ~ arma(1,1) + garch(1,1), data = lrets, 
+                      cond.dist = c("norm"))
+```
+
+We take the benchmark model to be a standard ARMA(1,1)+GARCH(1,1) model. From the coefficient table, we see that the GARCH parameters are significant while the mean parameters are not. However, the log-likelihood of this model is far below our Heston model. In this case we would conclude that are Heston model has done a better job of fitting the data. 
+
+However, if we take into account that log-returns are heavy-tailed and replace the conditional error distribution of the GARCH model to a t-distribution, the log-likelihood of the benchmark model increases to 3681, which is now better than our Heston model. See section [4.2.5](). Thus in the next section we modify our Heston model. 
+
+```{r}
+kable(bench_fit@fit$matcoef) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+print(-bench_fit@fit$value)
+```
+
+
+```{r plot20,results ="hide", out.width = "70%", out.height = "70%", fig.align = "center", fig.cap= "Benchmark with 95% confidence bands.", anchor = "figure"}
+
+qplot(x = index(lrets), y = as.matrix(lrets), geom = "line", colour = I("steelblue")) + 
+  geom_line(aes(x = index(lrets), 
+                y = bench_fit@fitted), 
+            colour = "black") +
+  geom_line(aes(x = index(lrets), 
+                y = bench_fit@fitted + 2*bench_fit@sigma.t),
+            colour = "darkred") +
+  geom_line(aes(x = index(lrets), 
+                y = bench_fit@fitted - 2*bench_fit@sigma.t), 
+            colour = "darkred") + 
+  labs(x = "time", y = "log-returns")
+```
+
+
+## t-distributed
+
+### Create pomp object
+
+We make a small change to our POMP model from the previous section. Seeing from the data that returns are heavy-tailed, it might be better to model log-returns with a heavy-tailed distribution. Thus we will model the measurement process as,
+$$R_{n+1}\sim t_\nu(M_n - \frac{1}{2}\exp(V_n), \exp(\frac{1}{2}V_n))$$
+
+where $\hat{\nu}=\frac{6}{\hat{K}}+4$ is estimated from the excess kurtosis of the log-returns. Since $R_{n+1}$ no longer has a brownian motion, it is trickier to have correlated brownian motions as in the previous example, Instead, we will take the brownian motions be independent. 
+
+
+```{r create_pomp_std}
+##### POMP object
+path = "Code/t_dist/"
+
+library(e1071)
+kur = kurtosis(lrets) - 3
+nu = (6 / kur) + 4
+
+
+lret_statenames <- c("Z", "M","Y_state")
+lret_rp_names <- c("k","s_bar","s", # volatility parameters
+                   "l", "m_bar", "e", # growth parameters
+                   "rho","nu") # corr between brownian motions
+lret_ivp_names <- c("M_0", "Z_0")
+lret_paramnames <- c(lret_rp_names, lret_ivp_names)
+lret_covarnames <- "covaryt"
+
+### New method
+lret_rproc.filt = function (Z,M,k,s_bar,s,rho,l,m_bar,e,covaryt,...,delta.t) {
+  dW = rnorm(1,0,sqrt(delta.t))
+  dW_v = rnorm(1,0,sqrt(delta.t))
+  dW_m = rnorm(1,0,sqrt(delta.t))
+  c(Z = Z + (k*(exp(-Z) * s_bar - 1) - 0.5*s^2)*delta.t + s*(rho*dW + sqrt(1-rho^2)*dW_v),
+    M = M + l*(m_bar - M)*delta.t + e*dW_m,
+    Y_state = covaryt)
+}
+
+lret_rproc.sim = function (Z,M,Y_state,k,s_bar,s,rho,l,m_bar,e,nu,...,delta.t) {
+  dW = rnorm(1,0,sqrt(delta.t))
+  dW_v = rnorm(1,0,sqrt(delta.t))
+  dW_m = rnorm(1,0,sqrt(delta.t))
+  c(Z = Z + (k*(exp(-Z) * s_bar - 1) - 0.5*s^2)*delta.t + s*(rho*dW + sqrt(1-rho^2)*dW_v),
+    M = M + l*(m_bar - M)*delta.t + e*dW_m,
+    Y_state = rstd(1,M - 0.5*exp(Z), exp(Z/2), nu))
+}
+
+lret_rmeasure = function (Y_state, ...) {
+  c(y=Y_state)
+}
+
+lret_dmeasure = function (M,y,Z,nu, ...,log) {
+  dstd(y, M - 0.5*exp(Z), exp(Z/2), nu,log = log)
+}
+
+# Define the initializer and assume that the measurement process is a perfect 
+# observation of Yt component of the state space.
+
+lret_rinit = function (M_0, Z_0,nu,...) {
+  c(M = M_0,
+    Z = Z_0,
+    Y_state = rstd(1, M_0 - 0.5*exp(Z_0), exp(Z_0/2), nu))
+}
+
+expit <- function(real){1/(1+exp(-real))}
+logit <- function(p.arg){log(p.arg/(1-p.arg))}
+
+
+lret_partrans <- parameter_trans(
+  toEst = function(s_bar, k, s, l, e,rho,...) {
+    c(s_bar = log(s_bar),
+      k = log(k),
+      s = log(s),
+      l = log(l),
+      e = log(e),
+      rho = logit(rho))
+  }, fromEst = function(s_bar, k, s, l, e,rho,...) {
+    c(s_bar = exp(s_bar),
+      k = exp(k),
+      s = exp(s),
+      l = exp(l),
+      e = exp(e),
+      rho = expit(rho))
+  }
+)
+
+
+df = data.frame(y= lrets,
+                time=1:length(lrets))
+colnames(df) = c("y", "time")
+lret.filt <- pomp(data=df,
+                  times="time",
+                  t0=0,
+                  rinit=lret_rinit,
+                  covar=covariate_table(time=0:length(lrets), 
+                                        covaryt=c(0,lrets), 
+                                        times="time"),
+                  rmeasure=lret_rmeasure, 
+                  dmeasure=lret_dmeasure, 
+                  rprocess= discrete_time(
+                    step.fun=lret_rproc.filt,
+                    delta.t=1 
+                  ), 
+                  partrans=lret_partrans)
+```
+
+```{r create_sims_std, echo=FALSE}
+# Get most recent optimal params ---------------------------------------------
+r.if1 = read.table(paste0(path, "lret_params.csv"), sep = "" , header = F)
+params = c("k", "s_bar", "s", "l", "m_bar", "e", "rho", "M_0", "Z_0", "nu")
+colnames(r.if1) = c("logLik", "logLik_se", params)
+
+ind = which.max(r.if1$logLik)
+
+##################################################
+init_vals = r.if1[ind, -c(1,2)]
+for (param in params) {
+  assign(param, init_vals[param][[1]])
+}
+
+params_test <- c( 
+  k = k, 
+  s_bar = var(lrets)[1],
+  s = s, 
+  l = l, 
+  m_bar = mean(lrets),
+  e = e,
+  rho = 0,
+  M_0 = M_0,
+  Z_0 = Z_0,
+  nu = nu
+)
+
+sim1.sim <- pomp(lret.filt, 
+                 rprocess=discrete_time(step.fun = lret_rproc.sim,
+                                        delta.t=1))
+```
+
+These are our initial parameters,
+
+```{r}
+print(init_vals)
+```
+
+
+### Simulate with initial parameters
+
+Below we show a couple simulations to see how close they are to the data. We notice that our simulations seem to represent the data better than the previous model. The summary table below also shows that the maximum likelihood of one of our filtered simulations is also higher than what was achieved by the previous model. 
+
+```{r plot6, fig.height = 5, fig.width = 12, out.height = "100%", fig.align = "center", fig.cap= "Comparing Simulations.", anchor = "figure"}
+nsims = 11
+set.seed(1)
+sims = sim1.sim %>%
+  simulate(nsim=nsims,format="data.frame",params=params_test, 
+           include.data=TRUE) 
+p1 = sims %>%
+  mutate(time = rep(index(lrets), nsims+1)) %>%
+  ggplot(mapping=aes(x=time,y=y,group=.id,alpha=(.id=="data")))+
+  scale_alpha_manual(values=c(`TRUE`= 1,`FALSE`=0.2),
+                     labels=c(`FALSE`="simulations",`TRUE`="data"))+
+  labs(alpha="", y = "log-returns", title = "Simulations vs true data") +
+  geom_line(color = "hotpink2")+
+  theme_bw()
+
+p2 = sims %>%
+  mutate(time = rep(index(lrets), nsims+1)) %>%
+  ggplot(mapping=aes(x=time,y=y,group=.id,color=(.id=="data")))+
+  scale_color_manual(values=c(`TRUE`="hotpink2",`FALSE`="plum"),
+                     labels=c(`FALSE`="simulation",`TRUE`="data"))+
+  labs(color="", y = "log-returns")+
+  geom_line()+
+  facet_wrap(~.id)
+
+grid.arrange(p1, p2, ncol=2)
+```
+
+
+```{r}
+## ----pf1----------------------------------------------------------------------
+set.seed(1)
+sims = sim1.sim %>%
+  simulate(nsim=nsims,params=params_test)
+
+stew(file=sprintf(paste0(path,"pf1","-%d.rda"),run_level),{
+    ppf1 = foreach(i=1:nsims,.packages='pomp', .options.multicore=mcopts) %dopar% {
+      sim1.filt = pomp(sims[[i]], 
+                 covar=covariate_table(
+                   time=c(timezero(sims[[i]]), time(sims[[i]])),
+                   covaryt=c(obs(sims[[i]]),NA),
+                   times="time"),
+                 statenames=lret_statenames,
+                 paramnames=lret_paramnames,
+                 rprocess=discrete_time(step.fun=lret_rproc.filt, delta.t=1))
+      pf1 = foreach(i=1:lret_Nreps_eval, .packages='pomp', .options.multicore=mcopts) %dopar%
+        pfilter(sim1.filt,Np=lret_Np)
+      pf1
+      }
+    },kind="L'Ecuyer")
+
+L.pf1 = foreach(i=1:nsims, .packages='pomp', .options.multicore=mcopts, 
+                .combine=rbind) %dopar%
+    logmeanexp(sapply(ppf1[[i]],logLik),se=TRUE)
+
+r.pf1 <- data.frame(logLik=L.pf1[,1],logLik_se=L.pf1[,2])
+
+summary(r.pf1$logLik,digits=5)
+```
+
+
+### Local Search
+
+From our local search, we were able to find a narrow range of log-likelihoods with the best being 3681. This log-likelihood is about 15 log-likelihood units larger than than the global search from the previous model. Thus we have noticed some improvement in our Heston model by modeling the measurment process with a t-distribution. 
+
+```{r}
+## ----mif----------------------------------------------------------------------
+stew(file=sprintf(paste0(path,"mif1","-%d.rda"),run_level),{
+  t.if1 <- system.time({
+    if1 <- foreach(i=1:lret_Nreps_local, .packages='pomp', .combine=c) %dopar% 
+      mif2(lret.filt, 
+           params=params_test,
+           Np=lret_Np,
+           Nmif=lret_Nmif,
+           cooling.fraction.50 = lret_cooling.fraction.50,
+           rw.sd = lret_rw.sd)
+    L.if1 <- foreach(i=1:lret_Nreps_local,
+                     .packages='pomp', .combine=rbind, 
+                     .options.multicore=mcopts) %dopar% 
+      tryCatch(logmeanexp(replicate(lret_Nreps_eval,
+                                    logLik(pfilter(lret.filt, 
+                                                   params=coef(if1[[i]]),
+                                                   Np=lret_Np))), se=TRUE), 
+               error = function(e){c(0,0)})
+  })
+},kind="L'Ecuyer")
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],
+                    t(sapply(if1,coef)))
+
+summary(r.if1$logLik,digits=5)
+```
+
+
+
+### Global Search
+
+Our global search found parameters that give us a higher log-likelihood of 3684. This is the highest log-likelihood out of any model in our experiment. These values are similar to the ones from our initial parameters and have the same interpretation. 
+
+```{r}
+## ----box_eval--------------------------------------------------------------
+stew(file=sprintf(paste0(path,"box_eval","-%d.rda"),run_level),{
+  t.box <- system.time({
+    if.box <- foreach(i=1:lret_Nreps_global, .packages='pomp',.combine=c) %dopar% 
+      mif2(if1[[1]],
+           params=apply(lret_box,1,function(x) runif(1,x[1], x[2])))
+    
+    L.box <- foreach(i=1:lret_Nreps_global, .packages='pomp',.combine=rbind, 
+                     .options.multicore=mcopts) %dopar% 
+      logmeanexp(replicate(lret_Nreps_eval,
+                           logLik(pfilter(lret.filt, 
+                                          params=coef(if.box[[i]]),
+                                          Np=lret_Np))),se=TRUE)
+  })
+},kind="L'Ecuyer")
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],
+                    t(sapply(if.box,coef)))
+
+summary(r.box$logLik,digits=5)
+```
+
+We notice that the parameters that maximized the likelihood in our global search remain similar to parameters we have seen before. Much of the improvement in the log-likelihood likely comes from changing the distribution to t-distribution. 
+
+```{r}
+ind = which.max(r.box$logLik)
+print(r.box[ind,])
+```
+
+
+Below we show the convergence of our estimated parameters. Again, we can see that the mean parameters $l$ and $e$ have more difficulty converging, but the log-likelihood does seem to have converged. 
+
+```{r plot7, out.width = "80%", out.height = "80%", fig.align = "center", fig.cap= "MIF2 Convergence Diagnostics.", anchor = "figure"}
+# Fix nfail issue by assigning each nfail to 0
+# for (i in 1:length(if.box)) {
+#   if.box[[i]]@nfail = integer(0)
+#   if.box[[i]]@traces[,"k"] = log(if.box[[i]]@traces[,"k"])
+#   if.box[[i]]@traces[,"e"] = log(if.box[[i]]@traces[,"e"])
+# }
+
+pinks = colorRampPalette(c("red","plum"))
+# ggplot traces
+if.box %>%
+  traces() %>%
+  melt()  %>%
+  dplyr::filter(variable != "s_bar") %>%
+  dplyr::filter(variable != "m_bar") %>%
+  dplyr::filter(variable != "nu") %>%
+  dplyr::filter(variable != "rho") %>%
+  droplevels() %>%
+  ggplot(aes(x=iteration,y=value,group=as.factor(L1),color=as.factor(L1)))+
+  geom_line()+
+  scale_colour_manual(values= pinks(lret_Nreps_global)) +
+  facet_wrap(~variable,scales="free_y")+
+  guides(color=FALSE)
+```
+
+```{r plot8, out.width = "80%", out.height = "80%", fig.align = "center", fig.cap= "Filter diagnostics (last iteration).", anchor = "figure"}
+# ESS, conditional likelihood, covaryt
+if.box %>% 
+  as("data.frame") %>% 
+  tidyr::gather(variable,value,-time,-.id) %>%
+  dplyr::filter(variable == c("cond.loglik","ess")) %>%
+  ggplot(aes(x=time,y=value,group=as.factor(.id),color=as.factor(.id)))+
+  geom_line()+
+  scale_colour_manual(values= pinks(lret_Nreps_global)) +
+  facet_wrap(~variable,scales="free_y",ncol=1)+
+  guides(color=FALSE)
+
+```
+
+```{r plot9, out.width = "80%", out.height = "80%", fig.align = "center", fig.cap= "Likelihood surface.", anchor = "figure"}
+r.box %>%
+  dplyr::filter(is.na(logLik) | logLik>max(logLik,na.rm=TRUE)-30) %>%
+  ggpairs(columns = c("logLik", "k", "s", "l", "M_0", "Z_0"),
+          upper = list(continuous = wrap("points", color = "hotpink2")),
+          lower = list(continuous = wrap(ggally_cor, alignPercent = 0.8, 
+                                         color = "black")),
+          diag = list(continuous = wrap("densityDiag", color = "plum")))
+```
+
+
+### Benchmark model (t-dist)
+
+```{r results= "hide"}
+library(fGarch)
+
+bench_fit = garchFit( ~ arma(1,1) + garch(1,1), data = lrets, 
+                      cond.dist = c("std"))
+```
+
+Below we show the coefficients of our ARMA(1,1)+GARCH(1,1) model with conditional t-distribution. We see that the ARMA coefficients are not significant, but the GARCH coefficients are significant. Also we notice that the log-likelihood improved from changing the conditional distribution to t-distribution. This model performs just as well or slightly under our new Heston model. The advantage of the Heston model is that it is more interpretable. 
+
+```{r}
+kable(bench_fit@fit$matcoef) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+print(-bench_fit@fit$value)
+```
+
+```{r plot21, results ="hide", out.width = "70%", out.height = "70%", fig.align = "center", fig.cap= "Benchmark with 95% confidence bands.", anchor = "figure"}
+
+qplot(x = index(lrets), y = as.matrix(lrets), geom = "line", colour = I("hotpink2")) + 
+  geom_line(aes(x = index(lrets), 
+                y = bench_fit@fitted), 
+            colour = "black") +
+  geom_line(aes(x = index(lrets), 
+                y = bench_fit@fitted + 2*bench_fit@sigma.t),
+            colour = "darkred") +
+  geom_line(aes(x = index(lrets), 
+                y = bench_fit@fitted - 2*bench_fit@sigma.t), 
+            colour = "darkred") + 
+  labs(x = "time", y = "log-returns")
+```
+
+
+----------------------------
+
+# Conclusion
+
+In our experiment we find that the t-distributed Heston model performed the best in terms of maximizing the log-likelihood. However, note that imposing a t-distribution on the jump process is not typically done in practice, since brownian motion requires using the normal-distribution. On the other hand, the normally distributed Heston model also performs well and is able to outperform the ARMA(1,1)+GARCH(1,1) model with normally distributed conditional error. In the future it would be interesting to try different kinds of jump processes, or incorporate stochastic correlation between brownian motions. 
+
+----------------------------
+
+# References
+
+[1] https://quant.stackexchange.com/questions/18602/speed-of-mean-reversion-of-an-interest-rate-model
+\
+[2] https://en.wikipedia.org/wiki/Heston_model
+\
+[3] https://kingaa.github.io/pomp/vignettes/getting_started.html
+\
+[4] Lecture Notes from Stats 531
+\
+[5] https://en.wikipedia.org/wiki/Vasicek_model
+\
+[6] https://srdas.github.io/MLBook/FinanceModels.html
+\
+[7] https://ionides.github.io/531w18/final_project/16/final.html
+\
+[8] https://en.wikipedia.org/wiki/Itô%27s_lemma
+
+
+
+
+
+
+
+
+

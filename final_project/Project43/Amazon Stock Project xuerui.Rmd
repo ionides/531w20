@@ -1,0 +1,472 @@
+---
+title: "Stochastic Volatility of Amazon Stock Price"
+date: "2020/4/17"
+output: 
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+## Introduction
+
+Stock market is usually hard to predict and full of volatility in the long time period. The risk, or the volatility is strongly asscociated with the expected returns.  Many researches and papers have argued on this kind of relation. For example, Pindyck (1984) comments at early time that "much of the decline in stock prices during the 1970's to increases in risk premiums arising from increases 
+in volatility." Therefore, we are interested in estimating the volaility and the other factors corresponding to it.
+
+## Objective
+We will explain the basic objective in the model starting with the introduction on expected return.
+The defintion of expected return is very financial:  it is equal to the expected return on a stock market portfolio minus the interest rate given by the French's paper (1987). Due to the time limit, we don't have enough time to build a model to estimate an expected return as given formula:
+
+$E(R_{mt}-R_{ft}|\hat\sigma_{mt})=\alpha+\beta\hat\sigma^p_{mt}$ 
+
+where p=1,2...
+
+where, $R_{mt}$ is the daily return, $R_{ft}$ is the interest rate, and for $\hat\sigma_{mt}$ and $\hat\sigma^2_{mt}$, they represent the standard deviation and its variance (French, 1987). However, we will only investigate the Volatility by $R_{mt}$ itself instead of the expected return: $E(R_{mt}-R_{ft})$ in this project.  Use daily returns to estimate ex ante measures of volatility with a GARCH model is also an alternative (Bollerslev, 2016).
+We are going to explore the dataset directly from famous financial platform: Factset and start to esimate the volatility of Amazon Stock in the whole one year period. My expectation is to obtain some "better" estimators of Amazon Stock in the Pomp/Garch model to further interpret the expected return in such volatility.
+
+## Data Analysis
+
+### Descriptive Statistics
+```{r prelims,echo=F,cache=F, results='hide',message=FALSE,echo=FALSE}
+set.seed(594709947L)
+require(ggplot2)
+theme_set(theme_bw())
+
+require(magrittr)
+
+library(plyr)
+library(reshape2)
+library(foreach)
+
+library(pomp)
+stopifnot(packageVersion("pomp")>="2.0")
+```
+
+```{r, results='hide',message=FALSE,echo=FALSE}
+findata<-read.table("Amazon Stock 2019.txt",header = T)
+head(findata)
+Return<-findata$DailyReturn
+R_log<-diff(log(Return))
+```
+
+Comment: Here we get access to the Amazon Stock Price data, which starts the date on 03/27/19, and ends on 03/27/20. So this is the time-series data across the exact whole year and we denote the time date: 03/27/19 as Day1. Notice that the last data is Day255 because despite it is usally about 365 days in the day, but the New York stock market doesn't open on weekends. 
+
+$\textit{The 255 days are the complete workdays and the data measured all complete stock transcations }$
+
+and take the logarithm as the scale and then take the difference to demean/detrend the data. In this dataset, the Price of the stock is the daily return.
+
+```{r}
+summary(Return)
+
+#Demeaned log Return
+summary(R_log)
+```
+
+Some descriptive statistics of both normal scale return and demeaned log return are shown at the above. The mean and median index for return is $1853 and $1838 across the whole time period. Also, the mean of log detrended Return is close to zero.
+
+
+```{r}
+par(mfcol=c(1,2))
+hist(Return)
+hist(R_log)
+par(mfcol=c(2,1))
+plot(Return,xlab='time',ylab='Daily Return',type='l',main="Amazon Stock price")
+plot(R_log,xlab='time',ylab='Demeaned Log Return',type='l',main="Amazon Stock price on log demeaned scale")
+```
+
+Here, we saw the histogram and time series plot on both units. Clearly, log-demeaned scale of return ($\textit{R_log}$ is better than the normal scale of return with the trend. ($\textit{R_log}$ will be used in the following analysis due to the better normality and more centered around 0.
+
+### Construct the Benchmark Garch Model.
+
+In the Financial Engineering, Garch model is very useful to estimate the volatility by given estimators or parameters. The part is following Note14 (Ionides, 2020), and construct a basic Garch(1,1) model as the benchmark, in order to compare with the later more complicated models. Here is the mathematical expression:
+
+$Y_{n}=\epsilon_{n}\sqrt{V_{n}}$,
+
+where $V_{n}=\alpha_0+\alpha_1Y^2_{n-1}+\beta_1V_{n-1}$
+
+$\epsilon_{1:N}$ is the white noise.
+
+
+```{r}
+require(tseries)
+fit.garch <- garch(R_log,grad = "numerical", trace = FALSE) 
+L.garch <- tseries:::logLik.garch(fit.garch) 
+L.garch
+```
+
+From the result, the Garch(1,1) as the benchmark provides 697 as the max log-likelihood with df=3: 3 fitted parameters (Ionides, 2020).
+
+### More complicated parameters on Financial Leverage and time-varing.
+
+This conceptional information is cited from Note14 and also from a previous 2018 final prject "Investigate Financial Volatility of Google Stock" (2018). Besides the three parameters, we should also introduce a $\textit{leverage}$ to the correlation between index return on day t-1 and the increase volatility from day t-1 to t. (Ionides, 2020), then complete a more complicated Garch model: 
+
+$Y_{n}=exp({H_{n}/2}\epsilon_{n})$,
+
+$H_{n}=\mu_{h}(1-\phi)+\phi H_{n-1}+\beta_{n-1}R_{n}exp(-H_{n-1}/2)+\omega_{n}$.
+
+$G_{n}=G_{n-1}+\nu_{n}$
+
+where $R_{n}=(exp{2G_{n}}-1)/(exp{2G_{n}}+1)$, $G_{n}$ is Gaussian random walk,
+
+$\beta_{n}=Y_{n}\sigma_{\eta}\sqrt{1-\phi^2}$,${\epsilon_{n}}$ is an i.i.d N(0,1) sequence,
+
+${v_{n}}$ is an i.i.d N(0,$\sigma_{\nu}^2$) sequence, ${\omega_{n}}$ is an i.i.d
+
+N(0,$\sigma_{\omega}^2$) sequence, $\sigma_{\omega}^2=\sigma_{\eta}\sqrt{1-\phi^2}\sqrt{1-R_{n}^2}$
+
+Those equations are cited in the Breto's paper(2014), we will follow those and construct our POMP model then.
+
+### Construct the new POMP/GARCH model 
+
+We will define the new Garch model with leverage and time varing parameters by following the codes in Note 14 step by step, and then set our parameters with testing values: 
+
+```{r, results='hide',message=FALSE,echo=FALSE,warning=FALSE}
+Amazon_statenames <- c("H","G","Y_state") 
+Amazon_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta") 
+Amazon_ivp_names <- c("G_0","H_0") 
+Amazon_paramnames <- c(Amazon_rp_names,Amazon_ivp_names)
+Amazon_covarnames <- "covaryt"
+
+rproc1 <- "double beta,omega,nu; 
+         omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * sqrt(1-tanh(G)*tanh(G))); 
+         nu = rnorm(0, sigma_nu); 
+         G += nu; 
+         beta = Y_state * sigma_eta * sqrt( 1- phi*phi ); 
+         H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) * exp(-H/2) + omega; 
+" 
+
+rproc2.sim <- " Y_state = rnorm( 0,exp(H/2) ); "
+
+rproc2.filt <- " Y_state = covaryt; " 
+
+Amazon_rproc.sim <- paste(rproc1,rproc2.sim) 
+Amazon_rproc.filt <- paste(rproc1,rproc2.filt)
+```
+```{r, results='hide',message=FALSE,echo=FALSE,warning=FALSE}
+Amazon_rinit <- " G = G_0; H = H_0; Y_state = rnorm( 0,exp(H/2) ); "
+Amazon_rmeasure <- " y=Y_state; "
+Amazon_dmeasure <- " lik=dnorm(y,0,exp(H/2),give_log); "
+
+Amazon_partrans <- parameter_trans( log=c("sigma_eta","sigma_nu"), logit="phi" )
+
+
+Amazon.filt <- pomp(data=data.frame( y=R_log,time=1:length(R_log)), statenames=Amazon_statenames, paramnames=Amazon_paramnames, times="time", t0=0, covar=covariate_table( time=0:length(R_log), covaryt=c(0,R_log), times="time"), rmeasure=Csnippet(Amazon_rmeasure), dmeasure=Csnippet(Amazon_dmeasure), rprocess=discrete_time(step.fun=Csnippet(Amazon_rproc.filt), delta.t=1), rinit=Csnippet(Amazon_rinit), partrans=Amazon_partrans )
+```
+
+
+```{r}
+params_test <- c( sigma_nu = 0.01, mu_h = -1.0, phi = expit(5), sigma_eta = 0.02, G_0 = 0, H_0=0 )
+```
+
+```{r, results='hide',message=FALSE,echo=FALSE,warning=FALSE}
+sim1.sim <- pomp(Amazon.filt, statenames=Amazon_statenames, paramnames=Amazon_paramnames, rprocess=discrete_time( step.fun=Csnippet(Amazon_rproc.sim),delta.t=1) )
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+
+sim1.filt <- pomp(sim1.sim, covar=covariate_table( time=c(timezero(sim1.sim),time(sim1.sim)), covaryt=c(obs(sim1.sim),NA), times="time"), statenames=Amazon_statenames, paramnames=Amazon_paramnames, rprocess=discrete_time( step.fun=Csnippet(Amazon_rproc.filt),delta.t=1) )
+
+```
+
+
+The particles and Nmifs associated with different run-levels are given as following:
+
+```{r}
+run_level <- 3 
+Amazon_Np <- switch(run_level, 100, 1e3, 2e3) 
+Amazon_Nmif <- switch(run_level, 10, 100, 200) 
+Amazon_Nreps_eval <- switch(run_level, 4, 10, 20) 
+Amazon_Nreps_local <- switch(run_level, 10, 20, 20) 
+Amazon_Nreps_global <- switch(run_level, 10, 20, 100)
+```
+
+```{r, results='hide',message=FALSE,echo=FALSE,warning=FALSE}
+library(doParallel) 
+registerDoParallel() 
+library(doRNG) 
+registerDoRNG(34118892)
+
+cores <- as.numeric(Sys.getenv('SLURM_NTASKS_PER_NODE', unset='8'))
+registerDoParallel(cores)
+mcopts <- list(set.seed=TRUE)
+```
+
+Before start to fitting our model, we run a simple iterated filtering to check if our Monte Carlo algarithm goes well with small errors.
+
+```{r}
+stew(file=sprintf("Amazon1-%d.rda",run_level),{
+   t.pf1 <- system.time( 
+     pf1 <-       foreach(i=1:Amazon_Nreps_eval,
+                          .packages='pomp') %dopar% pfilter(sim1.filt,Np=Amazon_Np)) },seed=493536993,kind="L'Ecuyer") 
+(L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE))
+```
+
+From this result, we see the log-likelihood is quite small, which doesn't need us to worry a lot because we are checking if the particle filtering works with SMC algarithm, and the standard error turns out to be small so that we can build our model through this filtering confidently. 
+
+We have already defined the test values of parameters, we only need to assign the values of random work as the following:
+
+```{r}
+Amazon_rw.sd_rp <- 0.02 
+Amazon_rw.sd_ivp <- 0.1 
+Amazon_cooling.fraction.50 <- 0.5 
+Amazon_rw.sd <- rw.sd( 
+  sigma_nu = Amazon_rw.sd_rp, 
+  mu_h = Amazon_rw.sd_rp, 
+  phi = Amazon_rw.sd_rp, 
+  sigma_eta = Amazon_rw.sd_rp, 
+  G_0 = ivp(Amazon_rw.sd_ivp), 
+  H_0 = ivp(Amazon_rw.sd_ivp)
+)
+```
+
+```{r, results='hide',message=FALSE,echo=FALSE,warning=FALSE}
+stew(file=sprintf("mif-Amazon-%d.rda",run_level),{ 
+  t.if1 <- system.time({ 
+  if1 <- foreach(i=1:Amazon_Nreps_local, 
+   .packages='pomp', .combine=c) %dopar% mif2(Amazon.filt, 
+     params=params_test, 
+     Np=Amazon_Np,
+     Nmif=Amazon_Nmif, 
+     cooling.fraction.50=Amazon_cooling.fraction.50, 
+     rw.sd = Amazon_rw.sd) 
+ L.if1 <- foreach(i=1:Amazon_Nreps_local, 
+   .packages='pomp', .combine=rbind) %dopar% logmeanexp( 
+     replicate(Amazon_Nreps_eval, logLik(pfilter(Amazon.filt,
+       params=coef(if1[[i]]),Np=Amazon_Np))), se=TRUE) 
+ }) })
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2], t(sapply(if1,coef))) 
+if (run_level>1) write.table(r.if1,file="Amazon_params.csv", append=TRUE,col.names=FALSE,row.names=FALSE)
+
+```
+
+```{r}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta, data=subset(r.if1,logLik>max(logLik)-25))
+summary(r.if1$logLik,digit=5)
+plot(if1)
+```
+
+
+Here, from the result, we are able to improve our parameters from investigating the correlation matrix: we should mainly focus on the correlation between each parameter with log-likelihood. The $\sigma_{v}$ shows most of values with high log-lik concentrate around 0.000 and 0.015. Also, the $\phi$ indicates a positive correlation with log-lik so we set the range to be from 0.7 to 1.0.
+However, $\mu_{h}$ and $\sigma_{\eta}$ both give us no clear relation to log-lik, it seems that we ought to take as large as intervals we can to set the values.
+
+Now, the maximum log-likelihood is 706, an improvment compares to the previous inference: 697.
+
+The effective sample size plot given by the last iteration tells us a relative stable pattern except the days around 220, and days close to 240. The result is conspicuous due to the Stock Market failure in the February and March due to Coronavirus. Amazon Stock Return is dramatically influenced by the bearest stock in the history, and circuit breaker was even triggered several times (Kindig, B. 2020).
+
+We will not go further into the interpretation on MIF2 convergence until we have the final fitted model.
+
+The refined parameters are given below and we start to fit the model.
+
+```{r}
+Amazon_box <- rbind( sigma_nu=c(0.001,0.015), mu_h =c(-8.60, -8.80), phi = c(0.7,0.9), sigma_eta = c(0.90,1.2), G_0 = c(-2,2), H_0 = c(-1,1) )
+
+```
+```{r, results='hide',message=FALSE,echo=FALSE,warning=FALSE}
+stew(file=sprintf("box_eval-Amazon%d.rda",run_level),{ 
+  t.box <- system.time({ 
+    if.box <- foreach(i=1:Amazon_Nreps_global,
+      .packages='pomp',.combine=c) %dopar% mif2(if1[[1]],   
+        params=apply(Amazon_box,1,function(x)runif(1,x))) 
+    L.box <- foreach(i=1:Amazon_Nreps_global,
+      .packages='pomp',.combine=rbind) %dopar% {
+         logmeanexp(replicate(Amazon_Nreps_eval, logLik(pfilter(       
+             Amazon.filt,params=coef(if.box[[i]]),Np=Amazon_Np))), se=TRUE)
+        } 
+    })
+},seed=290860873,kind="L'Ecuyer")
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2], t(sapply(if.box,coef))) 
+if(run_level>1) write.table(r.box,file="Amazon2_params.csv", append=TRUE,col.names=FALSE,row.names=FALSE) 
+
+```
+```{r}
+summary(r.box$logLik,digits=5)
+```
+
+After the re-estimation on the range of parameter values, we obtain the a little bit increase in maximum log-likelihood on our Garch model, which increases from 706.3 to 706.8.
+
+
+```{r}
+r.if1[which.max(r.if1$logLik),]
+r.box[which.max(r.box$logLik),]
+```
+
+We also compared the standard errors of log-likelihood and see a smaller deviation in the new estimation. $\sigma_{\nu}$ decreased from 0.024 to 0.0037. Other parameters change a little expect $\sigma_{\eta}$. 
+
+```{r}
+pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0+G_0, data=subset(r.box,logLik>max(logLik)-10))
+plot(if.box)
+```
+
+The final step of our Garch leverage and time varing model is to check the correlation scatterplot matrix  and likelihood surface.
+
+From this scatterplot matrix, we could see a weak evidence that $log(\sigma_{\nu})$ is negatively correlated with better inference. It means that the closer $\sigma_{\nu}$ to the zero, the higher log-likelikhood it will be. Then, $\mu_{h}$ shows a weakly positive correlation to the likelihood. While $\phi$ gives a strong positive correlation and $H_0$ is negatively correlated to log-lik in also strong evidence. However, the rest of two parameters: $\sigma_{\eta}$ and $G_0$ are lack of significance in the graph.
+
+From the Convergence diagnostic plot, we see the log-likelihood converges very quickly at the front several iterations. In addition,$\sigma_{\nu}$ and $G_0$ converge well after 50 times iterations. $\sigma_{\nu}$ stays in the interval between 0 and 0.2, and $G_0$ stays around -1 and 0.
+
+
+## Construct the profile log-likelihood interval.
+
+We start to create the profile log-likelihood step by step by following the "Solution to Homework 8" (Ionides,2020) and previous project "Analysis of SP500 Volatility" (2018).
+
+```{r}
+profile_run_level <- 3
+Amazon_profile_pts <- switch(profile_run_level, 5,10,20)
+#control the run-level or # of iterations
+nprof=20   # number of profile likelihood
+profile.box <- profileDesign(  
+  phi = seq(0,0.2,length.out=Amazon_profile_pts),
+  lower=c(sigma_nu=0.001,phi=0.7,sigma_eta=0.9,H_0=-1,G_0=-1),
+  upper=c(sigma_nu=0.2,phi=0.9,sigma_eta=1.2,H_0=1,G_0=0),
+  nprof=nprof
+)
+```
+
+
+```{r, results='hide',message=FALSE,echo=FALSE,warning=FALSE}
+stew(file=sprintf("Amazon_profile_phi-%d.rda",profile_run_level),{ 
+  t_global.4 <- system.time({
+      prof.llh<- foreach(start=iter(profile.box,"row"),
+        .combine=rbind) %dopar%{
+        mif2(
+          if.box[[1]],
+          start=c(unlist(profile.box[i,])),
+          Np=400,
+          Nmif=30,
+          rw.sd=rw.sd(
+              sigma_nu = Amazon_rw.sd_rp, 
+              mu_h = Amazon_rw.sd_rp, 
+              phi = Amazon_rw.sd_rp, 
+              sigma_eta = Amazon_rw.sd_rp, 
+              G_0 = ivp(Amazon_rw.sd_ivp), 
+              H_0 = ivp(Amazon_rw.sd_ivp)
+            )
+        )->mifs_global.4
+        # evaluate llh
+        evals = replicate(10,logLik(pfilter(mifs_global.4,
+      Np=400)))
+        ll=logmeanexp(evals, se=TRUE)        
+        
+        data.frame(as.list(coef(mifs_global.4)),
+                   loglik = ll[1],
+                   loglik.se = ll[2])
+      }
+  })
+})
+```
+
+The next step is construct the confidence Interval of Profile log-likelihood of $\phi$. Coding is similar to the solution: Create the CI boundaries and then use the ggplot to fit the data and see if the most point fit into the sqaure region, the formula of profile log likelihood is following:
+
+${\phi_{d}: l(\hat\phi})-l_{d}^{profile}(\phi_{d})<1.92$
+
+```{r, results='hide',message=FALSE,echo=FALSE,warning=FALSE}
+prof.llh %<>%
+  mutate(phi=exp(signif(log(phi),5))) %>%
+  ddply(~phi,subset,rank(-loglik)<=1) -> prof.max
+
+aa=max(prof.max$loglik)-1.6
+bb=aa-1.92
+CI=which(prof.max$loglik>=bb)
+cc=prof.max$phi[min(CI)]
+dd=prof.max$phi[max(CI)]
+
+
+```
+```{r}
+prof.max %>%
+  ggplot(aes(x=phi,y=loglik))+
+  geom_point()+
+  geom_smooth(method="loess",span=0.2)+
+  geom_hline(aes(yintercept=aa),linetype="dashed")+
+  geom_hline(aes(yintercept=bb),linetype="dashed")+
+  geom_vline(aes(xintercept=cc),linetype="dashed")+
+  geom_vline(aes(xintercept=dd),linetype="dashed")
+
+c(lower=cc,upper=dd)
+```
+
+In this plot, we found that the Profile log-likelihood is too narrow to fit many data points with different values of $\phi$ in this case. However, we see a good signficiance by the corresponding profile Log-likelihood boundaries, which is the interval from 0.67 to 0.89. Before, the MIF2 convergence diagnostic plot, most of the values of $\phi$ converge in this range from 0.7 to 0.9. 
+
+Therefore, my conclusion is our profile likelihood confidence interval for $\phi$ is not well fitted because many of the data are not included in the CI. However, the CI bounds are both positive, which means the $\phi$ in 95% interval are significant and positive correlated with our log-likelihood.
+
+
+### Further exploration with the ARIMA model.
+
+Quickly, we use our basic ARIMA(p,1,q) model as the alternative to compare with the GARCH leverage and time varing model, here is the formula:
+
+ARIMA(p,1,q) Model: 
+
+$\phi(B)((1-B)Y_{n}-\mu)=\psi(B)\epsilon_{n}$, where $\epsilon_{n}$ 
+
+follows a Guassian distribution with i.i.d variance (0, $\sigma^2$); $\phi(x)$and$\psi(x)$ are ARMA polynomials.
+Transformation to stationarity: $z_{n}=y_{n}-y_{n-1}$, where is the difference by $1^{st}$ order. 
+
+Since we are using log-demeaned data, there is no need to build ARIMA model and we could use ARMA model direclty to represent ARIMA model. 
+
+```{r, results='hide',message=FALSE,echo=FALSE,warning=FALSE}
+library("faraway")
+library(alr4)
+library(quantreg)
+library(MASS)
+library(nlme)
+library(fUnitRoots)
+library(knitr)
+aic_table <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+       table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+finaltable <- aic_table(R_log,6,6)
+```
+```{r}
+kable(finaltable,digits=3)
+Amazonmod1<-arima(R_log,order=c(2,0,2),include.mean=F)
+Amazonmod1
+Amazonmod2<-arima(R_log,order=c(3,0,5),include.mean=F)
+Amazonmod2
+Amazonmod3<-arima(R_log,order=c(6,0,4),include.mean=F)
+Amazonmod3
+```
+
+The AIC table suggests ARMA(2,2), ARMA(3,5) and ARMA(6,4) because of the lowest AICs relative to their order. Such as ARMA(2,2) has the lowest AIC around ARMA(p,q) where $q,p\leq2$. 
+
+We directly compare the log-likelihood between each ARMA model with our fitted GARCH model. The result is our GARCH model has the highest log-likelihood(706.8) among all the four models. In addition, ARMA model in lower order is easier to interpret than GARCH model. However, in the high order ARMA model like ARMA(6,4), it also has issue of non-identifibility. With the better inference, we would choose GARCH model still. 
+
+## Conclusion
+
+In this final project, we discovered a little bit on the Violatility of Amazon stock. To simplify the model, we first use the daily return to proxy the expected return. Otherwise, we need to build another model to estimate expected return first. In this case, we only need to form a GARCH/POMP model and then use our daily return(equal to price) as the data, as well as other regarding parameters to fit the whole model. In order to meet the Amazon data, we improve the GARCH with adding leverage and other parameters, so as to keep the model closer to our real-world example. 
+
+In the final GARCH model, we find several advantages: 1). Highest log-likelihood among all the models including benchmark, and ARMA models. 2). We estimated a reliable value of $\phi$ between 0.67 to 0.89 in 95% confidence interval, even though many of data ponits are outside of our profile log likelihood range. 3). The log-likelihood converges sucessfully and rapidly in very short iterations. 
+
+However, there exposes many problems that could be improved next time: 1). The effective sample size is still long and sometimes unstable. 2). Some pamameters in MIF2 shows that they are not convergent in the iterations. 3). As what we said before, the profile log likelihood fails to capture many data points so we still need to consider the significance of our important estimator $\phi$. 
+
+Because this is a real-world data in the most recent year so the violality of stock is hard to capture and be fitted into the model. In the next time, maybe we are going to try more particles and spend more time on filtering to improve our inference on the parameters. Also, since GARCH model is not latest enough to capture the Financial stock violatlity. We could introduce new model such as Heston model or Black-Scholes model into pomp and create our new analysis. ("Stochastic Volatility of Nasdaq index,2018").
+
+
+## Reference
+
+"Analysis of SP500 Volatility". Retrieved from https://ionides.github.io/531w18/final_project/19/final.html
+
+Bollerslev, T. (1986). Generalized autoregressive conditional heteroskedasticity. Journal of Econometrics, 31(3), 307–327. doi: 10.1016/0304-4076(86)90063-1
+
+French, K. R., Schwert, G., & Stambaugh, R. F. (1987). Expected Stock Returns and Volatility. Journal of Financial Economics, 19 (1), 3-29. http://dx.doi.org/10.1016/0304-405X(87)90026-2
+
+"Investigate Financial Volatility of Google Stock". Retrieved from https://ionides.github.io/531w18/final_project/1/final.html
+
+Kindig, B. (2020, April 10). New Age Of Stock Market Volatility Driven By Machines. Retrieved from https://www.forbes.com/sites/bethkindig/2020/04/10/new-age-of-stock-market-volatility-driven-by-machines/ 
+
+"Notes14". Retrieved from https://ionides.github.io/531w20/14/notes14.pdf.
+
+Pindyck, Robert S., 1984, Risk, inflation, and the stock market, American Economic Review 74, 335-351.
+
+"Solution to Homework8". Retrieved from https://ionides.github.io/531w20/hw08/sol08.html.
+
+"Stochastic Volatility of Nasdaq index". Retrived from https://ionides.github.io/531w18/final_project/16/final.html
+
+
+
+
+

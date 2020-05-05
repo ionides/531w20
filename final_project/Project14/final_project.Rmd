@@ -1,0 +1,487 @@
+---
+title: "The Wilshire 5000 Index Time Series Analysis and Modelling"
+date: "4/26/2020"
+output: 
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+
+### Introduction
+
+In financial investment-related fields, the representative stock list is widely valued and studied, which includes Dow Jones Industrial Average, The S&P 500 Index, The NASDAQ, The Wilshire 5000 Index and etc. 
+
+In this project, I focused on The Wilshire 5000 Index, also called "the total stock market index". Wilshire 5000 is the broadest stock market index. It is formed by sampling of 5000 more stocks, representing a range of market capitalization.
+
+I aim to fit the real-world finanical data to the three well-known models, ARIMA, GARCH and POMP. Through this research and practice, I hope to learn some note-worth features of this particular index in the last 10 months and. In addtion, comparing the model performing differences by the corresponding maximum likehood values and determining the best.
+
+### Data Overview
+
+The dataset is obtained on Economic Research, containing Wilshire 5000 total market full cap index from 4/23/2015 to 4/23/2020. 
+
+Here, to conduct a computationally feasible analysis, I used the subset of the most recent year.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+data <- read.csv("WILL5000INDFC.csv", na.strings = c(".", "NA"))
+data$DATE <- as.Date(data$DATE) 
+```
+
+```{r}
+sub_data = dplyr::filter(data, between(DATE, as.Date("2019-04-23"), as.Date("2020-04-23")))
+sub_data = na.omit(sub_data)
+str(sub_data)
+
+plot(as.Date(sub_data$DATE),sub_data$WILL5000INDFC,
+xlab="date",ylab="Wilshire 5000 Index",type="l")
+```
+
+Plotting the Wilshire 5000 from 2019-04-23 to 2020-04-23, it is clear that the index has dropped sharply after 2020-03, showing very different pattern from the previous trend. Covid-19, which has brought huge impact on the economy globally, should be the cause of the sudden change.
+
+To find some worth-studying features of Wilshire 5000 index, I decided to exclude the data after 2020-03, analyzing solely on the period when the stock market is relatively stable.
+
+```{r}
+sub_data2 = dplyr::filter(sub_data, between(DATE, as.Date("2019-04-23"), as.Date("2020-02-23")))
+plot(as.Date(sub_data2$DATE),sub_data2$WILL5000INDFC,
+xlab="date",ylab="Wilshire 5000 Index",type="l")
+```
+
+As can be seen from the above plot, the index has fluctuated up and down in the past year. From the end of October last year to the end of February this year, the index showed a continuous increasing trend.
+
+The return on the Wilshire 5000 index can be written as:
+
+$$
+y_n = log(z_n)-log(z_{n-1})
+$$
+where $z_n, n=1,...,N$ represent for the index.
+
+```{r}
+par( mfrow = c(1,2), oma = c( 0, 0, 3, 0 ) )
+return = diff(log(sub_data2$WILL5000INDFC))
+plot(return, type = 'l', xlab = 'day', ylab='demeaned Wilshire 5000 returns')
+acf(return, main = 'ACF of demeaned returns')
+```
+
+In the plot of demeaned returns, there exists high volatility in the first half.
+
+The ACF plot of demeaned returns shows no autocorrelation. Almost all spikes are within the 95% confidence boundaries except the one at the last lag. 
+
+### ARMA Model
+
+First, let us start with constructing ARMA model. By checking the periodogram, underlying periodicities can often be observed.
+
+```{r}
+default_smooth = spectrum(return, spans=c(3,5,3), main = "Smoothed periodogram")
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+peak_value = default_smooth$freq[which.max(default_smooth$spec)]
+period = 1/ peak_value
+
+pptable <- matrix(c(peak_value,period),ncol=2,byrow=TRUE)
+colnames(pptable) <- c("frequency","period")
+rownames(pptable) <- c("peak")
+pptable <- as.table(pptable)
+require(knitr)
+kable(pptable)
+```
+
+The highest peak happens at frequency 0.2916667, suggesting a period of 3.4285714 weeks. Thus, seasonality may be worth being taken into consideration.
+
+Next, we need to difference on the original data to effectively adjusted the non-stationary patterns.
+
+```{r}
+diff1 <- diff(return, differences=1)
+plot.ts(diff1,ylab = "return", main = "After 1 differences")
+```
+
+```{r echo=FALSE,warning=FALSE,message=FALSE}
+aic_table <- function(sub_data2,P,Q){
+table <- matrix(NA,(P+1),(Q+1))
+for(p in 0:P) {
+for(q in 0:Q) {
+table[p+1,q+1] <- arima(sub_data2,order=c(p,0,q))$aic
+}
+}
+dimnames(table) <- list(paste("AR",0:P, sep=""),paste("MA",0:Q,sep=""))
+table
+}
+
+kable(aic_table(diff1,5,5),digits=2)
+```
+
+Comparing the AIC values with various choices of AR and MA on the differenced time series, ARIMA(0,1,1) has the lowest.
+
+```{r}
+fit <- arima(return,order=c(0,1,1))
+fit
+```
+
+The maximum log likelihood for ARIMA(0,1,1) is 713.5.
+
+```{r}
+par( mfrow = c(2,2), oma = c( 0, 0, 0, 0 ) )
+plot(residuals(fit),ylab="residuals", xlab = "day", main = "residual plot of ARIMA(0,1,1)")
+acf(fit$residuals, main = "ACF plot of ARIMA(0,1,1)")
+qqnorm(fit$residuals)
+qqline(fit$residuals)
+```
+
+Generally speaking, there is no obvious trends in the residual plot. 
+
+In the  ACF plot, almost all spikes are within the 95% confidence boundaries. The only exception is that the bar at the last lag slightly exceeds the line.
+
+In the QQ-plot, the majority of points are close to the line. But it is note-worthy that points to the left form a long tail. Therefore, we need to double check by Shapiro-Wilk test, which states $H_0: Y_{1:N}\sim N(\mu,\sigma^2)$ and $H_1: Y_{1:N}$ does not follow $N(\mu,\sigma^2)$.
+
+```{r}
+shapiro.test(sub_data2$WILL5000INDFC)
+```
+
+Read from the results, we cannot reject $H_0$ because the p-value is small. Therefore, we can conclude that the normality assumption is valid.
+
+
+### GARCH Model
+
+GARCH is widely used for financial time series analysis. "G" stands for Gaussian and "ARCH" stands for  autoregressive conditional heteroskedasticity. 
+
+A generalized GARCH(p,q) model has the form
+$$
+Y_n=\epsilon_n\sqrt{V_n}
+$$
+where $V_n = \alpha_0+\sum^p_{j=1}\alpha_jY^2_{n-j}+\sum^q_{k=1}\beta_kV_{n-k}$ and $\epsilon_{1:N}$ is white noise.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+require(tseries)
+```
+
+```{r}
+fit.garch <- garch(return,grad = "numerical",
+trace = FALSE)
+L.garch <- tseries:::logLik.garch(fit.garch)
+L.garch
+summary(fit.garch)
+```
+
+The maximized log likelihood of GARCH(1,1) model is 716.5338
+
+### POMP Model
+
+Leverage is a financial term, representing the phenomenon that negative
+shocks to a stockmarket index are associated with a subsequent
+increase in volatility.
+
+In real financial world, leverage is often interpreted as an investment strategy of using borrowed money to increase the potential return of an investment.[investopedia](https://www.investopedia.com/terms/l/leverage.asp)
+
+Let $R_n$ on day $n$ denotes the correlation between index return on day $n-1$ and the increase in the log volatility from day $n-1$ to day $n$. [Note14](https://ionides.github.io/531w20/14/notes14.pdf)
+
+In the pomp implementation of Breto (2014), which models
+$R_n$ as a random walk on a transformed scale,
+
+$$
+R_n = \frac{exp(2G_n)-1}{exp(2G_n)+1}
+$$
+where ${G_n}$ is Gaussian random walk.
+
+Following the idea of Breto(2014), the model representation can be expressed by equations below: 
+
+$$
+Y_n = exp(\frac{H_n}{2})\epsilon_n \\
+H_n = \mu_h(1-\phi)+\phi H_{n-1}+\beta_{n-1}R_nexp(\frac{-H_{n-1}}{2})+w_n \\
+G_n = G_{n-1}+v_n
+$$
+where $\beta_n=Y_n\sigma_\eta \sqrt{1-\phi^2}$, $\epsilon_n$ is an iid N(0,1) sequence, $v_n$ is an iid N(0,$\sigma_v^2$) sequence, and $w_n$ is an iid N(0,$\sigma_w^2$) sequence.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+require(pomp)
+```
+
+Start with writing Csnippet for the rprocess:
+
+```{r}
+Wil5000_statenames <- c("H","G","Y_state")
+Wil5000_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta")
+Wil5000_ivp_names <- c("G_0","H_0")
+Wil5000_paramnames <- c(Wil5000_rp_names,Wil5000_ivp_names)
+
+rproc1 <- "
+double beta,omega,nu;
+omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) *
+sqrt(1-tanh(G)*tanh(G)));
+nu = rnorm(0, sigma_nu);
+G += nu;
+beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+H = mu_h*(1 - phi) + phi*H + beta * tanh( G )
+* exp(-H/2) + omega;
+"
+rproc2.sim <- "
+Y_state = rnorm( 0,exp(H/2) );
+"
+rproc2.filt <- "
+Y_state = covaryt;
+"
+Wil5000_rproc.sim <- paste(rproc1,rproc2.sim)
+Wil5000_rproc.filt <- paste(rproc1,rproc2.filt)
+
+Wil5000_rinit <- "
+G = G_0;
+H = H_0;
+Y_state = rnorm( 0,exp(H/2) );
+"
+Wil5000_rmeasure <- "
+y=Y_state;
+"
+Wil5000_dmeasure <- "
+lik=dnorm(y,0,exp(H/2),give_log);
+"
+Wil5000_partrans <- parameter_trans(
+log=c("sigma_eta","sigma_nu"),
+logit="phi"
+)
+
+Wil5000.filt <- pomp(data=data.frame(
+            y=return,time=1:length(return)),
+            statenames=Wil5000_statenames,
+            paramnames=Wil5000_paramnames,
+            times="time",
+            t0=0,
+            covar=covariate_table(
+            time=0:length(return),
+            covaryt=c(0,return),
+            times="time"),
+            rmeasure=Csnippet(Wil5000_rmeasure),
+            dmeasure=Csnippet(Wil5000_dmeasure),
+            rprocess=discrete_time(step.fun=Csnippet(Wil5000_rproc.filt),
+            delta.t=1),
+            rinit=Csnippet(Wil5000_rinit),
+            partrans=Wil5000_partrans
+)
+```
+
+```{r}
+params_test <- c(
+sigma_nu = 0.01,
+mu_h = -0.5,
+phi = 0.995,
+sigma_eta = 7,
+G_0 = 0,
+H_0=0
+)
+sim1.sim <- pomp(Wil5000.filt,
+statenames=Wil5000_statenames,
+paramnames=Wil5000_paramnames,
+rprocess=discrete_time(
+step.fun=Csnippet(Wil5000_rproc.sim),delta.t=1)
+)
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+```
+
+```{r}
+sim1.sim <- simulate(sim1.sim,seed=8, params=params_test)
+plot(Y_state~time,data=sim1.sim,type='l',col="red",ylab="return")
+lines(return,type='l')
+legend("topleft",legend=c("Original","Simulated"),col=c("black","red"),
+       cex=0.8,lty=1,bty="n")
+```
+
+Here, we can see the simulation performance is poor. But this does not affect us to use these values as start points. In the follow-up research, more reasonable parameter intervals can be determined through analysis of the aggregation of points in pair plot. 
+
+```{r}
+sim1.filt <- pomp(sim1.sim,
+covar=covariate_table(
+time=c(timezero(sim1.sim),time(sim1.sim)),
+covaryt=c(obs(sim1.sim),NA),
+times="time"),
+statenames=Wil5000_statenames,
+paramnames=Wil5000_paramnames,
+rprocess=discrete_time(
+step.fun=Csnippet(Wil5000_rproc.filt),delta.t=1)
+)
+```
+
+```{r}
+run_level <- 3
+Wil5000_Np <- switch(run_level, 100, 1e3, 2e3)
+Wil5000_Nmif <- switch(run_level, 10, 100, 200)
+Wil5000_Nreps_eval <- switch(run_level, 4, 10, 20)
+Wil5000_Nreps_local <- switch(run_level, 10, 20, 20)
+Wil5000_Nreps_global <- switch(run_level, 10, 20, 100)
+
+```
+
+```{r echo=FALSE,warning=FALSE,message=FALSE}
+library(doParallel)
+```
+
+```{r warning=FALSE,message=FALSE}
+stew(file=sprintf("pf1-%d.rda",run_level),{
+t.pf1 <- system.time(
+pf1 <- foreach(i=1:Wil5000_Nreps_eval,
+.packages='pomp') %dopar% pfilter(sim1.filt,Np=Wil5000_Np))
+},seed=493536993,kind="L'Ecuyer")
+(L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE))
+```
+
+Now, fitting the stochastic leverage model to the The Wilshire 5000 Index data with some randomly selected initial values:
+
+```{r warning=FALSE,message=FALSE}
+Wil5000_rw.sd_rp <- 0.02
+Wil5000_rw.sd_ivp <- 0.1
+Wil5000_cooling.fraction.50 <- 0.5
+Wil5000_rw.sd <- rw.sd(
+sigma_nu = Wil5000_rw.sd_rp,
+mu_h = Wil5000_rw.sd_rp,
+phi = Wil5000_rw.sd_rp,
+sigma_eta = Wil5000_rw.sd_rp,
+G_0 = ivp(Wil5000_rw.sd_ivp),
+H_0 = ivp(Wil5000_rw.sd_ivp)
+)
+
+stew(file=sprintf("mif1-%d.rda",run_level),{
+t.if1 <- system.time({
+if1 <- foreach(i=1:Wil5000_Nreps_local,
+.packages='pomp', .combine=c) %dopar% mif2(Wil5000.filt,
+params=params_test,
+Np=Wil5000_Np,
+Nmif=Wil5000_Nmif,
+cooling.fraction.50=Wil5000_cooling.fraction.50,
+rw.sd = Wil5000_rw.sd)
+L.if1 <- foreach(i=1:Wil5000_Nreps_local,
+.packages='pomp', .combine=rbind) %dopar% logmeanexp(
+replicate(Wil5000_Nreps_eval, logLik(pfilter(Wil5000.filt,
+params=coef(if1[[i]]),Np=Wil5000_Np))), se=TRUE)
+})
+},seed=318817883,kind="L'Ecuyer")
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],
+t(sapply(if1,coef)))
+if (run_level>1) write.table(r.if1,file="Wil5000_params.csv",
+append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.if1$logLik,digits=5)
+```
+
+The maximization log likelihood is 712.5. Comparing to the results of GARCH(1,1), which is 716.5338, the the stochastic leverage model does not seem like a better choice for this particular dataset. 
+
+```{r}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,
+data=subset(r.if1,logLik>max(logLik)-20))
+```
+
+From the pair plot, a general idea about possible range of each parameter can be extracted and implemented to the next step, which is repeating the likelihood maximization using randomized starting values within their corresponding ranges. 
+
+The interval where the landing points are dense can be determined as: 
+
+$$
+\sigma_v=c(0.005,0.04) \\
+\mu_h =c(-1,0)\\
+\phi = c(0.994,0.999)\\
+\sigma_{\eta} = c(5,12)\\
+G_0 = c(-2,2)\\
+H_0 = c(-1,1)
+$$
+
+```{r}
+#plot(if1)
+```
+
+Overall, even though the maximum likelihood does not exceed GARCH, the majority of parameters converge well after 100 iterations except $\mu_h$ and $H_0$.
+
+Next, construct a parameter box consisting of the plausible ranges and repeat the same fitting process again.
+
+```{r warning=FALSE,message=FALSE}
+Wil5000_box <- rbind(
+  sigma_nu=c(0.005,0.04),
+  mu_h =c(-1,0),
+  phi = c(0.994,0.999),
+  sigma_eta = c(5,12),
+  G_0 = c(-2,2),
+  H_0 = c(-1,1)
+)
+
+stew(file=sprintf("Wil_box_eval-%d.rda",run_level),{
+t.box <- system.time({
+  
+if.box <- foreach(i=1:Wil5000_Nreps_global,
+  .packages='pomp',.combine=c,.options.multicore=list(set.seed=TRUE)) %dopar% mif2(if1[[1]],
+  start=apply(Wil5000_box,1,function(x)runif(1,x)))
+
+L.box <- foreach(i=1:Wil5000_Nreps_global,
+  .packages='pomp',.combine=rbind,.options.multicore=list(set.seed=TRUE)) %dopar% {
+  logmeanexp(replicate(Wil5000_Nreps_eval, logLik(pfilter(
+  Wil5000.filt,params=coef(if.box[[i]]),Np=Wil5000_Np))),
+  se=TRUE)
+}
+})
+},seed=290860873,kind="L'Ecuyer")
+
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],
+t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="Wil5000_params.csv",
+append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.box$logLik,digits=5)
+```
+
+The maximization log likelihood is 720.8, which is the highest value we have gotten so far. This indicates using randomized starting values can improve the fitting performance. 
+
+```{r}
+pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,
+data=subset(r.box,logLik>max(logLik)-10))
+```
+
+```{r}
+#plot(if.box)
+```
+
+However, as can be seen from the MIF2 figure, parameters do not converge as well as the previous.
+
+```{r}
+maxlik=subset(r.box,logLik==max(logLik))
+row.names(maxlik) = NULL
+kable(maxlik,digits=3)
+```
+
+Last, let us check the simulation performance again. 
+
+```{r warning=FALSE,message=FALSE}
+params_test <- c(
+  sigma_nu = exp(log(maxlik$sigma_nu)),  
+  mu_h = maxlik$mu_h,       
+  phi = expit(logit(maxlik$phi)),     
+  sigma_eta = exp(log(maxlik$sigma_eta)),
+  G_0 = maxlik$G_0,
+  H_0=maxlik$H_0
+)
+sim1.sim <- pomp(Wil5000.filt,
+statenames=Wil5000_statenames,
+paramnames=Wil5000_paramnames,
+rprocess=discrete_time(
+step.fun=Csnippet(Wil5000_rproc.sim),delta.t=1)
+)
+
+sim1.sim <- simulate(sim1.sim,seed=8,params=params_test)
+plot(Y_state~time,data=sim1.sim,type='l',col="red",ylab="return")
+lines(return,type='l')
+legend("topright",legend=c("Original","Simulated"),col=c("black","red"),
+       cex=0.8,lty=1,bty="n")
+```
+
+Compared with the previous figure, the performance has obvious been improved. The overall trends of log returns are similar, but the scales are different, indicating there should be some methods that can be tested for further improvement. 
+
+I haven't found an effective method before the submission deadline, and I will continue to research in this direction.
+
+
+###Conclusion
+
+```{r echo=FALSE}
+d = data.frame("Model" = c("ARIMA(0,1,1)", "GARCH(1,1)", "POMP w. fixed values", "POMP w. randomized values"), "Maximum Likelihood" = c(713.5, 716.5338, 712.5, 720.817))
+kable(d)
+```
+
+In this project, three well-known models for time series were tested on the the Wilshire 5000 Index records of the most recent year. According to the maximum likelihood ranking, we can conclude that the last, POMP w. randomized values, has the best performance. 
+
+###Reference
+* Class Note
+* [Data source](https://fred.stlouisfed.org/series/WILL5000INDFC)
+* [Major Market Indexes List](https://www.thebalance.com/major-market-indexes-list-2466397)
+* The construction of the ARMA model refers to my [midterm project](https://ionides.github.io/531w20/midterm_project/project37/Midterm_project.html).
+* The construction of the GARCH model and POMP model refers to [Class Note 14](https://ionides.github.io/531w20/14/notes14.pdf).
+* Code mainly refers to [Class Note 14](https://ionides.github.io/531w20/14/notes14.pdf) and partially refers to [Continuous-time process models](https://kingaa.github.io/pomp/vignettes/getting_started.html#continuous-time_process_models).

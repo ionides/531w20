@@ -1,0 +1,464 @@
+---
+title: "DJIA 30 Stock Analysis"
+date: "4/29/2020"
+output: 
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+This data set comes from a Kaggle data challenge: DJIA 30 Stock Time Series [1]. The original dataset contains historical stock prices (last 12 years) for 29 of 30 DJIA companies. In this project, I will mainly focus on two stocks: AAPL, GS. The target of this project is to study the volatility of the stock prices by fitting time-series models and to help people make statistically informed trades. In my mid-term project, I analyzed the return of the stock's highest price each day. In my final project, I will model the log of the stock price's return and use some new models such as GARCH and POMP.
+
+Section 2 is the data pre-processing, which involves data cleaning, exporatory data analysis. Section 3 is the time series modelling part where I fit ARIMA model,GARCH model, and POMP model. Section 4 is the results and conclusions.
+
+
+## Data Pre-processing
+```{r}
+#To read on local machine
+#dat <- read.csv(file ="C:/Users/asus/Desktop/stock-time-series-20050101-to-20171231/all_stocks_2006-01-01_to_2018-01-01.csv")
+#To read on GreatLake
+dat <- read.csv(file ="./all_stocks_2006-01-01_to_2018-01-01.csv")
+summary(dat)
+```
+
+```{r}
+dat$Date <- as.Date(dat$Date, format = "%Y-%m-%d")
+dat = na.omit(dat)
+```
+
+```{r}
+dat_aapl = dat[dat$Name == "AAPL",]
+dat_gs = dat[dat$Name == "GS",]
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(dat_aapl$Date,log(dat_aapl$Close),type="l",xlab="Date",ylab="Log Price($)",main="AAPL Log price")
+abline(h=mean(log(dat_aapl$Close)),col="red")
+plot(dat_gs$Date,log(dat_gs$Close),type="l",xlab="Date",ylab="Log price($)",main="GS Log price")
+abline(h=mean(log(dat_gs$Close)),col="red")
+```
+
+
+As we can see, during the time period, AAPL's stock price keeps increasing while GS experienced great fluctuations during year 2008 and year 2013, probably because the financial crisis.
+
+
+Now, we study the log of the returns, which is the volatility of the stock.
+```{r}
+N_aapl = length(dat_aapl$Date)
+par(mfrow = c(1,2))
+plot(as.Date(dat_aapl$Date)[2:N_aapl-1],diff(log(dat_aapl$Close)),type="l",xlab="Date",ylab="",main="Log Returns of AAPL price")
+abline(h=mean(diff(log(dat_aapl$Close))),col="red")
+acf(diff(log(dat_aapl$Close)))
+```
+
+```{r}
+par(mfrow = c(1,2))
+N_gs = length(dat_gs$Date)
+plot(as.Date(dat_gs$Date)[2:N_gs-1],diff(log(dat_gs$Close)),type="l",xlab="Date",ylab="",main="Log-Returns of GS price")
+abline(h=mean(diff(log(dat_gs$Close))),col="red")
+acf(diff(log(dat_gs$Close)))
+```
+
+
+We can see that the volatilities are generally fluctuate around 0 for both stocks, while GS has a larger fluctuation than AAPL. Both stocks have seen larger volatility at year 2009. The ACF shows correlations at several years for both stocks, and it may also exist seasonality by simply looking at the ACF.
+
+I then decompose the data to get stationary data.
+```{r}
+vot_aapl = diff(log(dat_aapl$Close))
+vot_gs = diff(log(dat_gs$Close))
+aapl_ts <- ts(vot_aapl,frequency = 365,start = 2016-01-03 )
+aapl_de <- decompose(aapl_ts) 
+gs_ts <- ts(vot_gs,frequency = 365,start = 2016-01-03 )
+gs_de <- decompose(gs_ts)
+par(mfrow=c(1,2))
+plot(aapl_de)
+plot(gs_de)
+```
+
+
+
+## Model Fitting
+
+### ARIMA Model
+Frist, I will use auto.arima to fit an ARIMA model. 
+```{r}
+library(forecast)
+aapl_rd = aapl_de$random[!is.na(aapl_de$random)]
+gs_rd = gs_de$random[!is.na(gs_de$random)]
+arima_AAPL = auto.arima(aapl_rd,max.p = 5,max.q = 5,method = "ML")
+arima_GS = auto.arima(gs_rd,max.p = 5,max.q = 5,method = "ML")
+arima_AAPL
+arima_GS
+```
+The ARIMA model for AAPL's volatiliy is:
+$$Y_n = 0.0031 {Y_{n-1}} - 0.9283 Y_{n-2}+{\epsilon}_n + 0.0002{\epsilon_{n-1}} + 0.8948{\epsilon_{n-2}}$$
+where $\epsilon$ is a white noise process and $Y_n$ is the volatility.
+
+
+The ARIMA model for GS's volatiliy is:
+$$Y_n = 0.6846{Y_{n-1}}+{\epsilon}_n - 0.7454{\epsilon_{n-1}}$$
+where $\epsilon$ is a white noise process and $Y_n$ is the volatility.
+
+
+Now, I study the goodness of fit by checking the normality of the residuals
+```{r}
+res_aapl = resid(arima_AAPL)
+res_gs = resid(arima_GS)
+acf(res_aapl)
+acf(res_gs)
+qqnorm(res_aapl)
+qqline(res_aapl)
+qqnorm(res_gs)
+qqline(res_gs)
+```
+
+
+
+The ACF does not have much correlation left for both stocks. However, the QQ-plot shows that the residuals of both stocks have heavier tails than the normal distribution, so it does not strictly follow a normal distribution, indicating that the model does not fit very well. I will try other models instead.
+
+### GARCH Model
+To start with the alternative models, I start with GARCH model.
+The GARCH(p,q) model looks like this:
+$$Y_n = \epsilon_n{\sqrt{V_n}}$$
+where
+$$V_n = a_0 + \sum_{j=1}^p{a_j{Y_{n-j}^2}} + \sum_{k=1}^q{b_k}V_{n-k}$$
+with $\epsilon_{1:N}$ is white noise.
+
+```{r}
+require(tseries)
+garch_aapl <- garch(aapl_rd,grad = "numerical", trace = FALSE)
+lik_garch_aapl <- logLik(garch_aapl)
+lik_garch_aapl
+summary(garch_aapl)
+
+```
+
+```{r}
+garch_gs <- garch(gs_rd,grad = "numerical", trace = FALSE)
+lik_garch_gs <- logLik(garch_gs)
+lik_garch_gs
+summary(garch_gs)
+```
+Both stocks fit GARCH(1,1) model well. I collect their log-likelihoods for futhrer comparison. A sign of good fit is that all parameters have their p-values less than 0.5, which means that they are all statistically significant.
+
+
+The GARCH(1,1) model for AAPL volatility is now:
+$$Y_n = \epsilon_n{\sqrt{V_n}}$$
+where
+$$V_n = 3.060*10^{-4} + 5.000*10^{-2}Y_{n-1}^2 + 5.000*10^{-2}V_{n-1}$$
+
+The GARCH(1,1) model for GS volatility is now:
+$$Y_n = \epsilon_n{\sqrt{V_n}}$$
+where
+$$V_n = 3.984*10^{-6} + 6.010*10^{-2}Y_{n-1}^2 + 9.313*10^{-1}V_{n-1}$$
+
+Again, we check the goodness of fit
+```{r}
+res_aapl_garch = resid(garch_aapl)
+res_gs_garch = resid(garch_gs)
+acf(res_aapl_garch[-1])
+acf(res_gs_garch[-1])
+qqnorm(res_aapl_garch)
+qqline(res_aapl_garch)
+qqnorm(res_gs_garch)
+qqline(res_gs_garch)
+
+```
+
+
+Even GARCH is better than ARIMA model, there is still some correlations remain and the residuals still have heavier tails than normal distribution. This shows that GARCH is a better model than ARIMA, but I still want to seek for a better one.
+
+### POMP Model
+As mentioned in our slides, Garch model is a black-box model, and we still don't know the clear interpretation of the parameters. To better understand how the volatility model works, I will use the example in the slides, which is using POMP to model[2].
+
+### Fixed Leverge Model
+It is a fairly well established empirical observation that negative shocks to a stockmarket index are associated with a subsequent increase in volatility. This phenomenon is called leverage. In the implementations in the slides for a pomp implementation of Bret'o (2014)[3], we model $R_n$ as a random walk on a transformed scale[4]
+$$R_n = \frac{e^{2G_n}-1}{e^{2G_n}+1}$$
+where $G_n$ is the usual, Gaussian random walk.
+
+Here, I adopt the model used in the slides 14[2], which is called fixed leverage model, where the Gaussian random walk having standard deviation zero.
+Following the notation and model representation of Bret'o (2014), the model is as following[3]:
+$$Y_n = e^{\frac{H_n}{2}}\epsilon_n\\H_n = \mu_h({1-\phi}) + \phi{H_{n-1}} + \beta_{n-1} R_n e^{-\frac{H_{n-1}}{2}} + \omega_n\\G_n = G_{n-1} +\nu_n$$
+
+where $\beta_n = Y_n{\sigma_\eta{\sqrt{1-\phi^2}}}$, $\epsilon_n$ is an iid $N(0,1)$ sequence, $\nu_n$ is an idd $N(0,\sigma_v^2)$, and $\omega_n$ is an iid $N(0,\sigma_w^2)$ sequence.
+To give the real meaning for the paramters, here $H_n$ is the log volatility for the stock. And $Y_n$ is the observations.
+For the construction of particle filter, please see slides 14 for more reference[2].
+
+```{r}
+require(pomp)
+aapl_dmean = aapl_rd - mean(aapl_rd)
+gs_dmean = gs_rd - mean(gs_rd)
+```
+
+
+```{r}
+ns_statenames <- c("H","G","Y_state")
+ns_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta")
+ns_ivp_names <- c("G_0","H_0")
+ns_paramnames <- c(ns_rp_names,ns_ivp_names)
+
+```
+
+```{r}
+rproc1 <- "
+  double beta,omega,nu;
+omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) * sqrt(1-tanh(G)*tanh(G)));
+nu = rnorm(0, sigma_nu);
+G += nu;
+beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+H = mu_h*(1 - phi) + phi*H + beta * tanh( G ) * exp(-H/2) + omega;
+"
+rproc2.sim <- "
+Y_state = rnorm( 0,exp(H/2) );
+"
+
+rproc2.filt <- "
+Y_state = covaryt;
+"
+ns_rproc.sim <- paste(rproc1,rproc2.sim)
+ns_rproc.filt <- paste(rproc1,rproc2.filt)
+
+```
+
+```{r}
+ns_initializer <- "
+  G = G_0;
+  H = H_0;
+  Y_state = rnorm( 0,exp(H/2) );
+"
+```
+
+```{r}
+ns_rmeasure <- "
+   y=Y_state;
+"
+
+ns_dmeasure <- "
+  lik=dnorm(y,0,exp(H/2),give_log);
+"
+
+```
+
+```{r}
+
+ns_partrans <- parameter_trans(
+log=c("sigma_eta","sigma_nu"),
+logit="phi"
+)
+
+
+```
+
+Note that due to the limit of time, I only build POMP on AAPL volatility.
+```{r}
+ns.filt <- pomp(data=data.frame(y=aapl_dmean,
+                                   time=1:length(aapl_dmean)),
+                   statenames=ns_statenames,
+                   paramnames=ns_paramnames,
+                   times="time",
+                   t0=0,
+                   covar=covariate_table(time=0:length(aapl_dmean),covaryt=c(0,aapl_dmean),times="time"),
+                   rmeasure=Csnippet(ns_rmeasure),
+                   dmeasure=Csnippet(ns_dmeasure),
+                   rprocess=discrete.time.sim(step.fun=Csnippet(ns_rproc.filt),delta.t=1),
+                   initializer=Csnippet(ns_initializer),
+                   rinit = Csnippet(ns_initializer),
+                   partrans = ns_partrans
+)
+
+
+expit<-function(real){1/(1+exp(-real))}
+logit<-function(p.arg){log(p.arg/(1-p.arg))}
+params_test <- c(
+  sigma_nu = exp(-4.5),  
+  mu_h = -0.25,       
+  phi = expit(4),     
+  sigma_eta = exp(-0.07),
+  G_0 = 0,
+  H_0=0
+)
+
+sim1.sim <- pomp(ns.filt, 
+                 statenames=ns_statenames,
+                 paramnames=ns_paramnames,
+                 rprocess=discrete.time.sim(step.fun=Csnippet(ns_rproc.sim),delta.t=1)
+)
+
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+
+```
+
+```{r}
+sim1.filt <- pomp(sim1.sim, 
+                  covar=covariate_table(
+                    time=c(timezero(sim1.sim),time(sim1.sim)),
+                    covaryt=c(obs(sim1.sim),NA),
+                    times="time"),
+                  statenames=ns_statenames,
+                  paramnames=ns_paramnames,
+                  rprocess=discrete.time.sim(step.fun=Csnippet(ns_rproc.filt),delta.t=1)
+)
+
+```
+
+```{r}
+run_level <- 3
+ns_Np <- switch(run_level, 100, 1e3, 2e3) #change it to larger scale later.
+ns_Nmif <- switch(run_level, 10, 100, 200)
+ns_Nreps_eval <- switch(run_level, 4, 10, 20)
+ns_Nreps_local <- switch(run_level, 10, 20, 20)
+ns_Nreps_global <- switch(run_level, 10, 20, 100)
+```
+
+```{r}
+library(doParallel)
+registerDoParallel()
+library(doRNG)
+registerDoRNG(34118892)
+stew(file=sprintf("pf1-%d.rda",run_level),{
+t.pf1 <- system.time(
+pf1 <- foreach(i=1:ns_Nreps_eval,
+.packages='pomp') %dopar% pfilter(sim1.filt,Np=ns_Np)) #change it to %do% when run on own PC
+},seed=493536993,kind="L'Ecuyer")
+(L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE))
+```
+
+```{r}
+ns_rw.sd_rp <- 0.02
+ns_rw.sd_ivp <- 0.1
+ns_cooling.fraction.50 <- 0.5
+ns_rw.sd <- rw.sd(
+sigma_nu = ns_rw.sd_rp,
+mu_h = ns_rw.sd_rp,
+phi = ns_rw.sd_rp,
+sigma_eta = ns_rw.sd_rp,
+G_0 = ivp(ns_rw.sd_ivp),
+H_0 = ivp(ns_rw.sd_ivp)
+)
+
+
+```
+
+```{r slow chunk1}
+stew(file=sprintf("mif1-%d.rda",run_level),{
+t.if1 <- system.time({
+if1 <- foreach(i=1:ns_Nreps_local,
+.packages='pomp', .combine=c) %dopar% mif2(ns.filt,
+params=params_test,
+Np=ns_Np,
+Nmif=ns_Nmif,
+cooling.fraction.50=ns_cooling.fraction.50,
+rw.sd = ns_rw.sd)
+L.if1 <- foreach(i=1:ns_Nreps_local,
+.packages='pomp', .combine=rbind) %dopar% logmeanexp(
+replicate(ns_Nreps_eval, logLik(pfilter(ns.filt,
+params=coef(if1[[i]]),Np=ns_Np))), se=TRUE)
+})
+},seed=318817883,kind="L'Ecuyer")
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],
+t(sapply(if1,coef)))
+if (run_level>1) write.table(r.if1,file="ns_params.csv",
+append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.if1$logLik,digits=5)
+
+```
+The iterated filtering find the maximized log-likelihood at 7016.[5] The repeated stochastic maximizations can also show us the geometry of the likelihood surface in a neighborhood of this point. Meanwhile, I can get the estimations for all paramaters and their standard deviations.
+
+```{r}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,
+data=subset(r.if1,logLik>max(logLik)-20))
+```
+
+```{r}
+plot(if1)
+```
+
+
+
+From the iterated filtering plots, I see that the chains converge after a long time running.
+
+However,it is not guaranteed that the initializations we pick are the optimized ones. To address this, I carry out a search box for global maximization.
+```{r}
+ns_box <- rbind(
+sigma_nu=c(0.005,0.05),
+mu_h =c(-1,0),
+phi = c(0.95,0.99),
+sigma_eta = c(0.5,1),
+G_0 = c(-2,2),
+H_0 = c(-1,1)
+)
+```
+
+```{r slow chunk 2}
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+t.box <- system.time({
+if.box <- foreach(i=1:ns_Nreps_global,
+.packages='pomp',.combine=c) %dopar% mif2(if1[[1]],
+params=apply(ns_box,1,function(x)runif(1,x)))
+L.box <- foreach(i=1:ns_Nreps_global,
+.packages='pomp',.combine=rbind) %dopar% {
+logmeanexp(replicate(ns_Nreps_eval, logLik(pfilter(
+ns.filt,params=coef(if.box[[i]]),Np=ns_Np))),
+se=TRUE)
+}
+})
+},seed=290860873,kind="L'Ecuyer")
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],
+t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="ns_params.csv",
+append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.box$logLik,digits=5)
+```
+We can see that the global max log-likelihood found by box method is 7021, which is larger than the max log-likelihood with our local search.
+
+
+```{r}
+pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,
+data=subset(r.box,logLik>max(logLik)-10))
+
+```
+
+```{r}
+plot(if.box)
+```
+
+
+
+I see that all chains converge
+
+## Results and Conclusions
+First, I model the stock log-volatility using three different models: ARIMA, GARCH, and POMP. For each model, I determine the paramters which give the best fit on the data. I find that ARIMA(2,0,2), GARCH(1,1) gives the best fit on AAPL and ARIMA(1,0,1), GARCH(1,1) gives the best fit on GS. I also adapt Bret'o (2014)[3] to implement a POMP model. I see that neither ARIMA model nor GARCH model is able to explain all the correlations in the data but GARCH gives a better fit than ARIMA. And POMP is performing well on the data.
+
+Second, I conduct model selections using AIC. For AAPL stock specifically, recall that the log-likelihood for ARIMA(2,0,2) is 6748.7, the log-likelihood for GARCH(1,1) is 6782.713, and the log-likehood for POMP is 7021. AIC for ARIMA is $-2*6748.7 + 2*5 = -13487.4$, AIC for GARCH is $-2*6782.713 + 2*3 = -13559.426$, AIC for POMP is $-2*7021 + 2*6 = -14021$. The lower AIC means better predictive power, so I conclude the model preference should be: 
+$$ARIMA(2,0,2) < GARCH(1,1) < POMP$$
+For GS, I conduct similar study and get the same result:
+$$ARIMA(1,0,1) < GARCH(1,1) < POMP$$
+As a conclusion, POMP is the best model to use when people have enough computing resource.
+
+## Reference
+[1] https://www.kaggle.com/szrlee/stock-time-series-20050101-to-20171231
+
+[2] https://ionides.github.io/531w20/14/notes14.pdf
+
+[3] Bret'o, C. 2014. On idiosyncratic stochasticity of financial leverage effects. Statistics & Probability Letters 91:20-26.
+
+[4] Edward Ionides, "14. Case study: POMP modeling to investigate financial volatility", https://ionides.github.io/531w18/14/notes14.html#arch-and-garch-models
+
+[5] Ionides, E.L., D.Nguyen, Y.Atchade, S.Stoev, and A.A. King. 2015. Inference for dynamic and latent variable models via iterated, perturbed Bayes maps. Proceedings of the National Academy of Sciences of the U.S.A. 112:719-724.
+
+
+
+
+
+
+
+
+
+
+
