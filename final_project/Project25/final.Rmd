@@ -1,0 +1,350 @@
+---
+title: "POMP Modeling for COVID-19 in Italy"
+subtitle: "STATS 531 Winter 2019 Final Project"
+date: "`r format.Date(Sys.Date(), '%B %d, %Y')`"
+geometry: "left = 2cm, right = 2cm, top = 2cm, bottom = 2cm"
+output: 
+  html_document:
+    toc: yes
+    code_folding: "show"
+    theme: flatly
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE, echo = T, result = "asis",
+                      fig.align = "center")
+```
+
+## 1. Introduction
+Novel Coronavirus disease (COVID-19), an highly contagious disease that can be transmitted through respository droplets and contact transmission, was first discovered in Wuhan City, Hubei Province, China in December 2019 and now presented a huge threat for global public health security. Many research articles had been published to study the transmission, treatment, and the social and economic effect of the COVID-19 pandemic.
+
+In this case study, we will use the daily cases of COVID-19 in Italy from January 22, 2020 to April 25, 2020 to understand the transmission dynamics of COVID-19. We will carry out the analysis by fitting the partially observed Markov process model (POMP) via the R package POMP [1].
+
+## 2. COVID-19 Data
+The daily new confirmed cases of COVID-19 in Italy was obtained from the [website](https://data.humdata.org/dataset/novel-coronavirus-2019-ncov-cases) of Johns Hopkins Coronavirus Resource Center (JHU CCSE). The data compiled by JHU CCSE came from various sources including the World Health Organization (WHO), DXY.cn. Pneumonia. 2020, BNO News, National Health Commission of the People’s Republic of China (NHC), China CDC (CCDC), Hong Kong Department of Health, Macau Government, Taiwan CDC, US CDC, Government of Canada, Australia Government Department of Health, European Centre for Disease Prevention and Control (ECDC), Ministry of Health Singapore (MOH). 
+
+Below is the plot of daily COVID-19 cases from 2020-01-22 to 2020-04-25. Italy has zero cases almost the entire of Feburary, but it then grow exponentially starting from March. We also see a small pothole on 2020-03-13 indicating a smaller increase compared to previous days. We have a total of 95 data points.
+
+```{r}
+# Libraries: -------------------------------------------------------------------
+library(tidyverse)
+library(pomp)
+library(ggplot2)
+theme_set(theme_bw())
+stopifnot(packageVersion("pomp")>="2.0")
+
+# Data: ------------------------------------------------------------------------
+data = read.csv("time_series_covid19_confirmed_global.csv")
+data = data %>% 
+  select(-c(Province.State, Lat, Long)) %>%
+  filter(Country.Region == "Italy") %>%
+  pivot_longer(cols = -1, names_to = "date", values_to = "C") %>%
+  transmute(date = as.Date(str_remove_all(date, "X"), format = "%m.%d.%y"),
+            C, day = c(1:95))
+```
+
+```{r, echo=TRUE, dependson="data", fig.cap=caps}
+ggplot(data, aes(x = date, y = C)) + geom_line() + 
+  ylab("Cases") + ggtitle("Daily Confirmed Cases of COVID-19 in Italy")
+caps = paste0("**Figure 1.** *COVID-19 Confirmed Cases in Italy.*")
+```
+
+```{r, echo=TRUE, dependson="data"}
+summary(data$C)
+```
+
+## 3. Design of POMP Model
+### 3.1 Model Setup
+
+Based on the description of the Centers for Disease Control and Prevention (CDC) website, symptoms may appear 2-14 days after exposure to the virus [1]. This period of latency in which people had exposed to the virus but not yet showing the symptoms should be included in the model. Hence, we consider using the S-E-I-R compartment modeling framework to fit the data. 
+
+![](SEIR_graph.png)
+
+The four distinct stages represent:
+- $S$: the susceptible population, who never have COVID-19 before 
+- $E$: the exposed population, who exposed to the infected individuals but do not show symptons
+- $I$: the infected population, including people who tested positive or not being tested
+- $R$: the recovered or removed (death) population
+
+Next, we will define the parameters that we use to set up the model.
+
+### 3.2 State Process
+The state variables $S$, $E$, $I$, and $R$ are modeled as follows:
+
+$$
+\begin{aligned}
+&S(t+\delta) = S(t) - N_{SE}(\delta), \ where \ N_{SE} \sim Bin(S(t), 1 - exp(-\beta \frac{I(t)}{N}\delta)) \\
+&E(t+\delta) = E(t) + N_{SE}(\delta) - N_{EI}(\delta), \ where \ N_{EI} \sim Bin(E(t), 1 - exp(-\mu_{EI} \delta)) \\
+&I(t+\delta) = I(t) + N_{EI}(\delta) - N_{IR}(\delta), \ where \ N_{IR} \sim Bin(I(t), 1 - exp(-\mu_{IR} \delta)) \\
+&R(t+\delta) = R(t) + N_{IR}(\delta)
+\end{aligned}
+$$
+In the above equations, the quantities of the form $N_{ij}$ indicate the number of individuals who moved from compartment $i$ to compartment $j$ in a time length of $\delta$. The Binomial distribution with exponential probabilities was chosen since it seems to fit the data better.
+
+The parameter $\beta$, the contact rate, represents the rate of a susceptible moving to the exposed compartment when in contact with an infected individual. The parameter $N$ corresponds to the total population. The parameter $\mu_{EI}$ is the incubation rate, the rate at which exposed people become infectious and $\mu_{IR}$ is the recovery and removed rate.
+
+Also, in the initial process,  we assume that I=1 but we don’t know how many people are susceptible, so we’ll treat the fraction, $eta$, as a parameter to be estimated. 
+
+### 3.2 Measurement Process
+At the time of this study is conducted, we had heard news reporting test shortages in Italy and this is a piece of important information that should be considered in our model since the number of confirmed cases won't be the same as the number of actual cases. In addition, people with mild symptons might not be tested even though they were infected. Therefore, the measurement model is the observed data (number of confirmed cases) given the total number of infectious people: (similar to [2-3])
+$$C_n|I(t_n) \sim NegBin(\mu = \rho I(t_n), \sigma^2=\rho I(t_n) + \frac{(\rho I(t_n))^2}{k},$$
+where $C_n$ is the number of COVID-19 confirmed cases, $\rho$ is the reporting rate corresponding to what fraction of COVID-19 cases will be reported and confirmed, and $k$ is the parameter that controls overdispersion in the counts process.
+
+## 4. Model Implementation
+### 4.1 Model Setup in POMP
+
+```{r pomp}
+# POMP model: ------------------------------------------------------------------
+covid_statenames = c("S", "E", "I", "R")
+covid_paramnames = c("Beta", "mu_EI", "rho", "mu_IR", "N", "eta", "k")
+covid_obsnames = "C"
+
+covid_dmeasure = "lik = dpois(C, rho*I + 1e-6, give_log);"
+
+covid_rmeasure = "C = rnbinom(rho*I, k);"
+
+covid_rprocess = "
+double dN_SE = rbinom(S, 1-exp(-Beta*I/N*dt));
+double dN_EI = rbinom(E, 1-exp(-mu_EI*dt));
+double dN_IR = rbinom(I, 1-exp(-mu_IR*dt));
+S -= dN_SE;
+E += dN_SE - dN_EI;
+I += dN_EI - dN_IR;
+R += dN_IR;
+"
+
+covid_rinit = "
+S = 2500;
+E = 1;
+I = 1;
+R = 0;
+"
+
+covid <- pomp(data = data, times = "day", t0 = 0,
+              rprocess = euler(step.fun = Csnippet(covid_rprocess), delta.t = 1/7),
+              rmeasure = Csnippet(covid_rmeasure),
+              dmeasure = Csnippet(covid_dmeasure),
+              partrans = parameter_trans( 
+                log=c("Beta","mu_EI","mu_IR", "k", "rho")),
+              obsnames = covid_obsnames,
+              statenames = covid_statenames,
+              paramnames = covid_paramnames,
+              rinit = Csnippet(covid_rinit)
+)
+```
+
+### 4.2 Simulations and Particle Filter
+We first tried out multiple combinations of parameters to see which values seemed more plausible to the data. The red lines in Figure 2 shows the twenty simulations and the blue green line is the observed data. It appears that the set of parameters may possibly fit the data.
+
+```{r, warning=FALSE, fig.cap=caps}
+sims = covid %>%
+  simulate(params = c(Beta = 10, mu_EI = 0.01, mu_IR = .02, k = 0.42,
+                      rho = 400, eta = 0.2, N = 30000),
+           nsim = 20, format = "data.frame", include = TRUE)
+ggplot(sims, aes(x = day, y = C, group = .id, color = .id=="data")) +
+  geom_line() + guides(color=FALSE)
+caps = paste0("**Figure 2.** *Simulations for COVID-19 data.*")
+```
+
+Before using the IF2 algorithm [4] to carry out the likelihood maximization, we ran a few particle filters to obtain an estimate of Monte Carlo variability.
+
+```{r pfilter, eval = FALSE}
+# Run level: -------------------------------------------------------------------
+run_level = 1
+covid_Np =      switch(run_level, 100, 10000, 60000)
+covid_Nmif =    switch(run_level,  10,   100,   300)
+covid_Neval =   switch(run_level,  10,    10,    10)
+covid_Nglobal = switch(run_level,  10,    10,   100)
+covid_Nlocal =  switch(run_level,  20,    100,    20)
+
+# Parallel Setup: --------------------------------------------------------------
+library(foreach)
+library(doParallel)
+cores = 2
+registerDoParallel(cores)
+mcopts = list(set.seed = TRUE)
+
+# pfilter: ---------------------------------------------------------------------
+stew(file = sprintf("pf-%d.rda", run_level),{ t_pf = system.time(
+  pf = foreach(i = 1:20, .packages = 'pomp') %dopar% try(
+    pfilter(covid, Np = 500, 
+            params = c(Beta = 10, mu_EI = 0.01, mu_IR = .02, k = 0.42,
+                       rho = 400, eta = 0.2, N = 30000),
+            partrans = parameter_trans( 
+              log = c("Beta", "mu_EI", "mu_IR", "k", "rho")),
+            dmeasure = Csnippet(covid_dmeasure), 
+            statenames = covid_statenames,
+            paramnames = covid_paramnames)
+    )
+  ) }, seed = 1320290398, kind = "L'Ecuyer")
+```
+
+```{r}
+load("pf-1.rda")
+logmeanexp(sapply(pf, logLik), se = TRUE)
+```
+
+The average log likelihood estimate is $-2810.6017$ with $2.4271$ standard error.
+
+### 4.3 IF2 Algorithm
+Some issues arise when using the above optimization algorithm. For example, the particle filter gives us a stochastic estimate of the likelihood and the need of solving the constrained maximization problem. Given those issues, we will try another algorithm which is an iterated filtering algorithm (IF2) developed by Ionides et al [4] in 2015. The algorithm is a plug-and-play approach [5,6] for likelihood based inference in which the procedure theoretically converges toward the region of parameter space maximizing the maximum likelihood [7].
+
+#### 4.3.1 Local MLE
+We specified an interval for each parameter and ran a local search for the purpose of providing a better and more efficient global search later.
+
+Note that we first set the run level equals to 1 and ran on the local computer, then changed it to 2 and ran on the great lakes cluster. Since the computing time increase linearly, it took around 7.3 hours using 36 cores to run on the great lakes cluster.
+
+```{r local, eval = FALSE}
+# Local search: ----------------------------------------------------------------
+run_level = 2
+
+covid_box = rbind(
+  Beta = c(10, 50),
+  mu_EI = c(.01, .1),
+  mu_IR = c(.01, .1), 
+  k = c(.1, 1),
+  rho = c(.1, 5)
+)
+covid_fixed_params = c(eta = 0.5, N = 3800)
+covid_rw.sd = 0.02
+covid_cooling.fraction.50 = 0.5
+
+stew(file = sprintf("box_eval-%d.rda", run_level),{
+  t_local = system.time({
+    covid_local = foreach(i = 1:covid_Nlocal, .options.multicore = mcopts,
+                          .packages = 'pomp', .combine = c) %dopar% mif2(
+                            covid,
+                            params = c(
+                              apply(covid_box,1, function(x) runif(1, x[1], x[2])),
+                              covid_fixed_params),
+                            cooling.fraction.50 = covid_cooling.fraction.50,
+                            Nmif = covid_Nmif,
+                            Np = covid_Np,
+                            rw.sd = rw.sd(
+                              Beta = covid_rw.sd,
+                              mu_EI = covid_rw.sd,
+                              mu_IR = covid_rw.sd,
+                              k = covid_rw.sd,
+                              rho = covid_rw.sd,
+                              N = ivp(covid_rw.sd),
+                              eta = ivp(covid_rw.sd)
+                              )
+                            )
+    })
+  }, seed = 900242058, kind = "L'Ecuyer")
+
+# likelihood local
+stew(file = sprintf("lik_local_eval-%d.rda", run_level),{
+  t_local_eval = system.time({
+    liks_local = foreach(i = 1:covid_Nlocal, .options.multicore = mcopts,
+                         .packages = 'pomp',.combine = rbind) %dopar% {
+                           evals = replicate(covid_Neval,logLik(
+                               pfilter(covid, params = coef(covid_local[[i]]), 
+                                       Np = covid_Np)))
+                           logmeanexp(evals, se=TRUE)
+                           }
+    })
+  }, seed = 442141592, kind = "L'Ecuyer")
+```
+
+Figure 3 shows the pairpolt of selected parameters that used to adjust the parameter interval for global search.
+
+```{r, fig.cap=caps}
+load("box_eval-2.rda")
+load("lik_local_eval-2.rda")
+results_local = data.frame(
+  logLik = liks_local[,1],
+  logLik_se = liks_local[,2], t(sapply(covid_local, coef))
+  )
+
+pairs(~logLik+Beta+mu_EI+mu_IR+rho+k, data = results_local)
+caps = paste0("**Figure 3.** *Local MLE pairplot of selected parameters.*")
+```
+
+#### 4.3.2 Global MLE
+The global search is carried out based on the local search. It took 43.5 minutes for the maximization and 3.3 minutes for evaluations.
+
+```{r, eval=FALSE}
+#80: ---------------------------------------------------------------------------
+stew(file = sprintf("g_box_eval-%d.rda", run_level),{
+  t_global = system.time({
+    covid_gloal = foreach(i = 1:covid_Nglobal, .options.multicore = mcopts,
+                          .packages = 'pomp', .combine = c) %dopar% mif2(
+                            covid_local[[1]],
+                            params = c(
+                              apply(covid_box,1,function(x) runif(1, x[1], x[2])),
+                                    covid_fixed_params)
+                            )
+    })
+  }, seed = 900242058, kind = "L'Ecuyer")
+
+# likelihood eval at each point estimate
+stew(file = sprintf("lik_global_eval-%d.rda", run_level),{
+  t_global_eval = system.time({
+    liks_global = foreach(i = 1:covid_Nglobal, .options.multicore = mcopts,
+                          .packages = 'pomp', .combine = rbind) %dopar% {
+                            evals = replicate(covid_Neval, logLik(
+                              pfilter(covid, 
+                                      params = coef(covid_gloal[[i]]), 
+                                      Np = covid_Np)))
+                            logmeanexp(evals, se = TRUE)
+                            }
+    })
+  }, seed = 442141592, kind = "L'Ecuyer")
+```
+
+```{r}
+load("g_box_eval-2.rda")
+load("lik_global_eval-2.rda")
+results_global = data.frame(
+  logLik = liks_global[,1], 
+  logLik_se = liks_global[,2],
+  t(sapply(covid_global, coef))
+  )
+summary(results_global$logLik, digits = 5)
+```
+The loglikelihood of 10 global evaluations on 10000 particle filters have a minumum of -2536 and a maximum of -2118.
+
+## 5. Results and Model Diagnostics
+To test model goodness of fit, we look at the last iteration of the global maximization. Several observations are as follow:
+
+- At the beginning, we have most effective sample size larger than 1000. However, the particle fails after time 40, indicating that the model need some fixes.
+- We see most of the loglikehoods converge at value around -2481, but we see a couple of lines that above most lines. It seems that we only found a local maximum.
+- In terms of convergence of parameters, `Beta` seems to converge well, yet the other parameters are spreading out from their starting points and not stabilizing.
+
+```{r, warning=FALSE, fig.cap=caps}
+plot(covid_global)
+caps = paste0("**Figure 5.** *Diagnostic plot of global MLE search and evaluations.*")
+```
+
+## 6. Conclusion and Discussion
+Overall, the SEIR model seems to be a reasonable model for the COVID-19 data. But due to the complexity of the epidemic and the computational limitation, the model need extra polish to better fit the data. Discussion for future analysis is as follows:
+
+- The numerical instability may be the consequence of the weakly identified parameter space. The issue can possibly be solved by increasing the cooling.fraction.50, which is an argument that reduces the intensity of the parameter perturbations after a number of successive filtering iterations. Or sometimes, the numerical instability implies that those parameters might not be important for the model [8].
+
+- We see filtering failure occurs at 62 A filtering failure occurs when the conditional likelihood of every particle is below the tolerance tol (the default value is 1e-17) and it is a sign that the model parameters may be suboptimal. To determine where the filtering failure is occurring, we can run a single pfilter, extract the effective sample size, and check if there are particular data points that are particularly difficult for the model to explain [9].
+
+- Given that the COVID-19 epidemic is an ongoing event, small sample size (95 data points) might also be a factor that affect the model efficacy.
+
+By adjusting the parameter space based on the points mentioned above, we could improve the model and reach the global likelihood maximization.
+
+## 7. Reference
+[1] https://www.cdc.gov/coronavirus/2019-ncov/symptoms-testing/symptoms.html
+
+[2] The Ebola Epidemic of 2014-2016: Sierra Leone https://ionides.github.io/531w18/final_project/33/final.html
+
+[3] Simulation-based Inference for Epidemiological Dynamics https://kingaa.github.io/sbied/index.html
+
+[4] Ionides, E. L., Nguyen, D., Atchad ́e, Y., Stoev, S. and King, A. A. (2015). Inference for dynamic and latent variable models via iterated, perturbed Bayes maps, Proceedings of the National Academy of Sciences of USA 112: 719–724.
+
+[5] He, D., Ionides, E. L. and King, A. A. (2010). Plug-and-play inference for disease dynamics: Measles in large and small towns as a case study. Journal of the Royal Society Interface 7 271–283.
+
+[6] Ionides, E. L., Bretó, C. and King, A. A. (2006). Inference for nonlinear dynamical systems.Proc. Natl. Acad. Sci. USA 103 18438–18443. 
+
+[7] Lecture notes 10-13, Stats 531, Winter 2020, Analysis of Time Series. From https://ionides.github.io/531w20/
+
+[8] Wang, A case study on Smallpox transmission dynamic in California 1928-1935. From https://ionides.github.io/531w18/final_project/15/final.html
+
+[9] What happens in case of a filtering failure? From https://github.com/kingaa/pomp/issues/36
+
+

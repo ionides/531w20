@@ -1,0 +1,447 @@
+---
+title: "Analysis of SSDOY stock price volatility"
+output: 
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+## Introduction
+stock volatility is the rate at which the price of a stock increases or decreases over a particular period. Higher stock price volatility often means higher risk and helps an investor to estimate the fluctuations that may happen in the future.[1]
+in this project, I will use the data from the SSDOY company historical stock price,data is from https://finance.yahoo.com/quote/SSDOY/history?p=SSDOY
+firstly, I will try to fit ARMA model, then I will try to fit the datn into GARCH model and use time-varying leverage model learned from notes 14 and previous project,also I made some improvemnts in diagnostic of ARMA model,compare simulated and origial data of pomp model and filtering on simulated data
+
+---
+## Explore the data
+```{r,include=FALSE}
+library(pomp)
+library(plyr)
+library(ggplot2)
+library(foreach)
+library(tseries)
+library(stochvol)
+library(magrittr)
+```
+
+
+```{r}
+dat=read.csv(file="SSDOY.csv",sep=",",header=TRUE)
+head(dat)
+```
+
+```{r}
+dat$Date <- strptime(dat$Date,"%Y-%m-%d")
+dat$year <- as.numeric(format(dat$Date, format="%Y"))
+dat$month <- as.numeric(format(dat$Date, format="%m"))
+dat$day <- as.numeric(format(dat$Date, format="%d"))
+time <- dat$year + dat$month/12 + dat$day/365
+N <- nrow(dat)
+SSDOY <- dat$Close[1:N]
+```
+
+```{r}
+plot(time,SSDOY,type="l",xlab="Date",main = "weekly closing price")
+```
+
+I found before 2016, the closing price is stable,but after 2018, the price is not stable.
+
+then I adjust the clsosing price to fit the data,one is difference log, another is move mean. [2]
+
+
+```{r}
+log_returns <- diff(log(SSDOY),lag=1)
+plot(time,log(SSDOY),type="l",xlab="Date",main = "log of closing price")
+plot(time[-1],log_returns,type="l",xlab="Date",main = "log of returns")
+```
+
+
+```{r}
+demeaned_returns <- logret(SSDOY,demean=TRUE)
+plot(time[-1],demeaned_returns,type="l",xlab="Date",main = "demeaned returns")
+```
+
+then I try to use these data to fit arma model based on my midterm project method.
+
+
+### Fit arma model
+An ARMA(p,q) equation is written as[3]
+
+$$\phi(B)(Y_n-\mu)=\psi(B)\epsilon_n$$ 
+
+
+then we will use ACF to choose the best value of p and q.  The AIC of a model is :
+
+$$AIC=-2 \times \ell(\theta^*) + 2D$$
+
+where $\ell(\theta^**)$is the log likelihood function $\mathscr{L}=f_{Y_{1:N}}(y^*_{1:N};\theta)$ and $D$ is the number of parameters. The second term $2D$ serves as a penalty for models with more parameters, in order to deal with the problem of overfitting. 
+
+We will construct a table that displays the AIC values for the different ARMA(p,q) models
+
+```{r echo=FALSE}
+Table_For_AIC <- function(data,P,Q){
+  table <- matrix(NA,(P+1),(Q+1))
+  for(p in 0:P) {
+    for(q in 0:Q) {
+      table[p+1,q+1] <- arima(data,order=c(p,0,q))$aic
+    }
+  }
+  dimnames(table) <- list(paste("<b> AR",0:P, "</b>", sep=""),paste("MA",0:Q,sep=""))
+  table
+}
+Retail_aic_table <- Table_For_AIC(demeaned_returns,5,5)
+knitr::kable(Retail_aic_table,digits=2,caption="AIC Values of SARIMA models for Model Errors with
+Seasonal Component")
+```
+
+from the aic,ARMA(0,0) has lowest value of aic 
+then we use ARMA(0,0) to fit data and analysis.
+
+```{r}
+arma00 <- arima(demeaned_returns, order=c(0,0,0))
+arma00
+```
+
+### Diagnostics
+We will now do diagnostics for the assumptions to see if the ARMA model is appropriate.
+first we can check whether the residuals are white noise. Here is one of my improvement from previous project,I add diagnostics of ARMA model.
+
+```{r echo=FALSE}
+plot(arma00$residuals, ylab="residuals", main="Residuals of ARMA(0,0) model")
+```
+
+so the residuals's mean value is around 0, and the variance is constant. so the model seems like statisfiy the white noise requirement.
+then we can check ACF to verity whether the residuals are iid
+
+```{r echo=FALSE}
+acf(arma00$resid,main="ACF of residuals")
+```
+
+we can see there is no autocorrelation between different residuals. so it satisfy our expectation.
+then we can assume the residual follow the normal distribution with mean value 0, variance 0.001568. we can use qqplot to verify.
+
+```{r echo=FALSE}
+qqnorm(arma00$residuals)
+qqline(arma00$residuals)
+```
+
+I found qq-plot also fit good, although there is a little heavy-tail.
+
+
+## Fit the time-varying leverage model
+
+The notation of model is given below.[3] 
+  
+$R_n=\frac{exp{(2G_n)}-1}{exp{(2G_n)}+1}$,
+  
+$Y_n=exp{(H_n/2)}\epsilon_n$,
+  
+$H_n=\mu_h(1-\phi)+\phi H_{n-1}+\beta_{n-1}R_n exp{(-H_{n-1}/2)} +\omega_n$,
+  
+$G_n = G_{n-1} + \upsilon_n$,
+  
+where $\beta_n = Y_n\sigma_\eta\sqrt{1-\phi^2}$,{$\epsilon_n$} is an iid $N(0,1)$ sequence, { $\upsilon_n$} is an iid $N(0,\sigma_\upsilon^2)$ sequence, and {$\omega_n$} is an iid $N(0,\sigma_\omega^2)$ sequence.
+  
+Here, $H_n$ is the log volatility, $R_n$ is leverage defined as the correlation between index return on day n-1 and the increase in the log volatility from day n-1 to day n.
+
+### Build a pomp model
+
+first, let me build a pomp model based on leverage model, these code is reference form notes 14.[4]
+
+```{r,include=FALSE}
+library(pomp)
+```
+
+```{r}
+SSDOY_statenames <- c("H","G","Y_state")
+SSDOY_rp_names <- c("sigma_nu","mu_h","phi","sigma_eta")
+SSDOY_ivp_names <- c("G_0","H_0")
+SSDOY_paramnames <- c(SSDOY_rp_names,SSDOY_ivp_names)
+```
+
+```{r}
+rproc1 <- "
+double beta,omega,nu;
+omega = rnorm(0,sigma_eta * sqrt( 1- phi*phi ) *
+sqrt(1-tanh(G)*tanh(G)));
+nu = rnorm(0, sigma_nu);
+G += nu;
+beta = Y_state * sigma_eta * sqrt( 1- phi*phi );
+H = mu_h*(1 - phi) + phi*H + beta * tanh( G )
+* exp(-H/2) + omega;
+"
+rproc2.sim <- "
+Y_state = rnorm( 0,exp(H/2) );
+"
+rproc2.filt <- "
+Y_state = covaryt;
+"
+SSDOY_rproc.sim <- paste(rproc1,rproc2.sim)
+SSDOY_rproc.filt <- paste(rproc1,rproc2.filt)
+```
+
+```{r}
+SSDOY_rinit <- "
+G = G_0;
+H = H_0;
+Y_state = rnorm( 0,exp(H/2) );
+"
+SSDOY_rmeasure <- "
+y=Y_state;
+"
+SSDOY_dmeasure <- "
+lik=dnorm(y,0,exp(H/2),give_log);
+"
+```
+
+```{r}
+SSDOY_partrans <- parameter_trans(
+log=c("sigma_eta","sigma_nu"),
+logit="phi"
+)
+```
+
+```{r}
+SSDOY.filt <- pomp(data=data.frame(
+y=demeaned_returns,time=1:length(demeaned_returns)),
+statenames=SSDOY_statenames,
+paramnames=SSDOY_paramnames,
+times="time",
+t0=0,
+covar=covariate_table(
+time=0:length(demeaned_returns),
+covaryt=c(0,demeaned_returns),
+times="time"),
+rmeasure=Csnippet(SSDOY_rmeasure),
+dmeasure=Csnippet(SSDOY_dmeasure),
+rprocess=discrete_time(step.fun=Csnippet(SSDOY_rproc.filt),
+delta.t=1),
+rinit=Csnippet(SSDOY_rinit),
+partrans=SSDOY_partrans
+)
+```
+
+```{r}
+params_test <- c(
+sigma_nu = exp(-4.5),
+mu_h = -0.25,
+phi = expit(4),
+sigma_eta = exp(-0.07),
+G_0 = 0,
+H_0=0
+)
+sim1.sim <- pomp(SSDOY.filt,
+statenames=SSDOY_statenames,
+paramnames=SSDOY_paramnames,
+rprocess=discrete_time(
+step.fun=Csnippet(SSDOY_rproc.sim),delta.t=1)
+)
+sim1.sim <- simulate(sim1.sim,seed=1,params=params_test)
+```
+
+```{r}
+sim1.filt <- pomp(sim1.sim,
+covar=covariate_table(
+time=c(timezero(sim1.sim),time(sim1.sim)),
+covaryt=c(obs(sim1.sim),NA),
+times="time"),
+statenames=SSDOY_statenames,
+paramnames=SSDOY_paramnames,
+rprocess=discrete_time(
+step.fun=Csnippet(SSDOY_rproc.filt),delta.t=1)
+)
+```
+
+
+then I plot the simulated data compared with the original data,code is reference[5],this is also another part of improvements than previous project and note 14 .I compare the original and simulated data.
+
+```{r}
+plot(Y_state~time,data=sim1.sim,type='l',col='blue',main='original vs Simulated',ylab='Log returns')
+lines(demeaned_returns)
+legend('topright',legend=c("Original","Simulated"),col=c("black","blue"),lty = c(1,1))
+```
+
+obvoulsy, the simulation is not good, then I will use loacal and global search to fit better.
+
+
+### Filtering on simulated data 
+then I use the data to calculate the likelihood [4], this is alse one of improvements I made than previous project[2]
+
+```{r}
+run_level <- 3
+SSDOY_Np <- switch(run_level, 100, 1e3, 2e3)
+SSDOY_Nmif <- switch(run_level, 10, 100, 200)
+SSDOY_Nreps_eval <- switch(run_level, 4, 10, 20)
+SSDOY_Nreps_local <- switch(run_level, 10, 20, 20)
+SSDOY_Nreps_global <- switch(run_level, 10, 20, 100)
+
+```
+
+
+```{r}
+stew(file=sprintf("pf1-3.rda",run_level),{
+t.pf1 <- system.time(
+pf1 <- foreach(i=1:SSDOY_Nreps_eval,
+.packages=
+'pomp'
+) %dopar% pfilter(sim1.filt,Np=SSDOY_Np))
+},seed=493536993,kind="L'Ecuyer")
+(L.pf1 <- logmeanexp(sapply(pf1,logLik),se=TRUE))
+```
+
+so the likelihood is not so good, its -3658.4583078 
+
+
+### A local search of the likelihood surface
+now I use the IF2 algorithm of Ionides et al. to try out iterated filyering on ssdoy dat[4]
+
+```{r}
+SSDOY_rw.sd_rp <- 0.02
+SSDOY_rw.sd_ivp <- 0.1
+SSDOY_cooling.fraction.50 <- 0.5
+SSDOY_rw.sd <- rw.sd(
+sigma_nu = SSDOY_rw.sd_rp,
+mu_h = SSDOY_rw.sd_rp,
+phi = SSDOY_rw.sd_rp,
+sigma_eta = SSDOY_rw.sd_rp,
+G_0 = ivp(SSDOY_rw.sd_ivp),
+H_0 = ivp(SSDOY_rw.sd_ivp)
+)
+```
+
+```{r}
+require(doParallel)
+registerDoParallel()
+```
+
+```{r}
+stew(file=sprintf("mif1-3.rda",run_level),{
+t.if1 <- system.time({
+if1 <- foreach(i=1:SSDOY_Nreps_local,
+.packages=
+'pomp'
+, .combine=c) %dopar% mif2(SSDOY.filt,
+params=params_test,
+Np=SSDOY_Np,
+Nmif=SSDOY_Nmif,
+cooling.fraction.50=SSDOY_cooling.fraction.50,
+rw.sd = SSDOY_rw.sd)
+L.if1 <- foreach(i=1:SSDOY_Nreps_local,
+.packages=
+'pomp'
+, .combine=rbind) %dopar% logmeanexp(
+replicate(SSDOY_Nreps_eval, logLik(pfilter(SSDOY.filt,
+params=coef(if1[[i]]),Np=SSDOY_Np))), se=TRUE)
+})
+},seed=318817883,kind="L'Ecuyer")
+
+
+r.if1 <- data.frame(logLik=L.if1[,1],logLik_se=L.if1[,2],
+t(sapply(if1,coef)))
+if (run_level>1) write.table(r.if1,file="SSDOY_params1.csv",
+append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.if1$logLik,digits=5)
+```
+
+the max log likelihood is -3954 in loacal search.
+
+
+```{r}
+pairs(~logLik+sigma_nu+mu_h+phi+sigma_eta,
+data=subset(r.if1,logLik>max(logLik)-20))
+```
+
+From the geometry of the likelihood surface in a neighborhood of this point estimate, we can estimate the range to do global search later.[4]
+
+### A global search of the likelihood surface
+
+```{r}
+SSDOY_box <- rbind(
+sigma_nu=c(-0.01,0.03),
+mu_h =c(-0.3,0.2),
+phi = c(0.975,0.99),
+sigma_eta = c(0.8,1.2),
+G_0 = c(-2,2),
+H_0 = c(-1,1)
+)
+
+stew(file=sprintf("box_eval-3.rda",run_level),{
+t.box <- system.time({
+if.box <- foreach(i=1:SSDOY_Nreps_global,
+.packages='pomp'
+,.combine=c) %dopar% mif2(if1[[1]],
+params=apply(SSDOY_box,1,function(x)runif(1,x)))
+L.box <- foreach(i=1:SSDOY_Nreps_global,
+.packages='pomp'
+,.combine=rbind) %dopar% {
+logmeanexp(replicate(SSDOY_Nreps_eval, logLik(pfilter(
+SSDOY.filt,params=coef(if.box[[i]]),Np=SSDOY_Np))),
+se=TRUE)
+}})},seed=290860873,kind="L'Ecuyer")
+r.box <- data.frame(logLik=L.box[,1],logLik_se=L.box[,2],
+t(sapply(if.box,coef)))
+if(run_level>1) write.table(r.box,file="SSDOY_params2.csv",
+append=TRUE,col.names=FALSE,row.names=FALSE)
+summary(r.box$logLik,digits=5)
+```
+the max log likelihood is -3954 in global search.
+
+```{r}
+pairs(~logLik+log(sigma_nu)+mu_h+phi+sigma_eta+H_0,
+data=subset(r.box,logLik>max(logLik)-10))
+```
+
+
+### Diagnostics
+```{r}
+plot(if.box)
+```
+the plot shows parameter convergence is not bad and stable.
+
+
+
+## Garch model
+we fit garch model to get a benchmark
+The ARCH and GARCH models have become widely used fornancial time series modeling,The GARCH(1.1) model is a popular choice[4]
+first let me check whether the data is suitable to fit the garch model , we use McLeod-Li test to examine that if GARCH model is suitable for this data.[2]
+
+```{r,include=FALSE}
+library(TSA)
+#library(LSTS)
+```
+
+
+### Check whether suitable to use garch model
+
+```{r}
+McLeod.Li.test(y=(demeaned_returns))
+```
+From McLeod.Li.test, most of p values are less than significant level 0.05, we can use GARCH(1,1) model to fit data.
+
+### Fit garch model
+```{r}
+require(tseries)
+fit.garch <- garch(demeaned_returns,grad = "numerical",
+trace = FALSE)
+L.garch <- tseries:::logLik.garch(fit.garch)
+L.garch
+```
+So the log likelihood of garch model is 942.
+
+
+## Conclusion
+1. arma(0,0) model is better than GARCH(1,1) model than time-varying leverage model if compared with the likelihood value.
+2.arma(0,0) has heavy-tailed, so the model is not perfect, time-varing lerage has too many parameters and its hard to interpret them, and GARCH model when we check this suitability, we found some lag p-value is bigger than 0.05,so it is not perfectly suitable in GARCH(1,1)
+
+## Improvement
+the data volume is only about 500, maybe we can collect more data to analysis, maybe help us to get a better model.
+
+
+## Reference
+[1]https://www.fidelity.com.sg/beginners/your-guide-to-stock-investing/understanding-stock-market-volatility-and-how-it-could-help-you
+[2]https://ionides.github.io/531w18/final_project/21/final.html#5_fit_the_time-varying_leverage_model
+[3]https://ionides.github.io/531w20/midterm_project/project5/531-midterm-project.html
+[4]https://ionides.github.io/531w20/14/notes14.pdf
+[5]https://ionides.github.io/531w18/final_project/27/final.html
+
+
+ 

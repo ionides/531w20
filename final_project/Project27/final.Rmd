@@ -1,0 +1,557 @@
+---
+title: "Time Series Analysis on Covid-19 in China 2020"
+output: html_document
+---
+
+# Introduction
+## Motivation
+
+Coronavirus (Covid-19) has been spread out worldwide from the beginning of 2020. By the end of March, the panic caused by Covid-19 in China has been controlled. To build an model on this infectious disease can help other countries to understand this virus more clearly. We fit the data with the knowledge we learned from this course.
+
+## Goals
+
+In this project, we want to build mathematic model to investigate the transmission of Covid-19 cases in China.
+
+If we find a pattern or the parameters that simulate an approximating model of the Covid-19 cases dataset, we can be more prepared for the coming outbreaks in other places.
+
+# exploratory data analysis
+## data description, selection and visualization
+
+```{r,message = FALSE, echo = FALSE}
+library(dplyr)
+library(pomp)
+library(ggplot2)
+options(warn=-1)
+#suppressPackageStartupMessages(library(dplyr))
+data <- read.csv("covid_19.csv")
+```
+
+```{r,echo = FALSE}
+dat=data[data$Country.Region=="China",]
+dat=dat%>%mutate(date = as.Date(Date,"%m/%d/%Y"))
+dat=dat[dat$date<=as.Date('2020-04-01'),]
+dat=dat%>%select(date,Confirmed,Deaths,Recovered)
+DF=dat%>%group_by(date)%>%summarise_all(funs(sum))
+DF=DF[-nrow(DF),]
+df=DF[-nrow(DF),-1]
+df=rbind(c(0,0,0), df)
+df$date=DF$date
+df$Confirmed=DF$Confirmed-df$Confirmed
+df$Deaths=DF$Deaths-df$Deaths
+df$Recovered=DF$Recovered-df$Recovered
+df=df[-1,]
+#df=df[-87,]
+#df=df[-23,]
+write.table(df, file = "data.txt", sep = "\t",
+            row.names = FALSE)
+library(tibble)
+bsflu_data=df[,-4]
+bsflu_data=rownames_to_column(bsflu_data, var = "day")
+names(bsflu_data)=c("day","B","D","C")
+bsflu_data$day=as.numeric(bsflu_data$day)
+day=bsflu_data$day
+bsflu_data=bsflu_data[,-1]
+bsflu_data=bsflu_data[,-2]
+bsflu_data$day=day
+row.names(bsflu_data)=df$date
+write.table(bsflu_data, file = "bsflu_data.txt", sep = "\t",
+            row.names = TRUE)
+```
+The data we are using is 2020 daily Covid-19 dataset from Kaggle, including number of Confirmed, Death and Recovered cases every day across the globe. The raw data includes 24890 observations from 185 different country/region. By the time we downloaded the data, the data include from 2020-01-22 to 2020-04-26. So we first need to select the cases that relates to our topic. In the following analysis, we only focus on the data from China. 
+
+After selecting the data we need, there are 2343 cases from various provinces in China, and we aggregate the datapoints by date. Maybe because of miscalculation or other reasons, the number of recovered people from 2020-04-17 is negative. So we decided to use data points only before 2020-04-01. At last, we have 69 observations of confirmed cases and recovered cases of Covid-19 in China.
+
+Let's have a general look of the data:
+
+```{r,echo = FALSE}
+ggplot(df, aes(x=date)) + 
+  geom_line(aes(y = Confirmed, color = "Confirmed")) + 
+  geom_line(aes(y = Recovered, color = "Recovered")) + 
+  geom_line(aes(y = Deaths, color="Deaths")) +
+  scale_colour_manual("", 
+                      breaks = c("Deaths", "Recovered", "Confirmed"),
+                      values = c("red", "green", "blue")) +
+  ylab("Cases")+
+  labs(title="Covid-19 in China 2020")
+```
+
+In the following analysis, we do not care about changing of daily death rates. The death rate will be counted into removal rate and will be a constant number. 
+
+```{r}
+df$date[which.max(df$Confirmed)]
+max(df$Confirmed)
+df$date[which.max(df$Recovered)]
+max(df$Recovered)
+```
+On 2020-02-13, there were 13628 new confirmed cases of Covid-19 in China, which is the maximum of the data we are using. Other data points are mostly under 5000. The sudden arise of confirmed cases may be resulted from several reasons. Maybe on 2020-02-13, the hospital got a new patch of reagent test kits and conducted more tests than usual. Maybe there is a public gathering event that day and thus resulting in massive infections. Some sources believes Chinese government change the criterion of it counts to the coronavirus cases.
+
+Then on 2020-02-22, there were 3845 cases of recovered cases, which is the maximum of the data. This 9-day lag may be the cycle of confirmed-recovered. From some news and reports, it is said that a healthy human with strong immune systme can be self-healed from Covid-19 within 1 or 2 weeks. We can roughly say that the natural recover rate of Covid-19 is about
+```{r}
+3845/13628
+```
+
+
+## ACF
+We can plot the autocorrelation function (ACF) of the confirmed cases.
+
+```{r,echo=FALSE}
+acf(df$Confirmed)
+acf(df$Recovered)
+```
+
+As we can see, almost all the autocorrelation of confirmed cases is greater than 0. It shows weakly decreasing trend and no sign of sinusoidal pattern. the ACF of recovered cases shows decreasing trend.
+
+
+# Model fitting
+
+## First try: simple SIR model
+
+We used the same model in notes 11 and notes 12, the models is:
+
+$$\Delta N_{SI}\sim Binomial(S,1-e^{-\beta I/N \Delta t})$$
+$$\Delta N_{IR}\sim Binomial(I,e^{-\mu_{IR} \Delta t})$$
+$$B\sim Binomial(H,\rho)$$
+H is the number of people who was infected, B is the number of people who was reported to have Covid-19.
+```{r, echo = FALSE}
+
+sir_data <- read.table("bsflu_data.txt")
+
+sir_step <- Csnippet("
+  double dN_SI = rbinom(S,1-exp(-Beta*I/N*dt));
+  double dN_IR = rbinom(I,1-exp(-mu_IR*dt));
+  S -= dN_SI;
+  I += dN_SI - dN_IR;
+  R += dN_IR;
+  H += dN_IR;
+")
+
+sir_skel <- Csnippet("
+  double dN_SIdt = Beta*S*I/N;
+  double dN_IRdt = mu_IR*I;
+  DS = -dN_SIdt;
+  DI = dN_SIdt - dN_IRdt;
+  DR = dN_IRdt;
+  DH = dN_IRdt;
+")
+
+sir_rinit <- Csnippet("
+  S = nearbyint(N)-1;
+  I = 1;
+  R = 0;
+  H = 0;
+")
+
+sir_dmeas <- Csnippet("lik = dbinom(B,H,rho,give_log);")
+sir_rmeas <- Csnippet("B = rbinom(H,rho);")
+
+sir <- pomp(subset(sir_data,select=c(day,B)),
+  time="day",t0=0,
+  rprocess=euler(sir_step,delta.t=1/6),
+  rmeasure=sir_rmeas,
+  dmeasure=sir_dmeas,
+  rinit=sir_rinit,
+  skeleton = vectorfield(sir_skel),
+  paramnames=c("Beta","mu_IR","N","rho"),
+  statenames=c("S","I","R","H"),
+  accumvars="H",
+  partrans=parameter_trans(log=c("Beta","mu_IR","N"),logit="rho")
+) 
+
+sir_test <- 0
+
+if(sir_test==1){
+  sims <- simulate(sir,params=c(Beta=1.8,mu_IR=1,rho=0.9,N=2600),
+    nsim=20,format="data.frame",include=TRUE)
+  ggplot(sims,mapping=aes(x=day,y=B,group=.id,color=.id=="data"))+
+    geom_line()+guides(color=FALSE)
+}
+
+if(sir_test==2){
+ coef(sir) <- c(Beta=1.8,mu_IR=1,rho=0.9,N=2600)
+ x <- trajectory(sir) 
+ y <- cbind(as.data.frame(sir),x=x["H",1,])
+ mutate(y,xlab=sprintf("H[%d]",day),
+       ylab=sprintf("B[%d]",day)) -> y
+
+ ggplot(data=y,
+       mapping=aes(x=day,xend=day))+
+  geom_point(aes(y=B),color='black',alpha=0.5)+
+  geom_point(aes(y=x),color='red',alpha=0.5)+
+  geom_line(aes(y=B),color='black',alpha=0.5)+
+  geom_line(aes(y=x),color='red',alpha=0.5)+
+  geom_text(aes(y=B,label=ylab,vjust=ifelse(day>=10,2,-1)),
+    parse=TRUE,color='black')+
+  geom_text(aes(y=x,label=xlab,vjust=ifelse(day>=10,-1,2)),
+    parse=TRUE,color='red')+
+  geom_segment(aes(y=x,yend=B),color='blue',linetype=2,alpha=0.3,
+               arrow=grid::arrow(length=grid::unit(0.02,"npc")))+
+  expand_limits(y=c(-20,320))+
+  labs(y="")
+}
+
+```
+
+In the following plot, B is the actual number of people confirmed to have Covid-19, H is the curve of our simulation.
+
+```{r, echo = FALSE}
+coef(sir) <- c(Beta=1.2,mu_IR=0.2,rho=0.8,N=50000)
+ x <- trajectory(sir) 
+ y <- cbind(as.data.frame(sir),x=x["H",1,])
+ mutate(y,xlab=sprintf("H[%d]",day),
+       ylab=sprintf("B[%d]",day)) -> y
+
+ ggplot(data=y,
+       mapping=aes(x=day,xend=day))+
+  geom_point(aes(y=B),color='black',alpha=0.5)+
+  geom_point(aes(y=x),color='red',alpha=0.5)+
+  geom_line(aes(y=B),color='black',alpha=0.5)+
+  geom_line(aes(y=x),color='red',alpha=0.5)+
+  geom_text(aes(y=B,label=ylab,vjust=ifelse(day>=10,2,-1)),
+    parse=TRUE,color='black')+
+  geom_text(aes(y=x,label=xlab,vjust=ifelse(day>=10,-1,2)),
+    parse=TRUE,color='red')+
+  geom_segment(aes(y=x,yend=B),color='blue',linetype=2,alpha=0.3,
+               arrow=grid::arrow(length=grid::unit(0.02,"npc")))+
+  expand_limits(y=c(-20,320))+
+  labs(y="")
+
+```
+
+We do 20 simulations to approximate the curve of confirmed cases with $\beta=1.2, \mu_{IR}=0.2,\rho=0.8, N=50000$
+
+```{r, echo = FALSE}
+sims <- simulate(sir,params=c(Beta=1.2,mu_IR=0.2,rho=0.8,N=50000),
+  nsim=20,format="data.frame",include=TRUE)
+ggplot(sims,mapping=aes(x=day,y=B,group=.id,color=.id=="data"))+
+  geom_line()+guides(color=FALSE)
+
+```
+
+
+Here are some of the loglikelihood of the parameters we guessed. 
+
+```{r,warning=FALSE}
+pf <- pfilter(sir,Np=5000,params=c(Beta=1.2,mu_IR=0.2,rho=0.8,N=50000))
+logLik(pf)
+```
+
+```{r,warning=FALSE}
+pf <- replicate(10,
+  pfilter(sir,Np=5000,params=c(Beta=1.2,mu_IR=0.2,rho=0.8,N=50000))
+)
+print(ll <- sapply(pf,logLik))
+```
+```{r}
+logmeanexp(ll,se=TRUE)
+```
+
+We can slice in the $\beta$ and $\mu_{IR}$ direction to see the change of loglikelihood.
+
+```{r, echo = FALSE}
+library(doParallel)
+registerDoParallel()
+library(doRNG)
+registerDoRNG(3899882)
+p <- sliceDesign(
+  c(Beta=1.2,mu_IR=0.2,rho=0.8,N=50000),
+  Beta=rep(seq(from=0.5,to=4,length=40),each=3),
+  mu_IR=rep(seq(from=0.5,to=2,length=40),each=3)) 
+
+foreach (theta=iter(p,"row"), .packages='pomp',
+  .combine=rbind,.inorder=FALSE) %dopar% {
+    pfilter(sir,params=unlist(theta),Np=5000) -> pf
+    theta$loglik <- logLik(pf)
+    theta
+  } -> p
+```
+```{r, echo = FALSE}
+foreach (v=c("Beta","mu_IR")) %do% 
+{
+  x <- subset(p,slice==v)
+  plot(x[[v]],x$loglik,xlab=v,ylab="loglik")
+}
+
+```
+
+
+Here, we can get a possible range of the parameters.
+
+## SIRRR model
+
+We do a SIRRR (3-stage recovery model) model as was in note 12. 
+
+```{r, echo = FALSE}
+bsflu_rprocess <- "
+  double dN_SI = rbinom(S,1-exp(-Beta*I*dt));
+  double dN_IR1 = rbinom(I,1-exp(-dt*mu_IR));
+  double dN_R1R2 = rbinom(R1,1-exp(-dt*mu_R1));
+  double dN_R2R3 = rbinom(R2,1-exp(-dt*mu_R2));
+  S -= dN_SI;
+  I += dN_SI - dN_IR1;
+  R1 += dN_IR1 - dN_R1R2;
+  R2 += dN_R1R2 - dN_R2R3;
+"
+
+
+## ----bsflu_measure-------------------------------------------------------
+bsflu_dmeasure <- "
+  lik = dpois(B,rho*R1+1e-10,give_log);
+"
+
+bsflu_rmeasure <- "
+  B = rpois(rho*R1+1e-10);
+"
+
+
+## ----bsflu_rinit---------------------------------------------------------
+bsflu_rinit <- "
+ S=100000;
+ I=1000;
+ R1=0;
+ R2=0;
+"
+
+
+## ----Csnippets_bsflu1----------------------------------------------------
+bsflu_statenames <- c("S","I","R1","R2")
+bsflu_paramnames <- c("Beta","mu_IR","rho","mu_R1","mu_R2")
+
+
+## ----Csnippets_bsflu2----------------------------------------------------
+bsflu_data <- read.table("bsflu_data.txt")
+
+bsflu2<- pomp(
+  data=subset(bsflu_data,select=c(day,B)),
+  times="day",
+  t0=0,
+  rprocess=euler(
+    step.fun=Csnippet(bsflu_rprocess),
+    delta.t=1/12),
+  rmeasure=Csnippet(bsflu_rmeasure),
+  dmeasure=Csnippet(bsflu_dmeasure),
+  partrans=parameter_trans(
+    log=c("Beta","mu_IR","mu_R1","mu_R2"),
+    logit="rho"),
+  statenames=bsflu_statenames,
+  paramnames=bsflu_paramnames,
+  rinit=Csnippet(bsflu_rinit)
+)
+```
+
+First, we test if the particle filter is working.
+
+```{r,warning=FALSE}
+pf <- pfilter(bsflu2,Np=5000,params=c(Beta=1.2,mu_IR=0.2,rho=0.8,N=50000,mu_R1=1/(sum(bsflu_data$B)/512),
+  mu_R2=1/(sum(bsflu_data$C)/512)))
+logLik(pf)
+```
+
+```{r,warning=FALSE}
+pf <- replicate(10,
+  pfilter(bsflu2,Np=5000,params=c(Beta=1.2,mu_IR=0.2,rho=0.8,N=50000,mu_R1=1/(sum(bsflu_data$B)/512),
+  mu_R2=1/(sum(bsflu_data$C)/512)))
+)
+print(ll <- sapply(pf,logLik))
+```
+```{r}
+logmeanexp(ll,se=TRUE)
+```
+
+### local search
+
+```{r, echo = FALSE}
+
+## ----run_level-----------------------------------------------------------
+run_level <- 3
+switch(run_level, {
+  bsflu_Np=100; bsflu_Nmif=10; bsflu_Neval=10;
+  bsflu_Nglobal=10; bsflu_Nlocal=10
+  },{
+  bsflu_Np=20000; bsflu_Nmif=100; bsflu_Neval=10;
+  bsflu_Nglobal=10; bsflu_Nlocal=10
+  },{
+  bsflu_Np=60000; bsflu_Nmif=300; bsflu_Neval=10;
+  bsflu_Nglobal=100; bsflu_Nlocal=20}
+)
+
+
+## ----bsflu_params--------------------------------------------------------
+bsflu_params <- data.matrix(
+  read.table("mif_bsflu_params.csv",
+  row.names=NULL,header=TRUE))
+which_mle <- which.max(bsflu_params[,"logLik"])
+bsflu_mle <- bsflu_params[which_mle,][bsflu_paramnames]
+
+
+## ----fixed_params--------------------------------------------------------
+bsflu_fixed_params <- c(mu_R1=1/(sum(bsflu_data$B)/512),
+  mu_R2=1/(sum(bsflu_data$C)/512) )
+
+```
+
+
+```{r,warning=FALSE, echo = FALSE}
+
+stew(file=sprintf("pf-%d.rda",run_level),{
+  t_pf <- system.time(
+    pf <- foreach(i=1:16,.packages=c('pomp','doParallel'),.export = c('bsflu2','bsflu_mle','bsflu_Np')) %dopar% try(
+                    pfilter(bsflu2,params=bsflu_mle,Np=bsflu_Np)
+                  )
+  )
+  
+},seed=1320290398,kind="L'Ecuyer")
+
+(L_pf <- logmeanexp(sapply(pf,logLik),se=TRUE))
+```
+```{r,warning=FALSE, echo = FALSE}
+## ----box_search_local,cache=FALSE----------------------------------------
+bsflu_rw.sd <- 0.02; bsflu_cooling.fraction.50 <- 0.5
+stew(file=sprintf("local_search-%d.rda",run_level),{
+  t_local <- system.time({
+  mifs_local <- foreach(i=1:bsflu_Nlocal,
+    .packages='pomp',.export = c('bsflu2','bsflu_mle','bsflu_Np','bsflu_Nmif','bsflu_cooling.fraction.50','bsflu_rw.sd'), .combine=c) %dopar%  {
+      mif2(bsflu2,
+        params=bsflu_mle,
+        Np=bsflu_Np,
+        Nmif=bsflu_Nmif,
+        cooling.fraction.50=bsflu_cooling.fraction.50,
+        rw.sd=rw.sd(
+          Beta=bsflu_rw.sd,
+          mu_IR=bsflu_rw.sd,
+          rho=bsflu_rw.sd)
+      )
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+## ----lik_local_eval,cache=FALSE------------------------------------------
+stew(file=sprintf("lik_local-%d.rda",run_level),{
+  t_local_eval <- system.time({
+  liks_local <- foreach(i=1:bsflu_Nlocal,
+    .combine=rbind,.packages='pomp',.export = c('bsflu2','bsflu_mle','bsflu_Np','bsflu_Nmif','mifs_local','bsflu_rw.sd','bsflu_Neval'))%dopar% {
+    evals <- replicate(bsflu_Neval, logLik(
+      pfilter(bsflu2,params=coef(mifs_local[[i]]),Np=bsflu_Np)))
+    logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=900242057,kind="L'Ecuyer")
+
+results_local <- data.frame(logLik=liks_local[,1],
+  logLik_se=liks_local[,2],t(sapply(mifs_local,coef)))
+
+
+## ----lik_local_summary---------------------------------------------------
+summary(results_local$logLik,digits=5)
+```
+
+```{r, echo = FALSE}
+## ----pairs_local_code,eval=FALSE,echo=T----------------------------------
+## pairs(~logLik+Beta+mu_IR+rho,
+##   data=subset(results_local,logLik>max(logLik)-50))
+
+
+## ----pairs_local_plot,eval=TRUE,echo=FALSE,out.width="12cm"--------------
+pairs(~logLik+Beta+mu_IR+rho,
+  data=subset(results_local,logLik>max(logLik)-50))
+
+```
+```{r}
+plot(mifs_local)
+coef(mifs_local[[1]])
+local_para=coef(mifs_local[[1]])
+pf <- pfilter(bsflu2,Np=20000,params=local_para)
+logLik(pf)
+```
+
+The effective sample size is considerable small comparing to the total number of trials.
+
+$\rho$ and $\mu_{IR}$ are converged in most of the particles. There are only few particles in which $\beta$ is not converged.
+
+
+### global search
+
+```{r, echo = FALSE}
+run_level <- 2
+switch(run_level, {
+  bsflu_Np=100; bsflu_Nmif=10; bsflu_Neval=10;
+  bsflu_Nglobal=10; bsflu_Nlocal=10
+  },{
+  bsflu_Np=20000; bsflu_Nmif=100; bsflu_Neval=10;
+  bsflu_Nglobal=10; bsflu_Nlocal=10
+  },{
+  bsflu_Np=60000; bsflu_Nmif=300; bsflu_Neval=10;
+  bsflu_Nglobal=100; bsflu_Nlocal=20}
+)
+
+  
+bsflu_box <- rbind(
+  Beta=c(0.001,2.0),
+  mu_IR=c(0.01,1.5),
+  rho = c(0.1,1)
+)
+## ----box_eval,cache=FALSE------------------------------------------------
+stew(file=sprintf("box_eval-%d.rda",run_level),{
+  t_global <- system.time({
+    mifs_global <- foreach(i=1:bsflu_Nglobal,
+      .combine=c,.packages='pomp',.export = c('mifs_local','bsflu_box','bsflu_fixed_params')) %dopar% {
+      mif2(
+        mifs_local[[1]],
+        params=c(
+          apply(bsflu_box,1,function(x)runif(1,x[1],x[2])),
+	  bsflu_fixed_params)
+      )}
+  })
+},seed=1270401374,kind="L'Ecuyer")
+## ----lik_global_eval,cache=FALSE-----------------------------------------
+stew(file=sprintf("lik_global_eval-%d.rda",run_level),{
+  t_global_eval <- system.time({
+    liks_global <- foreach(i=1:bsflu_Nglobal,
+      .combine=rbind, .packages='pomp',.export = c('bsflu2','bsflu_Neval','mifs_global','bsflu_Np')) %dopar% {
+        evals <- replicate(bsflu_Neval,
+          logLik(pfilter(bsflu2,
+	    params=coef(mifs_global[[i]]),Np=bsflu_Np)))
+        logmeanexp(evals, se=TRUE)
+    }
+  })
+},seed=442141592,kind="L'Ecuyer")
+
+results_global <- data.frame(
+  logLik=liks_global[,1],
+  logLik_se=liks_global[,2],t(sapply(mifs_global,coef)))
+summary(results_global$logLik,digits=5)
+```
+
+```{r, echo = FALSE}
+## ----pairs_global,echo=FALSE,eval=TRUE,out.width="12cm"------------------
+pairs(~logLik+Beta+mu_IR+rho,
+  data=subset(results_global,logLik>max(logLik)-250))
+
+
+## ----class_mifs_global---------------------------------------------------
+class(mifs_global)
+class(mifs_global[[1]])
+
+
+## ----mifs_global_plot,out.width="8cm",echo=FALSE-------------------------
+plot(mifs_global)
+coef(mifs_global[[1]])
+global_para=coef(mifs_global[[1]])
+pf <- pfilter(bsflu2,Np=20000,params=global_para)
+logLik(pf)
+```
+
+We can see that the result of loglikelihood from global and local search do not differ much. In the global search, only $\rho$ shows signs of convergence. $\beta$ and $\mu_{IR}$ are not convergent in the box.
+
+$\rho$ is the infectious when people contact with some one who was infected. In our report, $\rho$ is approxiamately 0.15. In real world report, this rate is believed to be between 4%~6%.
+
+# Conclusion
+
+In this project, we proposed mathematical model for Covid-19 infection and recovery in China with pomp process. Model parameters were determined from local and global search. In future, we can consider to change the model structures. We can add high risk group to the model, as they have close contaction with infected patients. In the goverment reports, these high risk group of people will be separated for about 2 weeks and about 20-30% of these were found to be infected. This could induce a SIQR (Q for quarantine) model. Some reports believe the Coronavirus is more infectious than SARS because asymptomatics (people who have been infected but show no symptoms) can be latent for a long time period before they can be confirmed. This can be a part in SEIR model. In the future, if we have time, we can combine these feature together to build a SEIQR model.
+
+The model in this report is built under ideal situation. It may be different from the real-world disease. However, the result displays that the infectious rate of Covid-19 is not negligible and thus people should be aware of protecting themselves.
+
+# Reference
+1. Modelling of SARS in Beijing April-June, 2003
+https://ionides.github.io/531w18/final_project/42/final.html
+2. COVID-19 dynamics with SIR model
+https://www.lewuathe.com/covid-19-dynamics-with-sir-model.html
+

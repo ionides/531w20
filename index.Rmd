@@ -184,14 +184,9 @@ Reading the textbook is not mandatory for the exam, but may be useful to get a b
 
 * [Information](final_project/final_project_info.html)
 
-* You're welcome to browse previous final projects  for [2016](http://ionides.github.io/531w16/final_project/) and  [2018](http://ionides.github.io/531w18/final_project/)
+* [2020 final projects](final_project/index.html)
 
-
-<!--
-
-* [Projects](final_project/index.html)
-
--->
+* You're welcome to browse previous final projects  for [2016](http://ionides.github.io/531w16/final_project/) and  [2018](http://ionides.github.io/531w18/final_project/). If building on previous source code, note that there are some differences between versions of the software package **pomp**. The [**pomp** version 2 upgrade guide](https://kingaa.github.io/pomp/vignettes/upgrade_guide.html) can be helpful.
 
 
 --------

@@ -61,71 +61,78 @@ output:
 
 18. [Modelling the Spread of Covid-19 in Iceland](Project18/final.html)
 
-19. [](Project19/final.html)
+19. [Are you confident in the company, or are you greedy for the price?
+A Time Series Sentiment Analysis project](Project19/final.html)
 
-20. [](Project20/final.html)
+20. [POMP Model Analysis with CSI 300 Stock Index](Project20/final.html)
 
+<!--
 21. [](Project21/final.html)
+-->
 
-22. [](Project22/final.html)
+22. [Investigation of COVID-19 spreading properties based on SECSDR model](Project22/final.html)
 
-23. [](Project23/final.html)
+23. [Financial Volatility of Facebook Stock](Project23/final.html)
 
-24. [](Project24/final.html)
+24. [A Throughout Analysis on Amazon Stock Price](Project24/final.html)
 
-25. [](Project25/final.html)
+25. [POMP Modeling for COVID-19 in Italy](Project25/final.html)
 
-26. [](Project26/final.html)
+26. [Investigation on NASDAQ Price Volatility](Project26/final.html)
 
-27. [](Project27/final.html)
+27. [Time Series Analysis on Covid-19 in China 2020](Project27/final.html)
 
-28. [](Project28/final.html)
+28. [Modelling the Volatilty of VI](Project28/final.html)
 
-29. [](Project29/final.html)
+29. [Time series analysis of Apple Stock Price](Project29/final.html)
 
-30. [](Project30/final.html)
+30. [Time Series Analysis on Google Search Trend for virus](Project30/final.html)
 
-31. [](Project31/final.html)
+31. [fMRI analysis: Seasonality analysis with Lomb-Scargle algorithm and Dynamic Causal Modeling](Project31/final.html)
 
-32. [](Project32/final.html)
+32. [Using POMP to predict geomagnetic storms](Project32/final.html)
 
-33. [](Project33/final.html)
+33. [Case study on the United States COVID-19 data based on the SEIR model](Project33/final.html)
 
+<!--
 34. [](Project34/final.html)
+-->
 
+<!--
 35. [](Project35/final.html)
+-->
 
-36. [](Project36/final.html)
+36. [Analyze Eagle Activity using Hidden Markov Models](Project36/final.html)
 
-37. [](Project37/final.html)
+37. [Study of COVID-19](Project37/final.html)
 
-38. [](Project38/final.html)
+38. [Analysing the Stock of Intel Corporation (INTC) using GARCH and POMP Models](Project38/final.html)
 
-39. [](Project39/final.html)
+39. [Researching on stochastic volatility of Tesla stock price in 2019](Project39/final.html)
 
-40. [](Project40/final.html)
+40. [Financial Volatility Analysis of Alibaba Stock](Project40/final.html)
 
-41. [](Project41/final.html)
+41. [Pomp model fitting for China monthly export value from 1993 to 2018](Project41/final.html)
 
-42. [](Project42/final.html)
+42. [COVID-19 Pomp Model Analysis](Project42/final.html)
 
-43. [](Project43/final.html)
+43. [Stochastic Volatility of Amazon Stock Price](Project43/final.html)
 
-44. [](Project44/final.html)
+44. [Modeling the volatility in USD/CNY exchange rate](Project44/final.html)
 
-45. [](Project45/final.html)
+45. [Study of 1968-1980 Wisconsin Mumps Cases Using POMP](Project45/final.html)
 
-46. [](Project46/final.html)
+46. [Analysis of SSDOY stock price volatility](Project46/final.html)
 
-47. [](Project47/final.html)
+47. [Spread in Gold Prices](Project47/final.html)
 
-48. [](Project48/final.html)
+48. [Study on the Transmission Dynamics of Varicella in South Korea](Project48/final.html)
 
-49. [](Project49/final.html)
+49. [SIR Model on Google Query Search Data](Project49/final.html)
 
-50. [](Project50/final.html)
+50. [Candy Production Index (CPI)](Project50/final.html)
 
-51. [](Project51/final.html)
+51. [Time Series Analysis on US Tourist Demand after COVID-19](Project51/final.html)
 
 
 ----------
