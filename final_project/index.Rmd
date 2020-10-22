@@ -1,0 +1,133 @@
+---
+title: "Stats 531 (Winter 2020) <br>Final projects"
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+---
+
+------
+
+* Projects with source code are posted anonymously on the class webpage.
+
+* Students can request for their name to be added, after the course is over and the class grades are assigned.
+
+* Students can request for projects with confidential data not to be posted.
+
+* In most cases, source code and data are available from [https://github.com/ionides/531w20/tree/master/final_project](https://github.com/ionides/531w20/tree/master/final_project).
+
+* If building on previous source code, note that there are some differences between versions of the software package **pomp**. The [**pomp** version 2 upgrade guide](https://kingaa.github.io/pomp/vignettes/upgrade_guide.html) can be helpful.
+
+* Some projects were recompiled while grading, and may not have been recalculated with full computational effort.
+
+
+----------
+
+----------
+
+
+2. [Ebola Cases in Guinea](Project2/final.html)
+
+3. [Study of COVID-19 data](Project3/final.html)
+
+4. [Modeling stochastic growth and volality with Heston model on Google log-returns](Project4/final.html)
+
+5. [Volatility Analysis on Apple Stock](Project5/final.html)
+
+6. [Flattening the Curve: A Case Study of COVID-19 Spread in Seattle, WA](Project6/final.html)
+
+
+8. [An Investigation of Coronavirus Spread in the United States Before and During Lockdown, using Regression and an Earlier SIR Flu Model in pomp](Project8/final.html)
+
+9. [SEIR Modeling on Interventation Strategies for COVID-19 in Hubei](Project9/final.html)
+
+10. [Dengue in Iquitos, Peru](Project10/final.html)
+
+11. [POMP modeling for SARS infection in Hong Kong](Project11/final.html)
+
+12. [Stochastic volatility of Apple stock](Project12/final.html)
+
+13. [DJIA 30 Stock Analysis](Project13/final.html)
+
+14. [The Wilshire 5000 Index Time Series Analysis and Modelling](Project14/final.html)
+
+15. [Analysis of Pertussis Transmission by SIR model](Project15/final.Rmd). Not compiled to html.
+
+<!--
+16. [](Project16/final.html)
+-->
+
+17. [A POMP Model on Transmission Dynamics of Chickenpox (Varicella) in Michigan](Project17/final.html)
+
+18. [Modelling the Spread of Covid-19 in Iceland](Project18/final.html)
+
+19. [](Project19/final.html)
+
+20. [](Project20/final.html)
+
+21. [](Project21/final.html)
+
+22. [](Project22/final.html)
+
+23. [](Project23/final.html)
+
+24. [](Project24/final.html)
+
+25. [](Project25/final.html)
+
+26. [](Project26/final.html)
+
+27. [](Project27/final.html)
+
+28. [](Project28/final.html)
+
+29. [](Project29/final.html)
+
+30. [](Project30/final.html)
+
+31. [](Project31/final.html)
+
+32. [](Project32/final.html)
+
+33. [](Project33/final.html)
+
+34. [](Project34/final.html)
+
+35. [](Project35/final.html)
+
+36. [](Project36/final.html)
+
+37. [](Project37/final.html)
+
+38. [](Project38/final.html)
+
+39. [](Project39/final.html)
+
+40. [](Project40/final.html)
+
+41. [](Project41/final.html)
+
+42. [](Project42/final.html)
+
+43. [](Project43/final.html)
+
+44. [](Project44/final.html)
+
+45. [](Project45/final.html)
+
+46. [](Project46/final.html)
+
+47. [](Project47/final.html)
+
+48. [](Project48/final.html)
+
+49. [](Project49/final.html)
+
+50. [](Project50/final.html)
+
+51. [](Project51/final.html)
+
+
+----------
+
+-----------
