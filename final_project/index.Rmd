@@ -8,7 +8,7 @@ output:
 
 ------
 
-* Projects with source code are posted anonymously on the class webpage.
+* Projects with source code are posted anonymously on the class webpage. Some projects where issues arose re-running the code are not posted.
 
 * Students can request for their name to be added, after the course is over and the class grades are assigned.
 
@@ -18,13 +18,11 @@ output:
 
 * If building on previous source code, note that there are some differences between versions of the software package **pomp**. The [**pomp** version 2 upgrade guide](https://kingaa.github.io/pomp/vignettes/upgrade_guide.html) can be helpful.
 
-* Some projects were recompiled while grading, and may not have been recalculated with full computational effort.
-
-
 ----------
 
 ----------
 
+1. [Time Series Analysis on US Tourist Demand after COVID-19](Project1/final.html)
 
 2. [Ebola Cases in Guinea](Project2/final.html)
 
@@ -36,6 +34,7 @@ output:
 
 6. [Flattening the Curve: A Case Study of COVID-19 Spread in Seattle, WA](Project6/final.html)
 
+7. [Spread in Gold Prices](Project7/final.html)
 
 8. [An Investigation of Coronavirus Spread in the United States Before and During Lockdown, using Regression and an Earlier SIR Flu Model in pomp](Project8/final.html)
 
@@ -51,11 +50,9 @@ output:
 
 14. [The Wilshire 5000 Index Time Series Analysis and Modelling](Project14/final.html)
 
-15. [Analysis of Pertussis Transmission by SIR model](Project15/final.Rmd). Not compiled to html.
+15. [Analysis of Pertussis Transmission by SIR model](Project15/final.Rmd)
 
-<!--
-16. [](Project16/final.html)
--->
+16. [Analysis of SSDOY stock price volatility](Project16/final.html)
 
 17. [A POMP Model on Transmission Dynamics of Chickenpox (Varicella) in Michigan](Project17/final.html)
 
@@ -66,9 +63,7 @@ A Time Series Sentiment Analysis project](Project19/final.html)
 
 20. [POMP Model Analysis with CSI 300 Stock Index](Project20/final.html)
 
-<!--
-21. [](Project21/final.html)
--->
+21. [Candy Production Index (CPI)](Project21/final.html)
 
 22. [Investigation of COVID-19 spreading properties based on SECSDR model](Project22/final.html)
 
@@ -94,13 +89,9 @@ A Time Series Sentiment Analysis project](Project19/final.html)
 
 33. [Case study on the United States COVID-19 data based on the SEIR model](Project33/final.html)
 
-<!--
-34. [](Project34/final.html)
--->
+34. [SIR Model on Google Query Search Data](Project34/final.html)
 
-<!--
-35. [](Project35/final.html)
--->
+35. [Study on the Transmission Dynamics of Varicella in South Korea](Project35/final.html)
 
 36. [Analyze Eagle Activity using Hidden Markov Models](Project36/final.html)
 
@@ -122,17 +113,10 @@ A Time Series Sentiment Analysis project](Project19/final.html)
 
 45. [Study of 1968-1980 Wisconsin Mumps Cases Using POMP](Project45/final.html)
 
-46. [Analysis of SSDOY stock price volatility](Project46/final.html)
 
-47. [Spread in Gold Prices](Project47/final.html)
 
-48. [Study on the Transmission Dynamics of Varicella in South Korea](Project48/final.html)
 
-49. [SIR Model on Google Query Search Data](Project49/final.html)
 
-50. [Candy Production Index (CPI)](Project50/final.html)
-
-51. [Time Series Analysis on US Tourist Demand after COVID-19](Project51/final.html)
 
 
 ----------
